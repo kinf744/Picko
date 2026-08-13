@@ -94,5 +94,5 @@
 - [x] Publier les dernières modifications de l’application et de la documentation vers GitHub
 - [x] Vérifier le build GitHub Actions armeabi-v7a déclenché par ces modifications
 
-- [ ] Retirer de la livraison standard l’archive de diagnostics Android redondante
-- [ ] Vérifier qu’un nouveau run GitHub Actions n’affiche qu’un APK installable
+- [x] Retirer de la livraison standard l’archive de diagnostics Android redondante
+- [x] Vérifier qu’un nouveau run GitHub Actions n’affiche qu’un APK installable
