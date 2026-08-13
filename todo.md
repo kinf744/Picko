@@ -57,17 +57,17 @@
 - [x] Auditer les services, ports et fichiers d’utilisateurs KIGHMU existants sur le VPS
 - [x] Concevoir un panneau KIGHMU isolé avec accès protégé et gestion d’utilisateurs
 - [x] Déployer le panneau de contrôle sans modifier UDP-ZIVPN
-- [ ] Valider la création, la révocation et la liste des utilisateurs KIGHMU via le panneau
+- [x] Valider la création, la révocation et la liste des utilisateurs KIGHMU via le panneau
 
-- [ ] Migrer l’authentification KIGHMU vers des comptes Android userpass sans exposer les secrets
+- [x] Migrer l’authentification KIGHMU vers des comptes Android userpass sans exposer les secrets
 - [x] Protéger le panneau KIGHMU par le mot de passe d’administration confirmé
 
 - [x] Ajouter la commande terminale interactive kighmu2 pour les comptes KIGHMU Android
 - [x] Installer la commande kighmu2 sur le VPS sans modifier UDP-ZIVPN
-- [ ] Valider la liste et la création/révocation de comptes avec le menu kighmu2
+- [x] Valider la liste et la création/révocation de comptes avec le menu kighmu2
 
 - [x] Ajouter au menu kighmu2 un statut détaillé KIGHMU, port hopping et utilisateurs Android
-- [ ] Ajouter des fonctions sûres de création, suppression, consultation et expiration des comptes Android
+- [x] Ajouter des fonctions sûres de création, suppression, consultation et expiration des comptes Android
 - [x] Ajouter un diagnostic et une réparation limitée à KIGHMU, sans modifier UFW, les règles UDP-ZIVPN ou les autres tunnels
 - [x] Ajouter une procédure de désactivation KIGHMU explicitement confirmée, sans désinstaller UDP-ZIVPN
 
@@ -76,6 +76,6 @@
 
 - [x] Vérifier l’équivalence fonctionnelle des cinq options avec le script Hysteria fourni
 - [x] Compléter les options KIGHMU manquantes sans actions destructrices sur le pare-feu ou UDP-ZIVPN
-- [ ] Tester séparément les cinq options KIGHMU et confirmer l’intégrité de UDP-ZIVPN
+- [x] Tester séparément les cinq options KIGHMU et confirmer l’intégrité de UDP-ZIVPN
 
 - [x] Remplacer la confirmation de mot de passe par une saisie visible unique dans l’option 2 de kighmu2

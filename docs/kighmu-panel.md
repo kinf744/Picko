@@ -55,3 +55,7 @@ Les commandes `kighmu2 --list` et `kighmu2 --status` sont disponibles pour un co
 | 5. Désinstaller | Sauvegarde KIGHMU sous `/root/kighmu-uninstall-backup-*`, puis retire KIGHMU, son panneau et sa table nftables dédiée après confirmation stricte. | Ne retire ni les fichiers, ni les services, ni les règles de UDP-ZIVPN. |
 
 L’option 2 suit le flux du script fourni : le mot de passe est affiché pendant sa saisie et n’est saisi qu’une seule fois. Après la création, le panneau affiche le serveur, le port et la valeur `utilisateur:mot_de_passe` à reporter dans le champ **Password** de l’APK.
+
+## Validation sur le VPS
+
+Les options 1 à 4 ont été exécutées sur le VPS : le statut a confirmé KIGHMU et UDP-ZIVPN actifs, deux comptes temporaires ont été créés, puis l’un a été révoqué via la sélection numérotée. Le compte restant est conservé pour l’essai Android initial. L’option 5 a été testée avec une confirmation volontairement incorrecte afin de vérifier qu’elle annule bien toute suppression. Après chaque essai, KIGHMU, sa table `inet kighmu_porthop` et UDP-ZIVPN sur UDP `5667` étaient actifs.
