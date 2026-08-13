@@ -37,6 +37,6 @@
 - [x] Ne conserver aucune compilation Android locale ou VPS comme mécanisme de livraison
 - [x] Documenter la procédure de compilation exclusivement via GitHub Actions
 
-- [ ] Cibler uniquement l’architecture Android armeabi-v7a pour l’APK personnel
-- [ ] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions
+- [x] Cibler uniquement l’architecture Android armeabi-v7a pour l’APK personnel
+- [x] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions
 - [ ] Vérifier la taille et l’installation de l’APK armeabi-v7a sur un appareil compatible
