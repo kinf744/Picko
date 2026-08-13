@@ -160,3 +160,43 @@ Le splash KIGHMU s’affiche désormais correctement, mais l’accueil React Nat
 - [ ] Confirmer le tunnel KIGHMU après l’ouverture de l’accueil
 
 Le nouveau workflow doit publier un artefact `kighmu-vpn-android-release-...`. L’ancien artefact `...-debug-...` ne doit plus être installé hors d’un environnement Metro connecté.
+
+
+## Test réel du tunnel KIGHMU — utilisateur VPS valide
+
+- [ ] Saisir Host `204.152.219.23` dans Configuration
+- [ ] Saisir la plage `20000-50000` dans Port/Range
+- [ ] Saisir exactement l’Obfs Salamander configuré côté serveur
+- [ ] Saisir le profil userpass au format `utilisateur:mot_de_passe`
+- [ ] Enregistrer la configuration localement
+- [ ] Accorder l’autorisation Android VPN lors de la première connexion
+- [ ] Connecter le tunnel KIGHMU depuis l’appareil réel
+- [ ] Vérifier l’état connecté et la notification VPN
+- [ ] Vérifier une navigation ou une requête réseau après connexion
+- [ ] Ouvrir Diagnostic et relever les étapes prepare, TUN, binaire, handshake et trafic
+- [ ] Partager le Diagnostic expurgé sans mot de passe ni Obfs
+- [ ] Vérifier que UDP-ZIVPN reste inchangé sur UDP/5667
+- [ ] Ne pas déclarer l’application prête avant confirmation du trafic réel
+- [ ] Corriger et republier via GitHub Actions uniquement si le Diagnostic révèle un défaut
+- [ ] Confirmer la déconnexion propre après le test
+- [ ] Révoquer ou remplacer le compte de test après validation si nécessaire
+
+Le test utilise un compte KIGHMU valide créé avec `kighmu2`. Les secrets ne doivent pas être inscrits dans le dépôt, le TODO ou les journaux partagés.
+
+
+## Erreur d’exécution du binaire Android — 14 août 2026
+
+- [x] Auditer le mode du fichier KIGHMU après extraction dans `filesDir`
+- [x] Corriger l’attribut exécutable du binaire `kighmu-native-armeabi-v7a`
+- [x] Vérifier que le lancement natif n’utilise pas un fichier copié sans permission `execute`
+- [x] Ajouter une validation explicite du fichier exécutable avant démarrage
+- [x] Ajouter un message Diagnostic précis si la permission d’exécution échoue
+- [ ] Publier un nouvel APK uniquement via GitHub Actions
+- [ ] Vérifier l’ABI et le binaire dans le nouvel artefact release
+- [ ] Installer le nouvel APK après désinstallation propre
+- [ ] Retester l’autorisation VPN et le démarrage du moteur KIGHMU
+- [ ] Vérifier le handshake, le TUN et le trafic réel
+- [ ] Confirmer que UDP-ZIVPN sur UDP/5667 reste inchangé
+- [ ] Ne pas déclarer l’application prête avant un tunnel réel réussi
+
+Le Diagnostic utilisateur confirme `Cannot run program ... error=13, Permission denied` après le démarrage de `VpnService`. Le profil et la plage de ports sont donc atteints ; l’échec se produit au lancement du moteur local.

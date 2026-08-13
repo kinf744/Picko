@@ -95,8 +95,17 @@ class KighmuVpnService : VpnService() {
   private fun copyNativeBinary(): File {
     val target = File(filesDir, "kighmu-native-armeabi-v7a")
     if (!target.exists() || target.length() == 0L) {
-      assets.open("kighmu-native-armeabi-v7a").use { input -> target.outputStream().use { output -> input.copyTo(output) } }
-      target.setExecutable(true, true)
+      assets.open("kighmu-native-armeabi-v7a").use { input ->
+        target.outputStream().use { output -> input.copyTo(output) }
+      }
+    }
+
+    // Android may preserve an existing app-private file without execute permission.
+    // Re-apply the mode on every start so upgrades and previous failed attempts recover.
+    target.setReadable(true, false)
+    target.setExecutable(true, false)
+    if (!target.canExecute()) {
+      error("Binaire KIGHMU non exécutable après extraction : ${target.absolutePath}")
     }
     return target
   }
