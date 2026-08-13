@@ -79,3 +79,7 @@
 - [x] Tester séparément les cinq options KIGHMU et confirmer l’intégrité de UDP-ZIVPN
 
 - [x] Remplacer la confirmation de mot de passe par une saisie visible unique dans l’option 2 de kighmu2
+
+- [x] Capturer passivement les métadonnées de handshake KIGHMU et UDP-ZIVPN
+- [x] Comparer les caractéristiques observables de QUIC, du port hopping et des réponses serveur
+- [x] Documenter l’analyse sans inclure de secrets ni modifier les tunnels actifs
