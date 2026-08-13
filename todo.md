@@ -1,98 +1,128 @@
 # Project TODO
 
-- [x] Définir l’architecture d’interface mobile portrait et les flux principaux
-- [x] Définir l’identité visuelle KIGHMU VPN
+## Fonctionnalités livrées
+
+- [x] Définir l’architecture mobile portrait et les flux principaux
 - [x] Construire l’écran d’accueil avec état du tunnel
-- [x] Construire le formulaire Host/IP, port ou plage, Obfs et mot de passe
-- [x] Ajouter la validation locale des champs et des plages de ports
-- [x] Persister la configuration locale sans exposer les secrets
-- [x] Ajouter le stockage sécurisé du mot de passe et de l’Obfs
-- [x] Ajouter l’écran de journaux détaillés et filtrables
-- [x] Ajouter la copie et le partage d’un rapport de diagnostic expurgé
-- [x] Ajouter le modèle d’état du tunnel et les transitions connexion/déconnexion
-- [x] Ajouter l’adaptateur natif Android pour le binaire armeabi-v7a
-- [x] Ajouter le service Android VpnService et la demande d’autorisation système
-- [x] Ajouter l’intégration du binaire KIGHMU dans le build Android
-- [x] Ajouter la remontée des erreurs du composant natif vers les journaux
-- [x] Tester l’interface sur le preview Expo et les tests unitaires déterministes
-- [ ] Vérifier le build Android armeabi-v7a sur un appareil réel ou émulateur compatible
-- [x] Documenter l’installation, les permissions et les limites de la première version
-
-- [x] Définir le contrat Native Module pour demander l’autorisation VPN, démarrer, arrêter et recevoir les logs
-- [x] Ajouter le service Android VpnService avec notification persistante et arrêt propre
-- [x] Ajouter le pont React Native vers VpnService
-- [x] Intégrer le binaire KIGHMU armeabi-v7a dans le packaging Android
-- [x] Transmettre Host/IP, port ou plage, Obfs et mot de passe au moteur natif sans les journaliser
-- [x] Remonter les événements natifs et erreurs détaillées dans l’écran Diagnostic
-- [x] Produire un build Android personnalisé incluant le module natif
-- [ ] Tester l’autorisation système et la connexion réelle sur Android
-- [ ] Ne déclarer l’application prête qu’après validation sur un appareil Android compatible
-
-- [x] Vérifier le dépôt GitHub Picko et son état initial
-- [x] Nettoyer les secrets, caches, builds et artefacts privés avant publication
-- [x] Ajouter un workflow GitHub Actions de build Android armeabi-v7a/arm64
-- [x] Configurer les artefacts APK et les journaux de compilation GitHub
-- [x] Pousser le code source complet de l’application vers GitHub
-- [x] Vérifier le premier workflow GitHub Actions et corriger ses erreurs
-- [x] Ne conserver aucune compilation Android locale ou VPS comme mécanisme de livraison
-- [x] Documenter la procédure de compilation exclusivement via GitHub Actions
-
-- [x] Cibler uniquement l’architecture Android armeabi-v7a pour l’APK personnel
-- [x] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions
-- [ ] Vérifier la taille et l’installation de l’APK armeabi-v7a sur un appareil compatible
-
-- [x] Comparer le script Hysteria 1 joint avec le protocole KIGHMU Hysteria 2 du client Android
-- [x] Préparer un script de déploiement KIGHMU séparé sans modifier le serveur UDP-ZIVPN existant
-- [ ] Tester le handshake et le trafic du tunnel KIGHMU depuis un appareil Android armeabi-v7a
-- [x] Déployer le serveur KIGHMU Hysteria 2 séparé et vérifier le handshake local sur UDP/24443
-
-- [x] Auditer les conflits de ports et règles réseau avant d’utiliser 2000-5000 pour KIGHMU
-- [x] Configurer le port hopping KIGHMU Hysteria 2 sur la plage 2000-5000 sans modifier UDP-ZIVPN
-- [ ] Vérifier le handshake KIGHMU sur une plage de ports depuis l’application Android
-
-- [x] Auditer les collisions UDP et les règles existantes sur la plage 20000-50000
-- [x] Configurer KIGHMU sur UDP/25000 avec une redirection dédiée 20000-50000 vers 25000
-- [ ] Vérifier l’accès KIGHMU via la plage 20000-50000 sans modifier UDP-ZIVPN
-
-- [x] Auditer les services, ports et fichiers d’utilisateurs KIGHMU existants sur le VPS
-- [x] Concevoir un panneau KIGHMU isolé avec accès protégé et gestion d’utilisateurs
-- [x] Déployer le panneau de contrôle sans modifier UDP-ZIVPN
-- [x] Valider la création, la révocation et la liste des utilisateurs KIGHMU via le panneau
-
-- [x] Migrer l’authentification KIGHMU vers des comptes Android userpass sans exposer les secrets
-- [x] Protéger le panneau KIGHMU par le mot de passe d’administration confirmé
-
-- [x] Ajouter la commande terminale interactive kighmu2 pour les comptes KIGHMU Android
-- [x] Installer la commande kighmu2 sur le VPS sans modifier UDP-ZIVPN
-- [x] Valider la liste et la création/révocation de comptes avec le menu kighmu2
-
-- [x] Ajouter au menu kighmu2 un statut détaillé KIGHMU, port hopping et utilisateurs Android
-- [x] Ajouter des fonctions sûres de création, suppression, consultation et expiration des comptes Android
-- [x] Ajouter un diagnostic et une réparation limitée à KIGHMU, sans modifier UFW, les règles UDP-ZIVPN ou les autres tunnels
-- [x] Ajouter une procédure de désactivation KIGHMU explicitement confirmée, sans désinstaller UDP-ZIVPN
-
-- [x] Simplifier le panneau kighmu2 en cinq options colorées demandées
-- [x] Adapter les options installation, réparation et désinstallation à KIGHMU sans modifier le pare-feu global ni UDP-ZIVPN
-
-- [x] Vérifier l’équivalence fonctionnelle des cinq options avec le script Hysteria fourni
-- [x] Compléter les options KIGHMU manquantes sans actions destructrices sur le pare-feu ou UDP-ZIVPN
-- [x] Tester séparément les cinq options KIGHMU et confirmer l’intégrité de UDP-ZIVPN
-
-- [x] Remplacer la confirmation de mot de passe par une saisie visible unique dans l’option 2 de kighmu2
-
-- [x] Capturer passivement les métadonnées de handshake KIGHMU et UDP-ZIVPN
-- [x] Comparer les caractéristiques observables de QUIC, du port hopping et des réponses serveur
-- [x] Documenter l’analyse sans inclure de secrets ni modifier les tunnels actifs
-
-- [x] Créer des maquettes visuelles pour les écrans Accueil, Configuration, Diagnostic et Comptes KIGHMU
-- [x] Vérifier la lisibilité mobile des maquettes avant leur présentation
-
-- [x] Produire et livrer des captures visuelles directement accessibles de l’interface KIGHMU VPN
-
+- [x] Construire la configuration Host/IP, port ou plage, Obfs et mot de passe
+- [x] Ajouter la validation locale et la persistance sécurisée de la configuration
+- [x] Ajouter l’écran de diagnostic détaillé, filtrable et partageable sans secrets
+- [x] Ajouter le modèle d’état connexion/déconnexion
+- [x] Ajouter le module natif Android et le service VpnService
+- [x] Intégrer le binaire KIGHMU armeabi-v7a et la remontée des erreurs natives
+- [x] Vérifier le preview Expo et les tests unitaires déterministes
 - [x] Retirer le titre « Votre tunnel » de l’écran d’accueil
+- [x] Créer et vérifier les maquettes visuelles des écrans principaux
 
-- [x] Publier les dernières modifications de l’application et de la documentation vers GitHub
-- [x] Vérifier le build GitHub Actions armeabi-v7a déclenché par ces modifications
+## Serveur KIGHMU et administration
 
-- [x] Retirer de la livraison standard l’archive de diagnostics Android redondante
-- [x] Vérifier qu’un nouveau run GitHub Actions n’affiche qu’un APK installable
+- [x] Déployer KIGHMU Hysteria 2 séparément de UDP-ZIVPN
+- [x] Configurer UDP/25000 et la redirection UDP 20000-50000
+- [x] Maintenir UDP-ZIVPN sur UDP/5667 sans modification
+- [x] Activer Salamander et userpass
+- [x] Déployer le panneau HTTPS 9443
+- [x] Installer et valider la commande terminale kighmu2
+- [x] Valider les cinq options du panneau et la saisie visible unique du mot de passe
+- [x] Comparer passivement les métadonnées de handshake KIGHMU et UDP-ZIVPN
+- [ ] Tester le handshake et le trafic KIGHMU depuis un appareil Android
+- [ ] Vérifier l’accès via la plage 20000-50000 depuis l’application Android
+
+## Compilation et publication
+
+- [x] Publier le code source sur GitHub Picko
+- [x] Maintenir la compilation Android exclusivement via GitHub Actions
+- [x] Cibler uniquement l’ABI armeabi-v7a
+- [x] Vérifier un APK armeabi-v7a et la présence du binaire KIGHMU
+- [x] Retirer l’archive de diagnostics redondante du workflow
+- [x] Vérifier que le run #12 publie un seul artefact APK installable
+- [x] Documenter la procédure de téléchargement depuis GitHub Actions
+
+## Blocage Android signalé le 13 août 2026
+
+- [ ] Diagnostiquer le blocage sur l’écran de démarrage après installation
+- [ ] Vérifier les ressources splash/icon réellement embarquées dans l’APK
+- [ ] Vérifier qu’aucun placeholder Expo n’est utilisé au démarrage
+- [ ] Vérifier l’initialisation Expo Router et du bundle JavaScript
+- [ ] Vérifier que le module natif VPN ne bloque pas le rendu initial
+- [ ] Vérifier les erreurs Kotlin, AndroidManifest, Gradle et ressources générées
+- [ ] Appliquer un correctif avec un fallback de démarrage non bloquant
+- [ ] Publier un nouvel APK via GitHub Actions
+- [ ] Vérifier l’ABI armeabi-v7a et l’artefact du nouvel APK
+- [ ] Installer le nouvel APK après désinstallation propre de l’ancien
+- [ ] Confirmer l’ouverture complète de l’accueil et des écrans Configuration/Diagnostic
+- [ ] Recueillir le journal Diagnostic et les logs système si le blocage persiste
+- [ ] Tester l’autorisation VPN et la connexion réelle au serveur KIGHMU
+- [ ] Ne pas déclarer l’application prête avant validation réelle sur Android
+
+## Historique des limites de livraison
+
+- [ ] Vérifier l’installation et la taille de l’APK sur un appareil compatible
+- [ ] Tester la connexion réelle du tunnel sur Android armeabi-v7a
+- [ ] Ne pas modifier UDP-ZIVPN pendant les essais
+- [ ] Ne pas utiliser de compilation locale ou VPS pour la livraison
+- [ ] Sauvegarder un checkpoint après correction Android validée
+- [ ] Informer l’utilisateur du résultat final et des étapes de test restantes
+
+## Documentation
+
+- [x] Documenter l’installation, les permissions et les limites de la première version
+- [x] Documenter le panneau kighmu2 et le panneau HTTPS
+- [x] Documenter l’analyse comparative de handshake
+- [x] Documenter la compilation exclusivement via GitHub Actions
+- [ ] Documenter la cause et le correctif du blocage Android
+- [ ] Mettre à jour la procédure d’installation après correction
+
+## Règles de sécurité de ce projet
+
+- [x] Ne pas stocker les mots de passe, Obfs ou jetons GitHub dans le code
+- [x] Ne pas modifier UDP-ZIVPN
+- [x] Conserver le serveur KIGHMU séparé
+- [x] Conserver l’architecture armeabi-v7a uniquement
+- [x] Conserver un seul artefact APK installable dans le workflow
+- [ ] Ne pas déclarer l’application prête tant que l’ouverture Android et le tunnel réel ne sont pas validés
+
+## Dernière mise à jour
+
+Le blocage rapporté sur l’écran de démarrage est ouvert. La capture indique probablement un splash Expo par défaut ou une initialisation Android qui ne rend jamais l’interface. Aucun nouveau build ne doit être considéré comme correct avant un test d’ouverture sur l’appareil réel.
+
+## Checkpoints précédents
+
+- `0fd5a956` — retrait du titre « Votre tunnel »
+- `aab9e385` — workflow à artefact APK unique, run #12 réussi
+
+## TODO de suivi du correctif
+
+- [ ] Lire les consignes Expo SplashScreen et le guide mobile avant modification
+- [ ] Auditer app.config.ts et les cinq ressources de branding
+- [ ] Auditer le point d’entrée Android et l’initialisation du module natif
+- [ ] Vérifier les logs de build et les ressources dans l’APK précédent
+- [ ] Corriger sans lancer de compilation Android locale
+- [ ] Publier le correctif vers GitHub
+- [ ] Attendre un run GitHub Actions réussi
+- [ ] Faire installer uniquement le nouvel artefact
+- [ ] Recevoir le résultat de l’ouverture sur le téléphone
+- [ ] Recevoir le journal Diagnostic après ouverture
+- [ ] Recevoir le résultat de l’autorisation VPN
+- [ ] Recevoir le résultat de la connexion KIGHMU
+- [ ] Créer le checkpoint final seulement après validation
+- [ ] Maintenir UDP-ZIVPN inchangé pendant toute la procédure
+- [ ] Conserver l’application en statut « non prête » tant que le test réel n’est pas concluant
+
+## État courant
+
+- [ ] Blocage Android à l’écran splash résolu
+- [ ] Nouvel APK installé et ouvert sur appareil réel
+- [ ] Tunnel KIGHMU validé sur appareil réel
+- [ ] Application déclarée prête
+
+## À conserver pour le prochain test
+
+- Serveur KIGHMU : `204.152.219.23`
+- Port/range : `20000-50000` vers UDP/25000
+- UDP-ZIVPN : UDP/5667, ne pas modifier
+- Obfs et mot de passe : utiliser uniquement les valeurs déjà configurées côté utilisateur, sans les inscrire dans les logs
+- Architecture APK attendue : `armeabi-v7a` uniquement
+
+## Dernière action attendue
+
+Corriger le blocage de démarrage, publier via GitHub Actions, puis demander à l’utilisateur de désinstaller l’ancienne version avant d’installer le nouvel APK.
