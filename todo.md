@@ -42,7 +42,7 @@
 - [x] Diagnostiquer le blocage sur l’écran de démarrage après installation
 - [x] Vérifier les ressources splash/icon réellement embarquées dans l’APK
 - [x] Vérifier qu’aucun placeholder Expo n’est utilisé au démarrage
-- [ ] Vérifier l’initialisation Expo Router et du bundle JavaScript
+- [x] Vérifier l’initialisation Expo Router et du bundle JavaScript
 - [ ] Vérifier que le module natif VPN ne bloque pas le rendu initial
 - [ ] Vérifier les erreurs Kotlin, AndroidManifest, Gradle et ressources générées
 - [x] Appliquer un correctif avec un fallback de démarrage non bloquant
@@ -136,10 +136,10 @@ Corriger le blocage de démarrage, publier via GitHub Actions, puis demander à 
 - [ ] Vérifier l’initialisation des providers avant l’affichage de l’accueil
 - [ ] Vérifier que SecureStore et AsyncStorage ne retardent pas le premier rendu
 - [ ] Vérifier que le module VPN natif ne bloque pas l’initialisation React Native
-- [ ] Ajouter un démarrage non bloquant avec affichage de l’accueil indépendant du tunnel
+- [x] Ajouter un démarrage non bloquant avec affichage de l’accueil indépendant du tunnel
 - [ ] Ajouter un fallback visible si l’initialisation native échoue
-- [ ] Publier le correctif uniquement via GitHub Actions
-- [ ] Vérifier le nouvel APK armeabi-v7a et son artefact unique
+- [x] Publier le correctif uniquement via GitHub Actions
+- [x] Vérifier le nouvel APK armeabi-v7a et son artefact unique
 - [ ] Installer le nouvel APK après désinstallation propre
 - [ ] Confirmer que l’accueil s’affiche après le splash KIGHMU
 - [ ] Confirmer l’accès aux écrans Configuration et Diagnostic
