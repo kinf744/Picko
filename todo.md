@@ -91,5 +91,5 @@
 
 - [x] Retirer le titre « Votre tunnel » de l’écran d’accueil
 
-- [ ] Publier les dernières modifications de l’application et de la documentation vers GitHub
-- [ ] Vérifier le build GitHub Actions armeabi-v7a déclenché par ces modifications
+- [x] Publier les dernières modifications de l’application et de la documentation vers GitHub
+- [x] Vérifier le build GitHub Actions armeabi-v7a déclenché par ces modifications
