@@ -53,3 +53,11 @@
 - [x] Auditer les collisions UDP et les règles existantes sur la plage 20000-50000
 - [x] Configurer KIGHMU sur UDP/25000 avec une redirection dédiée 20000-50000 vers 25000
 - [ ] Vérifier l’accès KIGHMU via la plage 20000-50000 sans modifier UDP-ZIVPN
+
+- [x] Auditer les services, ports et fichiers d’utilisateurs KIGHMU existants sur le VPS
+- [x] Concevoir un panneau KIGHMU isolé avec accès protégé et gestion d’utilisateurs
+- [x] Déployer le panneau de contrôle sans modifier UDP-ZIVPN
+- [ ] Valider la création, la révocation et la liste des utilisateurs KIGHMU via le panneau
+
+- [ ] Migrer l’authentification KIGHMU vers des comptes Android userpass sans exposer les secrets
+- [x] Protéger le panneau KIGHMU par le mot de passe d’administration confirmé
