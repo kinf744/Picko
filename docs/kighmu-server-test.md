@@ -31,6 +31,12 @@ Un serveur KIGHMU Hysteria 2 distinct a été déployé sur le VPS le 13 août 2
 
 Un test local du protocole a confirmé l’authentification Hysteria 2, Salamander, le relais UDP annoncé par le serveur et une connexion TCP relayée vers `1.1.1.1:443`. Les secrets du profil Android sont conservés uniquement dans `/etc/kighmu/android-test-profile.txt` avec les permissions `0600`; ils ne sont pas enregistrés dans ce dépôt.
 
+## Redirection vers un port cible
+
+Lorsque le port d’écoute doit être différent du premier port de la plage, utiliser `scripts/configure-kighmu-porthop.sh`. Par exemple, `sudo ./scripts/configure-kighmu-porthop.sh 20000-50000 25000` conserve KIGHMU sur UDP `25000` et crée deux redirections nftables, `20000-24999` et `25001-50000`, vers UDP `25000`. Le port `25000` lui-même reste directement servi par KIGHMU. Le script ajoute un *drop-in* systemd afin que les règles soient créées au démarrage du service et retirées lors de son arrêt ; cela évite de modifier les tables et les redirections de UDP-ZIVPN.
+
+Le déploiement de test utilise désormais cette configuration : KIGHMU écoute sur UDP `25000`, et la plage UDP `20000-50000` est redirigée vers ce port par la table nftables isolée `inet kighmu_porthop`. La plage ne présente pas de collision UDP active sur le VPS ; UDP-ZIVPN reste actif sur UDP `5667` et conserve ses propres règles indépendantes.
+
 ## Validation obligatoire
 
 Un service qui démarre ne prouve pas encore que le tunnel fonctionne. Après installation de l’APK Android armeabi-v7a, il faut accorder l’autorisation VPN, saisir le profil de test, examiner les journaux KIGHMU, puis vérifier un accès TCP et UDP à travers le tunnel. Le service UDP-ZIVPN doit rester intact pendant ces essais.

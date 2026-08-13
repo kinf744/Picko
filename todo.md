@@ -49,3 +49,7 @@
 - [x] Auditer les conflits de ports et règles réseau avant d’utiliser 2000-5000 pour KIGHMU
 - [x] Configurer le port hopping KIGHMU Hysteria 2 sur la plage 2000-5000 sans modifier UDP-ZIVPN
 - [ ] Vérifier le handshake KIGHMU sur une plage de ports depuis l’application Android
+
+- [x] Auditer les collisions UDP et les règles existantes sur la plage 20000-50000
+- [x] Configurer KIGHMU sur UDP/25000 avec une redirection dédiée 20000-50000 vers 25000
+- [ ] Vérifier l’accès KIGHMU via la plage 20000-50000 sans modifier UDP-ZIVPN
