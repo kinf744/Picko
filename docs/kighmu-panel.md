@@ -44,4 +44,4 @@ Pour une gestion directe depuis une session root SSH sur le VPS, la commande `ki
 kighmu2
 ```
 
-Les commandes `kighmu2 --list` et `kighmu2 --status` sont disponibles pour un contrôle non interactif. Le menu ne touche pas aux comptes SSH, ZIVPN ou V2Ray, et refuse de révoquer le dernier compte KIGHMU Android actif.
+Les commandes `kighmu2 --list` et `kighmu2 --status` sont disponibles pour un contrôle non interactif. Le menu propose la création, la révocation, la prolongation, la suppression des comptes expirés, le profil Android, le statut détaillé, les journaux récents et une réparation limitée à KIGHMU. Les options d’arrêt et d’activation exigent une confirmation explicite et ne touchent ni aux comptes SSH/ZIVPN/V2Ray, ni à UDP-ZIVPN, ni au pare-feu global.

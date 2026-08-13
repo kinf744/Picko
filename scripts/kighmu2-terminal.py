@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from getpass import getpass
 from pathlib import Path
 
@@ -29,6 +29,29 @@ USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 
 def now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
+def expiry_date(record: dict[str, str]) -> date | None:
+    value = record.get("expiresAt", "")
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def is_active(record: dict[str, str]) -> bool:
+    expiry = expiry_date(record)
+    return expiry is None or expiry >= date.today()
+
+
+def read_days(prompt: str = "Durée en jours (1-3650) : ") -> int | None:
+    raw = input(prompt).strip()
+    if not raw.isdigit() or not 1 <= int(raw) <= 3650:
+        fail("durée invalide")
+        return None
+    return int(raw)
 
 
 def fail(message: str) -> None:
@@ -70,7 +93,8 @@ def load_users() -> dict[str, dict[str, str]]:
 def render_auth(users: dict[str, dict[str, str]]) -> str:
     lines = ["auth:", "  type: userpass", "  userpass:"]
     for username in sorted(users):
-        lines.append(f"    {json.dumps(username)}: {json.dumps(users[username]['password'])}")
+        if is_active(users[username]):
+            lines.append(f"    {json.dumps(username)}: {json.dumps(users[username]['password'])}")
     return "\n".join(lines) + "\n"
 
 
@@ -91,8 +115,8 @@ def restart_kighmu() -> None:
 
 
 def apply_users(old: dict[str, dict[str, str]], new: dict[str, dict[str, str]]) -> None:
-    if not new:
-        raise RuntimeError("au moins un compte KIGHMU Android doit rester actif")
+    if not any(is_active(record) for record in new.values()):
+        raise RuntimeError("au moins un compte KIGHMU Android non expiré doit rester actif")
     current = CONFIG_FILE.read_text(encoding="utf-8")
     updated = replace_auth(current, new)
     config_backup = ROOT / f"config.yaml.kighmu2-backup-{int(time.time())}"
@@ -135,7 +159,9 @@ def list_users() -> None:
         print("Aucun compte Android. Créez le premier compte avec l’option 1.")
         return
     for username, record in sorted(users.items()):
-        print(f"- {username:<32} créé : {record.get('createdAt', 'inconnu')}")
+        expiry = record.get("expiresAt", "sans expiration")
+        state = "ACTIF" if is_active(record) else "EXPIRÉ"
+        print(f"- {username:<24} {state:<8} expire : {expiry}")
 
 
 def create_user() -> None:
@@ -151,19 +177,26 @@ def create_user() -> None:
     if not 8 <= len(password) <= 128:
         fail("le mot de passe doit comporter entre 8 et 128 caractères")
         return
+    days = read_days()
+    if days is None:
+        return
     with exclusive_lock():
         users = load_users()
         if username in users:
             fail("ce compte existe déjà")
             return
         updated = dict(users)
-        updated[username] = {"password": password, "createdAt": now()}
+        updated[username] = {
+            "password": password,
+            "createdAt": now(),
+            "expiresAt": (date.today() + timedelta(days=days)).isoformat(),
+        }
         try:
             apply_users(users, updated)
         except RuntimeError as error:
             fail(f"création annulée : {error}")
             return
-    print(f"Compte {username} créé. Dans l’APK, Password = {username}:votre_mot_de_passe")
+    print(f"Compte {username} créé. Dans l’APK, Password = {username}:{password}")
 
 
 def revoke_user() -> None:
@@ -172,9 +205,6 @@ def revoke_user() -> None:
         users = load_users()
         if username not in users:
             fail("compte introuvable")
-            return
-        if len(users) == 1:
-            fail("impossible de révoquer le dernier compte actif")
             return
         confirm = input(f"Révoquer définitivement {username} ? (oui/non) : ").strip().lower()
         if confirm != "oui":
@@ -190,6 +220,49 @@ def revoke_user() -> None:
     print(f"Compte {username} révoqué.")
 
 
+def renew_user() -> None:
+    username = input("Nom du compte à prolonger : ").strip()
+    days = read_days("Nombre de jours à ajouter (1-3650) : ")
+    if days is None:
+        return
+    with exclusive_lock():
+        users = load_users()
+        if username not in users:
+            fail("compte introuvable")
+            return
+        updated = dict(users)
+        current_expiry = expiry_date(updated[username]) or date.today()
+        base = max(date.today(), current_expiry)
+        updated[username] = dict(updated[username])
+        updated[username]["expiresAt"] = (base + timedelta(days=days)).isoformat()
+        try:
+            apply_users(users, updated)
+        except RuntimeError as error:
+            fail(f"prolongation annulée : {error}")
+            return
+    print(f"Compte {username} prolongé jusqu’au {updated[username]['expiresAt']}.")
+
+
+def remove_expired() -> None:
+    with exclusive_lock():
+        users = load_users()
+        expired = [name for name, record in users.items() if not is_active(record)]
+        if not expired:
+            print("Aucun compte expiré à supprimer.")
+            return
+        print("Comptes expirés : " + ", ".join(sorted(expired)))
+        if input("Supprimer ces comptes ? (oui/non) : ").strip().lower() != "oui":
+            print("Suppression annulée.")
+            return
+        updated = {name: record for name, record in users.items() if name not in expired}
+        try:
+            apply_users(users, updated)
+        except RuntimeError as error:
+            fail(f"suppression annulée : {error}")
+            return
+    print(f"{len(expired)} compte(s) expiré(s) supprimé(s).")
+
+
 def show_profile() -> None:
     host, port = profile()
     print("\n=== Profil Android ===")
@@ -200,22 +273,71 @@ def show_profile() -> None:
 
 
 def show_status() -> None:
-    print("\n=== État des services ===")
+    users = load_users()
+    active_count = sum(is_active(record) for record in users.values())
+    host, port = profile()
+    print("\n=== STATUT KIGHMU HYSTERIA 2 ===")
+    print(f"Profil Android : {host}:{port}")
+    print(f"Comptes Android : {active_count} actif(s), {len(users) - active_count} expiré(s)")
     for service in ("kighmu.service", "kighmu-panel.service", "zivpn.service"):
         result = subprocess.run(["/usr/bin/systemctl", "is-active", service], capture_output=True, text=True, timeout=10)
         print(f"{service:<24} {result.stdout.strip() or 'inconnu'}")
+    rules = subprocess.run(["/usr/sbin/nft", "list", "table", "inet", "kighmu_porthop"], capture_output=True, text=True, timeout=10)
+    print("Port hopping 20000-50000 : " + ("ACTIF" if rules.returncode == 0 else "INACTIF"))
+
+
+def diagnostic_kighmu() -> None:
+    print("\n=== DIAGNOSTIC KIGHMU ===")
+    show_status()
+    print("\n--- Dernières lignes du service KIGHMU ---")
+    logs = subprocess.run(["/usr/bin/journalctl", "-u", "kighmu.service", "-n", "25", "--no-pager"], capture_output=True, text=True, timeout=15)
+    print(logs.stdout[-5000:] or "Aucun journal disponible.")
+
+
+def repair_kighmu() -> None:
+    if input("Redémarrer uniquement KIGHMU et ses règles dédiées ? (oui/non) : ").strip().lower() != "oui":
+        print("Réparation annulée.")
+        return
+    subprocess.run(["/usr/bin/systemctl", "reset-failed", "kighmu.service"], capture_output=True, text=True, timeout=10)
+    try:
+        restart_kighmu()
+        print("KIGHMU a redémarré. Aucun service UDP-ZIVPN ni pare-feu global n’a été modifié.")
+    except RuntimeError as error:
+        fail(f"KIGHMU reste inactif : {error}")
+
+
+def disable_kighmu() -> None:
+    if input("Saisissez DESACTIVER pour arrêter KIGHMU uniquement : ").strip() != "DESACTIVER":
+        print("Désactivation annulée.")
+        return
+    subprocess.run(["/usr/bin/systemctl", "disable", "--now", "kighmu.service"], capture_output=True, text=True, timeout=30, check=False)
+    print("KIGHMU est arrêté et désactivé. UDP-ZIVPN n’a pas été modifié.")
+
+
+def enable_kighmu() -> None:
+    result = subprocess.run(["/usr/bin/systemctl", "enable", "--now", "kighmu.service"], capture_output=True, text=True, timeout=30)
+    if result.returncode == 0:
+        print("KIGHMU est actif.")
+    else:
+        fail((result.stderr or result.stdout or "échec d’activation").strip())
 
 
 def menu() -> None:
     while True:
         print("\n╔══════════════════════════════════════╗")
-        print("║       KIGHMU2 — Comptes Android      ║")
+        print("║    KIGHMU2 — Panneau de contrôle     ║")
         print("╠══════════════════════════════════════╣")
         print("║ 1. Créer un compte Android           ║")
         print("║ 2. Lister les comptes                ║")
         print("║ 3. Révoquer un compte                ║")
-        print("║ 4. Afficher le profil Android        ║")
-        print("║ 5. État des services                 ║")
+        print("║ 4. Prolonger un compte                ║")
+        print("║ 5. Supprimer les comptes expirés     ║")
+        print("║ 6. Afficher le profil Android        ║")
+        print("║ 7. Statut détaillé                   ║")
+        print("║ 8. Diagnostic et journaux KIGHMU     ║")
+        print("║ 9. Réparer KIGHMU seulement          ║")
+        print("║10. Arrêter KIGHMU seulement          ║")
+        print("║11. Activer KIGHMU                    ║")
         print("║ 0. Quitter                           ║")
         print("╚══════════════════════════════════════╝")
         choice = input("Choix : ").strip()
@@ -226,9 +348,21 @@ def menu() -> None:
         elif choice == "3":
             revoke_user()
         elif choice == "4":
-            show_profile()
+            renew_user()
         elif choice == "5":
+            remove_expired()
+        elif choice == "6":
+            show_profile()
+        elif choice == "7":
             show_status()
+        elif choice == "8":
+            diagnostic_kighmu()
+        elif choice == "9":
+            repair_kighmu()
+        elif choice == "10":
+            disable_kighmu()
+        elif choice == "11":
+            enable_kighmu()
         elif choice == "0":
             return
         else:

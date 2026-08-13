@@ -65,3 +65,8 @@
 - [x] Ajouter la commande terminale interactive kighmu2 pour les comptes KIGHMU Android
 - [x] Installer la commande kighmu2 sur le VPS sans modifier UDP-ZIVPN
 - [ ] Valider la liste et la création/révocation de comptes avec le menu kighmu2
+
+- [x] Ajouter au menu kighmu2 un statut détaillé KIGHMU, port hopping et utilisateurs Android
+- [ ] Ajouter des fonctions sûres de création, suppression, consultation et expiration des comptes Android
+- [x] Ajouter un diagnostic et une réparation limitée à KIGHMU, sans modifier UFW, les règles UDP-ZIVPN ou les autres tunnels
+- [x] Ajouter une procédure de désactivation KIGHMU explicitement confirmée, sans désinstaller UDP-ZIVPN
