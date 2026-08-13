@@ -25,6 +25,12 @@ Le script demande ensuite l’hôte, le port, le mot de passe d’authentificati
 
 Le client Android accepte actuellement le certificat auto-signé uniquement parce que la configuration de développement définit `tls.insecure: true`. Cette tolérance est suffisante pour un test contrôlé, mais doit être remplacée par un certificat de confiance avant toute diffusion.
 
+## État du déploiement de test
+
+Un serveur KIGHMU Hysteria 2 distinct a été déployé sur le VPS le 13 août 2026. Il écoute sur UDP `24443` avec le service systemd `kighmu.service`, tandis que le service UDP-ZIVPN est resté actif et inchangé sur UDP `5667`. Le binaire vérifié est `/root/kighmu-work/20260813/bin/kighmu-native-amd64` (SHA-256 `0f278195d695d9fe60dfbffc15192444dd170df9791c54010e4fc3ad0f69c9ae`).
+
+Un test local du protocole a confirmé l’authentification Hysteria 2, Salamander, le relais UDP annoncé par le serveur et une connexion TCP relayée vers `1.1.1.1:443`. Les secrets du profil Android sont conservés uniquement dans `/etc/kighmu/android-test-profile.txt` avec les permissions `0600`; ils ne sont pas enregistrés dans ce dépôt.
+
 ## Validation obligatoire
 
 Un service qui démarre ne prouve pas encore que le tunnel fonctionne. Après installation de l’APK Android armeabi-v7a, il faut accorder l’autorisation VPN, saisir le profil de test, examiner les journaux KIGHMU, puis vérifier un accès TCP et UDP à travers le tunnel. Le service UDP-ZIVPN doit rester intact pendant ces essais.
@@ -36,4 +42,3 @@ Un service qui démarre ne prouve pas encore que le tunnel fonctionne. Après in
 [2] [Hysteria 2 — Full Client Config](https://v2.hysteria.network/docs/advanced/Full-Client-Config/)
 
 [3] [Hysteria 2 — Protocol](https://v2.hysteria.network/docs/developers/Protocol/)
-

@@ -44,3 +44,4 @@
 - [x] Comparer le script Hysteria 1 joint avec le protocole KIGHMU Hysteria 2 du client Android
 - [x] Préparer un script de déploiement KIGHMU séparé sans modifier le serveur UDP-ZIVPN existant
 - [ ] Tester le handshake et le trafic du tunnel KIGHMU depuis un appareil Android armeabi-v7a
+- [x] Déployer le serveur KIGHMU Hysteria 2 séparé et vérifier le handshake local sur UDP/24443
