@@ -25,6 +25,14 @@ USERS_FILE = ROOT / "android-users.json"
 LOCK_FILE = ROOT / "android-users.lock"
 PROFILE_FILE = ROOT / "android-test-profile.txt"
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
+USE_COLOR = sys.stdout.isatty()
+RESET = "\033[0m" if USE_COLOR else ""
+RED = "\033[31m" if USE_COLOR else ""
+GREEN = "\033[32m" if USE_COLOR else ""
+YELLOW = "\033[33m" if USE_COLOR else ""
+CYAN = "\033[36m" if USE_COLOR else ""
+MAGENTA = "\033[35m" if USE_COLOR else ""
+BOLD = "\033[1m" if USE_COLOR else ""
 
 
 def now() -> str:
@@ -276,14 +284,47 @@ def show_status() -> None:
     users = load_users()
     active_count = sum(is_active(record) for record in users.values())
     host, port = profile()
-    print("\n=== STATUT KIGHMU HYSTERIA 2 ===")
+    print(f"\n{CYAN}-------------- STATUT KIGHMU --------------{RESET}")
     print(f"Profil Android : {host}:{port}")
     print(f"Comptes Android : {active_count} actif(s), {len(users) - active_count} expiré(s)")
     for service in ("kighmu.service", "kighmu-panel.service", "zivpn.service"):
         result = subprocess.run(["/usr/bin/systemctl", "is-active", service], capture_output=True, text=True, timeout=10)
-        print(f"{service:<24} {result.stdout.strip() or 'inconnu'}")
+        state = result.stdout.strip() or "inconnu"
+        color = GREEN if state == "active" else RED
+        print(f"{service:<24} {color}{state}{RESET}")
     rules = subprocess.run(["/usr/sbin/nft", "list", "table", "inet", "kighmu_porthop"], capture_output=True, text=True, timeout=10)
-    print("Port hopping 20000-50000 : " + ("ACTIF" if rules.returncode == 0 else "INACTIF"))
+    hopping = "ACTIF" if rules.returncode == 0 else "INACTIF"
+    print("Port hopping 20000-50000 : " + (GREEN if hopping == "ACTIF" else RED) + hopping + RESET)
+    print(f"{CYAN}---------------------------------------------{RESET}")
+
+
+def print_title() -> None:
+    if sys.stdout.isatty():
+        os.system("clear")
+    print(f"{CYAN}{BOLD}╔═══════════════════════════════════════╗{RESET}")
+    print(f"{CYAN}║       KIGHMU CONTROL PANEL v2         ║{RESET}")
+    print(f"{CYAN}║       Hysteria 2 — Android users      ║{RESET}")
+    print(f"{CYAN}{BOLD}╚═══════════════════════════════════════╝{RESET}")
+
+
+def pause() -> None:
+    input("\nAppuyez sur Entrée pour continuer...")
+
+
+def install_or_status_kighmu() -> None:
+    print_title()
+    print(f"{MAGENTA}{BOLD}[1] INSTALLATION / ÉTAT KIGHMU{RESET}\n")
+    if not CONFIG_FILE.exists() or not Path("/usr/local/bin/kighmu").exists():
+        fail("KIGHMU n’est pas installé. Utilisez le script de déploiement KIGHMU prévu.")
+        pause()
+        return
+    result = subprocess.run(["/usr/bin/systemctl", "is-active", "--quiet", "kighmu.service"], timeout=10)
+    if result.returncode != 0:
+        if input("KIGHMU est inactif. L’activer maintenant ? (oui/non) : ").strip().lower() == "oui":
+            enable_kighmu()
+    show_status()
+    print(f"\n{YELLOW}Cette option ne télécharge rien et ne modifie ni le pare-feu global ni UDP-ZIVPN.{RESET}")
+    pause()
 
 
 def diagnostic_kighmu() -> None:
@@ -307,11 +348,14 @@ def repair_kighmu() -> None:
 
 
 def disable_kighmu() -> None:
-    if input("Saisissez DESACTIVER pour arrêter KIGHMU uniquement : ").strip() != "DESACTIVER":
-        print("Désactivation annulée.")
+    print_title()
+    print(f"{RED}{BOLD}[5] DÉSACTIVATION KIGHMU{RESET}\n")
+    if input("Saisissez DESINSTALLER pour arrêter KIGHMU uniquement : ").strip() != "DESINSTALLER":
+        print("Désinstallation annulée.")
         return
     subprocess.run(["/usr/bin/systemctl", "disable", "--now", "kighmu.service"], capture_output=True, text=True, timeout=30, check=False)
-    print("KIGHMU est arrêté et désactivé. UDP-ZIVPN n’a pas été modifié.")
+    print("KIGHMU est arrêté et désactivé. Ses fichiers sont conservés et UDP-ZIVPN n’a pas été modifié.")
+    pause()
 
 
 def enable_kighmu() -> None:
@@ -324,45 +368,28 @@ def enable_kighmu() -> None:
 
 def menu() -> None:
     while True:
-        print("\n╔══════════════════════════════════════╗")
-        print("║    KIGHMU2 — Panneau de contrôle     ║")
-        print("╠══════════════════════════════════════╣")
-        print("║ 1. Créer un compte Android           ║")
-        print("║ 2. Lister les comptes                ║")
-        print("║ 3. Révoquer un compte                ║")
-        print("║ 4. Prolonger un compte                ║")
-        print("║ 5. Supprimer les comptes expirés     ║")
-        print("║ 6. Afficher le profil Android        ║")
-        print("║ 7. Statut détaillé                   ║")
-        print("║ 8. Diagnostic et journaux KIGHMU     ║")
-        print("║ 9. Réparer KIGHMU seulement          ║")
-        print("║10. Arrêter KIGHMU seulement          ║")
-        print("║11. Activer KIGHMU                    ║")
-        print("║ 0. Quitter                           ║")
-        print("╚══════════════════════════════════════╝")
-        choice = input("Choix : ").strip()
+        print_title()
+        show_status()
+        print(f"{GREEN}{BOLD}[01]{RESET} {BOLD}{MAGENTA}➜{RESET} {YELLOW}Installation / état KIGHMU{RESET}")
+        print(f"{GREEN}{BOLD}[02]{RESET} {BOLD}{MAGENTA}➜{RESET} {YELLOW}Créer un utilisateur KIGHMU{RESET}")
+        print(f"{GREEN}{BOLD}[03]{RESET} {BOLD}{MAGENTA}➜{RESET} {YELLOW}Supprimer un utilisateur KIGHMU{RESET}")
+        print(f"{GREEN}{BOLD}[04]{RESET} {BOLD}{MAGENTA}➜{RESET} {YELLOW}Fix KIGHMU (service + port hopping dédié){RESET}")
+        print(f"{GREEN}{BOLD}[05]{RESET} {BOLD}{MAGENTA}➜{RESET} {YELLOW}Désinstaller KIGHMU (désactivation sûre){RESET}")
+        print(f"{RED}[00] ➜ Quitter{RESET}\n")
+        choice = input(f"{BOLD}{YELLOW}Entrez votre choix [0-5] : {RESET}").strip()
         if choice == "1":
-            create_user()
+            install_or_status_kighmu()
         elif choice == "2":
-            list_users()
+            create_user()
+            pause()
         elif choice == "3":
             revoke_user()
+            pause()
         elif choice == "4":
-            renew_user()
-        elif choice == "5":
-            remove_expired()
-        elif choice == "6":
-            show_profile()
-        elif choice == "7":
-            show_status()
-        elif choice == "8":
-            diagnostic_kighmu()
-        elif choice == "9":
             repair_kighmu()
-        elif choice == "10":
+            pause()
+        elif choice == "5":
             disable_kighmu()
-        elif choice == "11":
-            enable_kighmu()
         elif choice == "0":
             return
         else:

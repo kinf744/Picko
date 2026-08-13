@@ -70,3 +70,6 @@
 - [ ] Ajouter des fonctions sûres de création, suppression, consultation et expiration des comptes Android
 - [x] Ajouter un diagnostic et une réparation limitée à KIGHMU, sans modifier UFW, les règles UDP-ZIVPN ou les autres tunnels
 - [x] Ajouter une procédure de désactivation KIGHMU explicitement confirmée, sans désinstaller UDP-ZIVPN
+
+- [x] Simplifier le panneau kighmu2 en cinq options colorées demandées
+- [x] Adapter les options installation, réparation et désinstallation à KIGHMU sans modifier le pare-feu global ni UDP-ZIVPN

@@ -44,4 +44,4 @@ Pour une gestion directe depuis une session root SSH sur le VPS, la commande `ki
 kighmu2
 ```
 
-Les commandes `kighmu2 --list` et `kighmu2 --status` sont disponibles pour un contrôle non interactif. Le menu propose la création, la révocation, la prolongation, la suppression des comptes expirés, le profil Android, le statut détaillé, les journaux récents et une réparation limitée à KIGHMU. Les options d’arrêt et d’activation exigent une confirmation explicite et ne touchent ni aux comptes SSH/ZIVPN/V2Ray, ni à UDP-ZIVPN, ni au pare-feu global.
+Les commandes `kighmu2 --list` et `kighmu2 --status` sont disponibles pour un contrôle non interactif. Le menu interactif est volontairement limité à cinq options colorées : installation/état KIGHMU, création d’utilisateur, suppression d’utilisateur, réparation KIGHMU et désinstallation sûre. La réparation redémarre uniquement `kighmu.service` et ses règles dédiées ; elle ne réinitialise jamais le pare-feu global. La désinstallation demandée est une désactivation explicitement confirmée qui conserve les fichiers KIGHMU et ne touche ni aux comptes SSH/ZIVPN/V2Ray ni à UDP-ZIVPN.
