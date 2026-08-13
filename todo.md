@@ -45,3 +45,7 @@
 - [x] Préparer un script de déploiement KIGHMU séparé sans modifier le serveur UDP-ZIVPN existant
 - [ ] Tester le handshake et le trafic du tunnel KIGHMU depuis un appareil Android armeabi-v7a
 - [x] Déployer le serveur KIGHMU Hysteria 2 séparé et vérifier le handshake local sur UDP/24443
+
+- [x] Auditer les conflits de ports et règles réseau avant d’utiliser 2000-5000 pour KIGHMU
+- [x] Configurer le port hopping KIGHMU Hysteria 2 sur la plage 2000-5000 sans modifier UDP-ZIVPN
+- [ ] Vérifier le handshake KIGHMU sur une plage de ports depuis l’application Android

@@ -8,7 +8,7 @@ umask 077
 SERVICE_NAME="kighmu"
 INSTALL_ROOT="/etc/kighmu"
 INSTALL_BIN="/usr/local/bin/kighmu"
-DEFAULT_PORT="24443"
+DEFAULT_LISTEN="24443"
 
 fail() {
   printf 'Erreur : %s\n' "$*" >&2
@@ -23,8 +23,15 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "commande requise introuvable : $1"
 }
 
-validate_port() {
-  [[ "$1" =~ ^[0-9]+$ ]] && (( "$1" >= 1024 && "$1" <= 65535 ))
+validate_listen() {
+  local value="$1"
+  if [[ "$value" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+    local first="${BASH_REMATCH[1]}"
+    local last="${BASH_REMATCH[2]}"
+    (( first >= 1024 && last <= 65535 && first <= last ))
+  else
+    [[ "$value" =~ ^[0-9]+$ ]] && (( value >= 1024 && value <= 65535 ))
+  fi
 }
 
 yaml_scalar() {
@@ -36,6 +43,7 @@ main() {
   require_command openssl
   require_command systemctl
   require_command install
+  command -v nft >/dev/null 2>&1 || command -v iptables >/dev/null 2>&1 || fail "nft ou iptables est requis pour le port hopping"
 
   local source_binary="${1:-}"
   [[ -n "$source_binary" ]] || fail "usage : sudo $0 /chemin/vers/kighmu-linux-amd64"
@@ -44,10 +52,10 @@ main() {
 
   printf '%s\n' "Préparation d’un serveur KIGHMU distinct. Aucun service UDP-ZIVPN ne sera modifié."
 
-  local listen_port host password obfs
-  read -r -p "Port UDP dédié [${DEFAULT_PORT}] : " listen_port
-  listen_port="${listen_port:-$DEFAULT_PORT}"
-  validate_port "$listen_port" || fail "port invalide : $listen_port"
+  local listen host password obfs
+  read -r -p "Port UDP ou plage dédiée [${DEFAULT_LISTEN}] : " listen
+  listen="${listen:-$DEFAULT_LISTEN}"
+  validate_listen "$listen" || fail "port ou plage invalide : $listen"
 
   read -r -p "Domaine ou IP à utiliser dans l’application Android : " host
   [[ -n "$host" ]] || fail "un domaine ou une IP est requis"
@@ -71,7 +79,7 @@ main() {
   chmod 644 "$INSTALL_ROOT/server.crt"
 
   cat > "$INSTALL_ROOT/config.yaml" <<EOF
-listen: :${listen_port}
+listen: :${listen}
 tls:
   cert: ${INSTALL_ROOT}/server.crt
   key: ${INSTALL_ROOT}/server.key
@@ -102,7 +110,7 @@ WorkingDirectory=${INSTALL_ROOT}
 Restart=on-failure
 RestartSec=3
 RestartPreventExitStatus=0
-AmbientCapabilities=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN
 NoNewPrivileges=true
 LimitNOFILE=1048576
 StandardOutput=journal
@@ -114,7 +122,7 @@ EOF
 
   cat > "$INSTALL_ROOT/android-test-profile.txt" <<EOF
 Host/IP : ${host}
-Port    : ${listen_port}
+Port    : ${listen}
 Obfs    : ${obfs}
 Password: ${password}
 TLS     : certificat auto-signé accepté par le client de développement
@@ -129,8 +137,8 @@ EOF
     fail "KIGHMU n’a pas démarré ; le service UDP-ZIVPN n’a pas été modifié"
   }
 
-  printf '\nServeur KIGHMU actif sur UDP/%s.\n' "$listen_port"
-  printf 'Ouvrez le port UDP/%s dans le pare-feu du VPS, puis récupérez le profil avec :\n' "$listen_port"
+  printf '\nServeur KIGHMU actif sur UDP/%s.\n' "$listen"
+  printf 'Ouvrez le port ou la plage UDP/%s dans le pare-feu du VPS, puis récupérez le profil avec :\n' "$listen"
   printf '  sudo cat %s/android-test-profile.txt\n' "$INSTALL_ROOT"
   printf 'Vérification : sudo systemctl status %s --no-pager\n' "$SERVICE_NAME"
 }

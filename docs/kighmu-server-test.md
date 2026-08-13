@@ -6,7 +6,7 @@ Le script `scripts/deploy-kighmu-server.sh` prépare un service `kighmu.service`
 
 ## Préparation sûre
 
-Avant toute exécution, vérifier que le binaire transmis implémente bien le serveur KIGHMU/Hysteria 2 attendu et que son interface de commande accepte `server --config <fichier>`. Utiliser un port UDP libre et dédié, par exemple `24443`, différent des ports employés par UDP-ZIVPN. Ouvrir uniquement ce port dans le pare-feu du VPS ; ne pas modifier le service UDP-ZIVPN ni ses règles de redirection.
+Avant toute exécution, vérifier que le binaire transmis implémente bien le serveur KIGHMU/Hysteria 2 attendu et que son interface de commande accepte `server --config <fichier>`. Utiliser un port UDP libre ou une plage libre et dédiée. Hysteria 2 accepte un champ `listen` tel que `:2000-5000` : le premier port devient le point d’écoute et le serveur installe les redirections nécessaires pour les autres ports de la plage. Cette option exige `nft` ou `iptables` ainsi que la capacité `CAP_NET_ADMIN` du service. Ne jamais inclure une plage déjà utilisée par UDP-ZIVPN.
 
 ```bash
 sudo bash scripts/deploy-kighmu-server.sh /chemin/vers/kighmu-linux-amd64
@@ -19,7 +19,7 @@ Le script demande ensuite l’hôte, le port, le mot de passe d’authentificati
 | Champ de l’application | Valeur issue du serveur |
 |---|---|
 | Host/IP | Domaine ou IP renseigné lors de l’installation |
-| Port | Port UDP KIGHMU dédié, par exemple `24443` |
+| Port | Port UDP KIGHMU ou plage de port hopping, par exemple `2000-5000` |
 | Obfs | Mot de passe Salamander |
 | Password | Mot de passe d’authentification Hysteria 2 |
 
@@ -27,7 +27,7 @@ Le client Android accepte actuellement le certificat auto-signé uniquement parc
 
 ## État du déploiement de test
 
-Un serveur KIGHMU Hysteria 2 distinct a été déployé sur le VPS le 13 août 2026. Il écoute sur UDP `24443` avec le service systemd `kighmu.service`, tandis que le service UDP-ZIVPN est resté actif et inchangé sur UDP `5667`. Le binaire vérifié est `/root/kighmu-work/20260813/bin/kighmu-native-amd64` (SHA-256 `0f278195d695d9fe60dfbffc15192444dd170df9791c54010e4fc3ad0f69c9ae`).
+Un serveur KIGHMU Hysteria 2 distinct a été déployé sur le VPS le 13 août 2026. Il écoute maintenant sur UDP `2000-5000` avec le service systemd `kighmu.service`, tandis que le service UDP-ZIVPN est resté actif et inchangé sur UDP `5667`. L’audit a confirmé qu’aucun service UDP ni règle de redirection existante n’utilisait la plage `2000-5000`. Hysteria 2 a installé ses redirections `2001-5000` vers le port d’écoute `2000`, et le handshake a été validé à la fois via UDP `2001` et via l’adresse de plage `2000-5000`. Le binaire vérifié est `/root/kighmu-work/20260813/bin/kighmu-native-amd64` (SHA-256 `0f278195d695d9fe60dfbffc15192444dd170df9791c54010e4fc3ad0f69c9ae`).
 
 Un test local du protocole a confirmé l’authentification Hysteria 2, Salamander, le relais UDP annoncé par le serveur et une connexion TCP relayée vers `1.1.1.1:443`. Les secrets du profil Android sont conservés uniquement dans `/etc/kighmu/android-test-profile.txt` avec les permissions `0600`; ils ne sont pas enregistrés dans ce dépôt.
 
