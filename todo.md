@@ -150,3 +150,13 @@ Corriger le blocage de démarrage, publier via GitHub Actions, puis demander à 
 ## État courant du correctif
 
 Le splash KIGHMU s’affiche désormais correctement, mais l’accueil React Native n’apparaît pas. Le blocage est donc situé après le splash et avant le premier rendu de l’interface. UDP-ZIVPN doit rester inchangé.
+
+
+## Cause identifiée — APK debug autonome
+
+- [x] Identifier que le workflow `assembleDebug` produisait un APK debug sans bundle JavaScript autonome
+- [x] Remplacer `assembleDebug` par `assembleRelease` pour embarquer le bundle Expo/Metro
+- [ ] Vérifier le nouvel APK release sur le téléphone et confirmer l’affichage de l’accueil
+- [ ] Confirmer le tunnel KIGHMU après l’ouverture de l’accueil
+
+Le nouveau workflow doit publier un artefact `kighmu-vpn-android-release-...`. L’ancien artefact `...-debug-...` ne doit plus être installé hors d’un environnement Metro connecté.

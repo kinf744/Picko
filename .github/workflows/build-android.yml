@@ -58,17 +58,17 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x android/gradlew
 
-      - name: Build debug APK
+      - name: Build standalone release APK
         working-directory: android
         env:
           NODE_ENV: production
           GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
-        run: ./gradlew assembleDebug --no-daemon --stacktrace --warning-mode all
+        run: ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode all
 
       - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
-          name: kighmu-vpn-android-debug-${{ github.sha }}
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: kighmu-vpn-android-release-${{ github.sha }}
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
