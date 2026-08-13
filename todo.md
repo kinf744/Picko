@@ -77,3 +77,5 @@
 - [x] Vérifier l’équivalence fonctionnelle des cinq options avec le script Hysteria fourni
 - [x] Compléter les options KIGHMU manquantes sans actions destructrices sur le pare-feu ou UDP-ZIVPN
 - [ ] Tester séparément les cinq options KIGHMU et confirmer l’intégrité de UDP-ZIVPN
+
+- [x] Remplacer la confirmation de mot de passe par une saisie visible unique dans l’option 2 de kighmu2

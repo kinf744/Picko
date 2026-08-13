@@ -13,7 +13,6 @@ import tempfile
 import time
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
-from getpass import getpass
 from pathlib import Path
 
 import fcntl
@@ -177,11 +176,7 @@ def create_user() -> None:
     if not USERNAME_RE.fullmatch(username):
         fail("nom d’utilisateur invalide")
         return
-    password = getpass("Mot de passe du compte : ")
-    confirm = getpass("Confirmer le mot de passe : ")
-    if password != confirm:
-        fail("les mots de passe ne correspondent pas")
-        return
+    password = input("Mot de passe KIGHMU (visible) : ").strip()
     if not 8 <= len(password) <= 128:
         fail("le mot de passe doit comporter entre 8 et 128 caractères")
         return
@@ -204,7 +199,12 @@ def create_user() -> None:
         except RuntimeError as error:
             fail(f"création annulée : {error}")
             return
-    print(f"Compte {username} créé. Dans l’APK, Password = {username}:{password}")
+    host, port = profile()
+    print(f"{GREEN}✅ UTILISATEUR KIGHMU CRÉÉ{RESET}")
+    print(f"Serveur : {host}")
+    print(f"Port     : {port}")
+    print(f"Password : {username}:{password}")
+    print("Obfs     : conservez la valeur Salamander configurée pour le serveur.")
 
 
 def revoke_user() -> None:

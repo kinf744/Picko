@@ -53,3 +53,5 @@ Les commandes `kighmu2 --list` et `kighmu2 --status` sont disponibles pour un co
 | 3. Supprimer utilisateur | Affiche les comptes numérotés, demande confirmation, retire le compte puis applique la nouvelle configuration. | Refuse de supprimer le dernier compte KIGHMU actif. |
 | 4. Fix | Réinitialise l’état d’échec et redémarre KIGHMU, ce qui recrée ses règles nftables dédiées `20000-50000 → 25000`. | Ne réinitialise jamais UFW, iptables global ou UDP-ZIVPN. |
 | 5. Désinstaller | Sauvegarde KIGHMU sous `/root/kighmu-uninstall-backup-*`, puis retire KIGHMU, son panneau et sa table nftables dédiée après confirmation stricte. | Ne retire ni les fichiers, ni les services, ni les règles de UDP-ZIVPN. |
+
+L’option 2 suit le flux du script fourni : le mot de passe est affiché pendant sa saisie et n’est saisi qu’une seule fois. Après la création, le panneau affiche le serveur, le port et la valeur `utilisateur:mot_de_passe` à reporter dans le champ **Password** de l’APK.
