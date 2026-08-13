@@ -6,6 +6,7 @@ node_modules/
 # Expo
 .expo/
 dist/
+dist-web/
 web-build/
 expo-env.d.ts
 
@@ -31,7 +32,9 @@ yarn-error.*
 *.pem
 
 # local env files
-.env*.local
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -40,7 +43,11 @@ app-example
 
 # generated native folders
 /ios
-/android
+# Keep /android tracked: GitHub Actions builds the committed native project.
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
 
 # IDE
 .vscode/
@@ -64,3 +71,5 @@ Thumbs.db
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
 .project-config.json
+.manus-logs/
+.expo/devices.json

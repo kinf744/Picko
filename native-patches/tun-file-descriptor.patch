@@ -1,0 +1,13 @@
+--- a/app/cmd/client.go
++++ b/app/cmd/client.go
+@@ -231,6 +231,7 @@ type tunConfig struct {
+ 	Name    string        `mapstructure:"name"`
+ 	MTU     uint32        `mapstructure:"mtu"`
+ 	Timeout time.Duration `mapstructure:"timeout"`
++	FileDescriptor int    `mapstructure:"fileDescriptor"`
+ 	Address struct {
+@@ -1180,6 +1180,7 @@ func clientTUN(config tunConfig, c client.Client) error {
+ 		Inet4RouteExcludeAddress: s.Inet4RouteExcludeAddress,
+ 		Inet6RouteExcludeAddress: s.Inet6RouteExcludeAddress,
++		FileDescriptor:            config.FileDescriptor,
+ 		Logger: &singLogger{

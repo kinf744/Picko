@@ -1,0 +1,14 @@
+{
+  "name": "kighmu-vpn-native",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/KighmuVpnNativeModule.ts",
+  "types": "src/KighmuVpnNative.types.ts",
+  "expo": {
+    "autolinking": {
+      "android": {
+        "modules": ["expo.modules.kighmuvpnnative.KighmuVpnNativeModule"]
+      }
+    }
+  }
+}
