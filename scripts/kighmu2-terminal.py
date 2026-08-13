@@ -208,11 +208,22 @@ def create_user() -> None:
 
 
 def revoke_user() -> None:
-    username = input("Nom du compte à révoquer : ").strip()
     with exclusive_lock():
         users = load_users()
-        if username not in users:
-            fail("compte introuvable")
+        if not users:
+            fail("aucun compte Android enregistré")
+            return
+        ordered = sorted(users.items(), key=lambda item: (item[1].get("expiresAt", "9999-12-31"), item[0]))
+        print("Utilisateurs (sélectionnez un numéro) :")
+        for index, (name, record) in enumerate(ordered, start=1):
+            print(f"{index}. {name} | expire : {record.get('expiresAt', 'sans expiration')}")
+        raw = input(f"Numéro à supprimer (1-{len(ordered)}) : ").strip()
+        if not raw.isdigit() or not 1 <= int(raw) <= len(ordered):
+            fail("numéro invalide")
+            return
+        username = ordered[int(raw) - 1][0]
+        if len(users) == 1 and is_active(users[username]):
+            fail("impossible de supprimer le dernier compte KIGHMU actif")
             return
         confirm = input(f"Révoquer définitivement {username} ? (oui/non) : ").strip().lower()
         if confirm != "oui":
@@ -336,25 +347,52 @@ def diagnostic_kighmu() -> None:
 
 
 def repair_kighmu() -> None:
-    if input("Redémarrer uniquement KIGHMU et ses règles dédiées ? (oui/non) : ").strip().lower() != "oui":
+    if not CONFIG_FILE.exists() or not Path("/usr/local/bin/kighmu").exists():
+        fail("KIGHMU n’est pas installé ; utilisez l’option 1 pour contrôler son état")
+        return
+    if input("Réparer uniquement KIGHMU et sa redirection dédiée 20000-50000 ? (oui/non) : ").strip().lower() != "oui":
         print("Réparation annulée.")
         return
     subprocess.run(["/usr/bin/systemctl", "reset-failed", "kighmu.service"], capture_output=True, text=True, timeout=10)
     try:
         restart_kighmu()
-        print("KIGHMU a redémarré. Aucun service UDP-ZIVPN ni pare-feu global n’a été modifié.")
+        rules = subprocess.run(["/usr/sbin/nft", "list", "table", "inet", "kighmu_porthop"], capture_output=True, text=True, timeout=10)
+        if rules.returncode != 0:
+            raise RuntimeError("la table de redirection KIGHMU est absente après redémarrage")
+        print("KIGHMU et sa redirection dédiée sont actifs. Aucun service UDP-ZIVPN ni pare-feu global n’a été modifié.")
     except RuntimeError as error:
         fail(f"KIGHMU reste inactif : {error}")
 
 
-def disable_kighmu() -> None:
+def uninstall_kighmu() -> None:
     print_title()
-    print(f"{RED}{BOLD}[5] DÉSACTIVATION KIGHMU{RESET}\n")
-    if input("Saisissez DESINSTALLER pour arrêter KIGHMU uniquement : ").strip() != "DESINSTALLER":
+    print(f"{RED}{BOLD}[5] DÉSINSTALLATION KIGHMU{RESET}\n")
+    print("Cette option arrête et retire uniquement KIGHMU, son panneau et ses règles nftables dédiées.")
+    print("UDP-ZIVPN, ses services, ses utilisateurs et le pare-feu global restent inchangés.")
+    if input("Saisissez DESINSTALLER-KIGHMU pour confirmer : ").strip() != "DESINSTALLER-KIGHMU":
         print("Désinstallation annulée.")
         return
-    subprocess.run(["/usr/bin/systemctl", "disable", "--now", "kighmu.service"], capture_output=True, text=True, timeout=30, check=False)
-    print("KIGHMU est arrêté et désactivé. Ses fichiers sont conservés et UDP-ZIVPN n’a pas été modifié.")
+    backup = Path(f"/root/kighmu-uninstall-backup-{int(time.time())}")
+    backup.mkdir(mode=0o700)
+    if ROOT.exists():
+        shutil.copytree(ROOT, backup / "etc-kighmu", dirs_exist_ok=True)
+    for source in (Path("/usr/local/bin/kighmu"), Path("/usr/local/bin/kighmu2"), Path("/usr/bin/kighmu2")):
+        if source.exists() or source.is_symlink():
+            shutil.copy2(source.resolve(), backup / source.name, follow_symlinks=True)
+    for service in ("kighmu-panel.service", "kighmu.service"):
+        subprocess.run(["/usr/bin/systemctl", "disable", "--now", service], capture_output=True, text=True, timeout=30, check=False)
+    subprocess.run(["/usr/sbin/nft", "delete", "table", "inet", "kighmu_porthop"], capture_output=True, text=True, timeout=10, check=False)
+    shutil.rmtree("/etc/systemd/system/kighmu.service.d", ignore_errors=True)
+    for unit in (Path("/etc/systemd/system/kighmu.service"), Path("/etc/systemd/system/kighmu-panel.service")):
+        unit.unlink(missing_ok=True)
+    for path in (ROOT, Path("/opt/kighmu-panel"), Path("/usr/local/bin/kighmu"), Path("/usr/local/bin/kighmu2"), Path("/usr/bin/kighmu2")):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
+    subprocess.run(["/usr/bin/systemctl", "daemon-reload"], capture_output=True, text=True, timeout=30, check=False)
+    print(f"KIGHMU a été désinstallé. Sauvegarde locale : {backup}")
+    print("UDP-ZIVPN n’a pas été modifié.")
     pause()
 
 
@@ -374,7 +412,7 @@ def menu() -> None:
         print(f"{GREEN}{BOLD}[02]{RESET} {BOLD}{MAGENTA}➜{RESET} {YELLOW}Créer un utilisateur KIGHMU{RESET}")
         print(f"{GREEN}{BOLD}[03]{RESET} {BOLD}{MAGENTA}➜{RESET} {YELLOW}Supprimer un utilisateur KIGHMU{RESET}")
         print(f"{GREEN}{BOLD}[04]{RESET} {BOLD}{MAGENTA}➜{RESET} {YELLOW}Fix KIGHMU (service + port hopping dédié){RESET}")
-        print(f"{GREEN}{BOLD}[05]{RESET} {BOLD}{MAGENTA}➜{RESET} {YELLOW}Désinstaller KIGHMU (désactivation sûre){RESET}")
+        print(f"{GREEN}{BOLD}[05]{RESET} {BOLD}{MAGENTA}➜{RESET} {YELLOW}Désinstaller KIGHMU (sauvegarde + suppression isolée){RESET}")
         print(f"{RED}[00] ➜ Quitter{RESET}\n")
         choice = input(f"{BOLD}{YELLOW}Entrez votre choix [0-5] : {RESET}").strip()
         if choice == "1":
@@ -389,7 +427,7 @@ def menu() -> None:
             repair_kighmu()
             pause()
         elif choice == "5":
-            disable_kighmu()
+            uninstall_kighmu()
         elif choice == "0":
             return
         else:

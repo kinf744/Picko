@@ -44,4 +44,12 @@ Pour une gestion directe depuis une session root SSH sur le VPS, la commande `ki
 kighmu2
 ```
 
-Les commandes `kighmu2 --list` et `kighmu2 --status` sont disponibles pour un contrôle non interactif. Le menu interactif est volontairement limité à cinq options colorées : installation/état KIGHMU, création d’utilisateur, suppression d’utilisateur, réparation KIGHMU et désinstallation sûre. La réparation redémarre uniquement `kighmu.service` et ses règles dédiées ; elle ne réinitialise jamais le pare-feu global. La désinstallation demandée est une désactivation explicitement confirmée qui conserve les fichiers KIGHMU et ne touche ni aux comptes SSH/ZIVPN/V2Ray ni à UDP-ZIVPN.
+Les commandes `kighmu2 --list` et `kighmu2 --status` sont disponibles pour un contrôle non interactif. Le menu interactif est volontairement limité à cinq options colorées.
+
+| Option demandée | Équivalent KIGHMU Hysteria 2 | Limite de sécurité |
+|---|---|---|
+| 1. Installation | Vérifie le binaire, la configuration, le service et active KIGHMU s’il est inactif. | Ne télécharge pas un binaire non vérifié et ne modifie pas le pare-feu global. |
+| 2. Créer utilisateur | Ajoute un compte Android `userpass`, avec mot de passe et durée, puis redémarre KIGHMU de façon transactionnelle. | Les comptes SSH, ZIVPN et V2Ray sont exclus. |
+| 3. Supprimer utilisateur | Affiche les comptes numérotés, demande confirmation, retire le compte puis applique la nouvelle configuration. | Refuse de supprimer le dernier compte KIGHMU actif. |
+| 4. Fix | Réinitialise l’état d’échec et redémarre KIGHMU, ce qui recrée ses règles nftables dédiées `20000-50000 → 25000`. | Ne réinitialise jamais UFW, iptables global ou UDP-ZIVPN. |
+| 5. Désinstaller | Sauvegarde KIGHMU sous `/root/kighmu-uninstall-backup-*`, puis retire KIGHMU, son panneau et sa table nftables dédiée après confirmation stricte. | Ne retire ni les fichiers, ni les services, ni les règles de UDP-ZIVPN. |

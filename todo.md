@@ -73,3 +73,7 @@
 
 - [x] Simplifier le panneau kighmu2 en cinq options colorées demandées
 - [x] Adapter les options installation, réparation et désinstallation à KIGHMU sans modifier le pare-feu global ni UDP-ZIVPN
+
+- [x] Vérifier l’équivalence fonctionnelle des cinq options avec le script Hysteria fourni
+- [x] Compléter les options KIGHMU manquantes sans actions destructrices sur le pare-feu ou UDP-ZIVPN
+- [ ] Tester séparément les cinq options KIGHMU et confirmer l’intégrité de UDP-ZIVPN
