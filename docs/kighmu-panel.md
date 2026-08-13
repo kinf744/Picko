@@ -35,3 +35,13 @@ Le service est nommé `kighmu-panel.service`. Son diagnostic est disponible avec
 sudo systemctl status kighmu-panel --no-pager
 sudo journalctl -u kighmu-panel -n 100 --no-pager
 ```
+
+## Menu terminal `kighmu2`
+
+Pour une gestion directe depuis une session root SSH sur le VPS, la commande `kighmu2` ouvre un menu interactif. Il permet de créer, lister et révoquer les mêmes comptes KIGHMU Android, d’afficher le profil à saisir dans l’APK et de contrôler l’état des services. Il ne demande pas le code du panneau web, car l’accès root SSH constitue déjà l’autorisation d’administration du serveur.
+
+```bash
+kighmu2
+```
+
+Les commandes `kighmu2 --list` et `kighmu2 --status` sont disponibles pour un contrôle non interactif. Le menu ne touche pas aux comptes SSH, ZIVPN ou V2Ray, et refuse de révoquer le dernier compte KIGHMU Android actif.

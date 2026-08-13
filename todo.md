@@ -61,3 +61,7 @@
 
 - [ ] Migrer l’authentification KIGHMU vers des comptes Android userpass sans exposer les secrets
 - [x] Protéger le panneau KIGHMU par le mot de passe d’administration confirmé
+
+- [x] Ajouter la commande terminale interactive kighmu2 pour les comptes KIGHMU Android
+- [x] Installer la commande kighmu2 sur le VPS sans modifier UDP-ZIVPN
+- [ ] Valider la liste et la création/révocation de comptes avec le menu kighmu2
