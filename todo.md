@@ -83,3 +83,10 @@
 - [x] Capturer passivement les métadonnées de handshake KIGHMU et UDP-ZIVPN
 - [x] Comparer les caractéristiques observables de QUIC, du port hopping et des réponses serveur
 - [x] Documenter l’analyse sans inclure de secrets ni modifier les tunnels actifs
+
+- [x] Créer des maquettes visuelles pour les écrans Accueil, Configuration, Diagnostic et Comptes KIGHMU
+- [x] Vérifier la lisibilité mobile des maquettes avant leur présentation
+
+- [x] Produire et livrer des captures visuelles directement accessibles de l’interface KIGHMU VPN
+
+- [x] Retirer le titre « Votre tunnel » de l’écran d’accueil

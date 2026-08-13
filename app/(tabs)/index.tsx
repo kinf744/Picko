@@ -26,7 +26,6 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View>
             <Text className="text-sm font-semibold text-primary">KIGHMU VPN</Text>
-            <Text className="mt-1 text-3xl font-bold text-foreground">Votre tunnel</Text>
           </View>
           <View style={[styles.brandMark, { backgroundColor: colors.primary }]}>
             <IconSymbol name="shield.fill" size={22} color="#FFFFFF" />
