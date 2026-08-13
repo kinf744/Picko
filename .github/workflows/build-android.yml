@@ -45,7 +45,7 @@ jobs:
           run_install: false
 
       - name: Install JavaScript dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --prod=false
 
       - name: Validate TypeScript and tests
         run: |
