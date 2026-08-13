@@ -126,3 +126,27 @@ Le diagnostic a confirmé que les ressources natives splash Android versionnées
 ## Dernière action attendue
 
 Corriger le blocage de démarrage, publier via GitHub Actions, puis demander à l’utilisateur de désinstaller l’ancienne version avant d’installer le nouvel APK.
+
+
+## Blocage persistant après splash KIGHMU — 14 août 2026
+
+- [ ] Diagnostiquer le blocage persistant après affichage du splash KIGHMU
+- [ ] Auditer MainActivity, MainApplication et le point d’entrée Expo Router
+- [ ] Vérifier le chargement du bundle JavaScript dans l’APK release
+- [ ] Vérifier l’initialisation des providers avant l’affichage de l’accueil
+- [ ] Vérifier que SecureStore et AsyncStorage ne retardent pas le premier rendu
+- [ ] Vérifier que le module VPN natif ne bloque pas l’initialisation React Native
+- [ ] Ajouter un démarrage non bloquant avec affichage de l’accueil indépendant du tunnel
+- [ ] Ajouter un fallback visible si l’initialisation native échoue
+- [ ] Publier le correctif uniquement via GitHub Actions
+- [ ] Vérifier le nouvel APK armeabi-v7a et son artefact unique
+- [ ] Installer le nouvel APK après désinstallation propre
+- [ ] Confirmer que l’accueil s’affiche après le splash KIGHMU
+- [ ] Confirmer l’accès aux écrans Configuration et Diagnostic
+- [ ] Recueillir logcat ou Diagnostic si le blocage persiste
+- [ ] Tester l’autorisation VPN et le tunnel après résolution de l’ouverture
+- [ ] Ne pas déclarer l’application prête avant validation réelle sur Android
+
+## État courant du correctif
+
+Le splash KIGHMU s’affiche désormais correctement, mais l’accueil React Native n’apparaît pas. Le blocage est donc situé après le splash et avant le premier rendu de l’interface. UDP-ZIVPN doit rester inchangé.

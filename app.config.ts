@@ -46,7 +46,8 @@ const config: ExpoConfig = {
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
-  newArchEnabled: true,
+  // Keep the legacy React Native architecture for reliable armeabi-v7a startup with the custom VPN module.
+  newArchEnabled: false,
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
