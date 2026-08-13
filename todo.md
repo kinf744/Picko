@@ -39,15 +39,15 @@
 
 ## Blocage Android signalé le 13 août 2026
 
-- [ ] Diagnostiquer le blocage sur l’écran de démarrage après installation
-- [ ] Vérifier les ressources splash/icon réellement embarquées dans l’APK
-- [ ] Vérifier qu’aucun placeholder Expo n’est utilisé au démarrage
+- [x] Diagnostiquer le blocage sur l’écran de démarrage après installation
+- [x] Vérifier les ressources splash/icon réellement embarquées dans l’APK
+- [x] Vérifier qu’aucun placeholder Expo n’est utilisé au démarrage
 - [ ] Vérifier l’initialisation Expo Router et du bundle JavaScript
 - [ ] Vérifier que le module natif VPN ne bloque pas le rendu initial
 - [ ] Vérifier les erreurs Kotlin, AndroidManifest, Gradle et ressources générées
-- [ ] Appliquer un correctif avec un fallback de démarrage non bloquant
-- [ ] Publier un nouvel APK via GitHub Actions
-- [ ] Vérifier l’ABI armeabi-v7a et l’artefact du nouvel APK
+- [x] Appliquer un correctif avec un fallback de démarrage non bloquant
+- [x] Publier un nouvel APK via GitHub Actions
+- [x] Vérifier l’ABI armeabi-v7a et l’artefact du nouvel APK
 - [ ] Installer le nouvel APK après désinstallation propre de l’ancien
 - [ ] Confirmer l’ouverture complète de l’accueil et des écrans Configuration/Diagnostic
 - [ ] Recueillir le journal Diagnostic et les logs système si le blocage persiste
@@ -69,7 +69,7 @@
 - [x] Documenter le panneau kighmu2 et le panneau HTTPS
 - [x] Documenter l’analyse comparative de handshake
 - [x] Documenter la compilation exclusivement via GitHub Actions
-- [ ] Documenter la cause et le correctif du blocage Android
+- [x] Documenter la cause et le correctif du blocage Android
 - [ ] Mettre à jour la procédure d’installation après correction
 
 ## Règles de sécurité de ce projet
@@ -83,7 +83,7 @@
 
 ## Dernière mise à jour
 
-Le blocage rapporté sur l’écran de démarrage est ouvert. La capture indique probablement un splash Expo par défaut ou une initialisation Android qui ne rend jamais l’interface. Aucun nouveau build ne doit être considéré comme correct avant un test d’ouverture sur l’appareil réel.
+Le diagnostic a confirmé que les ressources natives splash Android versionnées étaient les placeholders Expo par défaut. Elles ont été remplacées par le splash KIGHMU et le nouvel APK GitHub Actions a réussi. L’ouverture sur l’appareil réel reste à confirmer.
 
 ## Checkpoints précédents
 
@@ -92,20 +92,20 @@ Le blocage rapporté sur l’écran de démarrage est ouvert. La capture indique
 
 ## TODO de suivi du correctif
 
-- [ ] Lire les consignes Expo SplashScreen et le guide mobile avant modification
-- [ ] Auditer app.config.ts et les cinq ressources de branding
-- [ ] Auditer le point d’entrée Android et l’initialisation du module natif
-- [ ] Vérifier les logs de build et les ressources dans l’APK précédent
-- [ ] Corriger sans lancer de compilation Android locale
-- [ ] Publier le correctif vers GitHub
-- [ ] Attendre un run GitHub Actions réussi
+- [x] Lire les consignes Expo SplashScreen et le guide mobile avant modification
+- [x] Auditer app.config.ts et les cinq ressources de branding
+- [x] Auditer le point d’entrée Android et l’initialisation du module natif
+- [x] Vérifier les logs de build et les ressources dans l’APK précédent
+- [x] Corriger sans lancer de compilation Android locale
+- [x] Publier le correctif vers GitHub
+- [x] Attendre un run GitHub Actions réussi
 - [ ] Faire installer uniquement le nouvel artefact
 - [ ] Recevoir le résultat de l’ouverture sur le téléphone
 - [ ] Recevoir le journal Diagnostic après ouverture
 - [ ] Recevoir le résultat de l’autorisation VPN
 - [ ] Recevoir le résultat de la connexion KIGHMU
 - [ ] Créer le checkpoint final seulement après validation
-- [ ] Maintenir UDP-ZIVPN inchangé pendant toute la procédure
+- [x] Maintenir UDP-ZIVPN inchangé pendant toute la procédure
 - [ ] Conserver l’application en statut « non prête » tant que le test réel n’est pas concluant
 
 ## État courant
