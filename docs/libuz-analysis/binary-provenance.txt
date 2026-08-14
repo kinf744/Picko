@@ -1,0 +1,28 @@
+== hashes ==
+380a6b0c35189fe43b8282b91d7ec3a313d7d0f55777b6fb9fef5f4620990ba9  kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libuz_core.so
+380a6b0c35189fe43b8282b91d7ec3a313d7d0f55777b6fb9fef5f4620990ba9  Zamois-tun/app/src/main/jniLibs/armeabi-v7a/libuz_core.so
+540cf78d285a00cba164aeb5bc2dbe0ff9142eb73e183af995b6f2c962ca164f  Zamois-tun/app/src/main/jniLibs/arm64-v8a/libuz_core.so
+8a9269912562a2601b9886473d9b3f8d6d99cb084046adbab22b15708cb9932d  kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libhev-socks5-tunnel.so
+8a9269912562a2601b9886473d9b3f8d6d99cb084046adbab22b15708cb9932d  kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libtun2socks.so
+8a9269912562a2601b9886473d9b3f8d6d99cb084046adbab22b15708cb9932d  Zamois-tun/app/src/main/jniLibs/armeabi-v7a/libhev-socks5-tunnel.so
+== sizes ==
+Zamois-tun/app/src/main/jniLibs/arm64-v8a/libtun2socks.so 200432 bytes
+Zamois-tun/app/src/main/jniLibs/arm64-v8a/libuz_core.so 13345768 bytes
+Zamois-tun/app/src/main/jniLibs/arm64-v8a/libxray.so 26935296 bytes
+Zamois-tun/app/src/main/jniLibs/armeabi-v7a/libbridge.so 630200 bytes
+Zamois-tun/app/src/main/jniLibs/armeabi-v7a/libhev-socks5-tunnel.so 203412 bytes
+Zamois-tun/app/src/main/jniLibs/armeabi-v7a/libtun2socks.so 203412 bytes
+Zamois-tun/app/src/main/jniLibs/armeabi-v7a/libuz_core.so 11508056 bytes
+Zamois-tun/app/src/main/jniLibs/armeabi-v7a/libxray.so 7067748 bytes
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libhev-socks5-tunnel.so 203412 bytes
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libtun2socks.so 203412 bytes
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libuz_core.so 11508056 bytes
+== reference git provenance ==
+[33md64405f[m feat(zivpn): retire Xray du tunnel UDP — HEV -> LB_PORT -> uz_core direct
+[33mcd2e3e1[m fix: MTU ZIVPN 8500->1400, kill sync, timeout Xray 5s, health check e2e SocksBalancer
+[33mcaa8273[m fix: LB_PORT et BASE_UZ_PORT dynamiques par profil - corrige EADDRINUSE multi-ZIVPN
+[33m42e3dbb[m fix: supprime resolver DNS hardcodé ZIVPN, corrige SocksBalancer
+[33m95808d6[m clean: supprime log debug xray timing ZIVPN
+[33m8c09fcd[m perf: supprime libload_core.so, balanceur Kotlin + démarrage optimisé
+[33mba4579e[m fix: masquer 'Xray' dans logs ZIVPN -> remplacer par 'Secure'
+[33m51565a3[m chore: reset propre depuis build #1295

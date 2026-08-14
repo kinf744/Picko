@@ -1,0 +1,58 @@
+== Reference JNI candidates ==
+Zamois-tun/app/src/main/cpp/hev_jni.cpp
+Zamois-tun/app/src/main/cpp/kighmu_packet.c
+Zamois-tun/app/src/main/cpp/kighmu_tun.c
+Zamois-tun/app/src/main/cpp/relay.cpp
+Zamois-tun/app/src/main/cpp/socks_relay.cpp
+Zamois-tun/tun2socks_original.c
+== Reference JNI symbols/usages ==
+Zamois-tun/app/patch_hev2.py:28:        hev.htproxy.TProxyService.TProxyStartService(configFile.absolutePath, fd)
+Zamois-tun/app/patch_hev2.py:42:            hev.htproxy.TProxyService.TProxyStartService(configFile.absolutePath, fd)
+Zamois-tun/app/src/main/cpp/hev_jni.cpp:15:    int  hev_socks5_tunnel_main_from_str(const char* config_str, int tun_fd);
+Zamois-tun/app/src/main/cpp/hev_jni.cpp:16:    void hev_socks5_tunnel_quit(void);
+Zamois-tun/app/src/main/cpp/hev_jni.cpp:24:    int ret = hev_socks5_tunnel_main_from_str(a->config, a->fd);
+Zamois-tun/app/src/main/cpp/hev_jni.cpp:36:Java_hev_htproxy_TProxyService_TProxyStartService(
+Zamois-tun/app/src/main/cpp/hev_jni.cpp:41:        hev_socks5_tunnel_quit();
+Zamois-tun/app/src/main/cpp/hev_jni.cpp:65:    pthread_create(&g_thread, nullptr, tunnel_thread, args);
+Zamois-tun/app/src/main/cpp/hev_jni.cpp:74:        hev_socks5_tunnel_quit();
+Zamois-tun/app/src/main/cpp/hev_jni.cpp:84:Java_hev_htproxy_TProxyService_TProxyStartService(
+Zamois-tun/app/src/main/cpp/hev_jni.cpp:86:    LOGE("TProxyStartService: non supporté sur arm64 (lib epro)");
+Zamois-tun/app/src/main/cpp/relay.cpp:39:    pthread_create(&t1, nullptr, pipe_thread, a1);
+Zamois-tun/app/src/main/cpp/relay.cpp:40:    pthread_create(&t2, nullptr, pipe_thread, a2);
+Zamois-tun/app/src/main/cpp/socks_relay.cpp:52:    pthread_create(&t1, nullptr, relay_thread, args1);
+Zamois-tun/app/src/main/cpp/socks_relay.cpp:53:    pthread_create(&t2, nullptr, relay_thread, args2);
+Zamois-tun/app/src/main/java/com/github/kr328/clash/core/bridge/Bridge.kt:54:            ).detachFd()
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/AllEngines.kt:533:        // Chercher libxray.so dans nativeLibraryDir (jniLibs)
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/AllEngines.kt:534:        val nativeDir = context.applicationInfo.nativeLibraryDir
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/HevTun2Socks.kt:47:            hev.htproxy.TProxyService.TProxyStartService(configFile.absolutePath, fd)
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/HevTun2Socks.kt:67:            hev.htproxy.TProxyService.TProxyStartService(configFile.absolutePath, fd)
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/HysteriaEngine.kt:112:        val bin = File(context.applicationInfo.nativeLibraryDir, name)
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/HysteriaEngine.kt:114:        log("$name introuvable dans ${context.applicationInfo.nativeLibraryDir}")
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/SlowDnsEngine.kt:175:        val nativeDir = context.applicationInfo.nativeLibraryDir
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/XrayDnsEngine.kt:96:        val nativeDir = context.applicationInfo.nativeLibraryDir
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/XrayDnsEngine.kt:279:        val nativeDir = context.applicationInfo.nativeLibraryDir
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/XrayVpnEngine.kt:197:        val nativeDir = context.applicationInfo.nativeLibraryDir
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/ZivpnEngine.kt:64:            val nativeDir = context.applicationInfo.nativeLibraryDir
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/ZivpnEngine.kt:117:            val nativeDir = context.applicationInfo.nativeLibraryDir
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/ZivpnEngine.kt:130:                    environment()["LD_LIBRARY_PATH"] = nativeDir
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/ZivpnEngine.kt:131:                    environment()["HOME"] = "/data/local/tmp"
+Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/ZivpnEngine.kt:132:                    environment()["TMPDIR"] = "/data/local/tmp"
+Zamois-tun/app/src/main/java/com/kighmu/vpn/profiles/SlowDnsSession.kt:26:            val dnsttBin = File(context.applicationInfo.nativeLibraryDir, "libdnstt.so")
+Zamois-tun/app/src/main/java/com/kighmu/vpn/vpn/KighmuVpnService.kt:115:                    val nativeDir = applicationInfo.nativeLibraryDir
+Zamois-tun/app/src/main/java/hev/htproxy/TProxyService.kt:14:                    // qui appellent hev_socks5_tunnel_main_from_str
+Zamois-tun/app/src/main/java/hev/htproxy/TProxyService.kt:27:        @JvmStatic external fun TProxyStartService(configPath: String, fd: Int)
+== Current JNI usages ==
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/java/expo/modules/kighmuvpnnative/KighmuVpnService.kt:80:      val fd = established.detachFd()
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/java/expo/modules/kighmuvpnnative/KighmuVpnService.kt:95:      val nativeDir = applicationInfo.nativeLibraryDir
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/java/expo/modules/kighmuvpnnative/KighmuVpnService.kt:98:        error("libuz_core.so absent ou non exécutable dans nativeLibraryDir")
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/java/expo/modules/kighmuvpnnative/KighmuVpnService.kt:107:          environment()["LD_LIBRARY_PATH"] = nativeDir
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/java/expo/modules/kighmuvpnnative/ZivpnTun2Socks.kt:40:      hev.htproxy.TProxyService.TProxyStartService(configFile.absolutePath, fd)
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/java/hev/htproxy/TProxyService.kt:22:  @JvmStatic external fun TProxyStartService(configPath: String, fd: Int)
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/cpp/hev_jni.cpp:14:int hev_socks5_tunnel_main_from_str(const char* config_str, int tun_fd);
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/cpp/hev_jni.cpp:15:void hev_socks5_tunnel_quit(void);
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/cpp/hev_jni.cpp:29:  const int result = hev_socks5_tunnel_main_from_str(args->config, args->fd);
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/cpp/hev_jni.cpp:38:Java_hev_htproxy_TProxyService_TProxyStartService(
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/cpp/hev_jni.cpp:41:    hev_socks5_tunnel_quit();
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/cpp/hev_jni.cpp:86:  if (pthread_create(&g_thread, nullptr, tunnel_thread, args) != 0) {
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/cpp/hev_jni.cpp:100:    hev_socks5_tunnel_quit();
+kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/cpp/hev_jni.cpp:111:Java_hev_htproxy_TProxyService_TProxyStartService(JNIEnv*, jclass, jstring, jint) {

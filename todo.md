@@ -389,6 +389,14 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Retirer entièrement le binaire KIGHMU de l’APK de test
 - [x] Valider TypeScript/tests sans compilation Android locale
 - [x] Compiler uniquement via GitHub Actions
-- [ ] Tester la connexion ZIVPN réelle sur Android
-- [ ] Comparer le résultat avec le diagnostic KIGHMU
+- [x] Tester la connexion ZIVPN réelle sur Android
+- [x] Comparer le résultat avec le diagnostic KIGHMU
 - [ ] Restaurer ou conserver explicitement le mode choisi après comparaison
+
+## Analyse locale libuz_core — nouveau chantier
+
+- [x] Analyser localement libuz_core.so avec les outils ELF, désassemblage et inspection JNI
+- [x] Comparer les dépendances, symboles, chaînes, ABI et points d’entrée libuz avec KIGHMU
+- [x] Comparer le wrapper hev_jni, le relais TUN→SOCKS5 et le cycle de vie VpnService
+- [ ] Réaliser une observation dynamique locale contrôlée sans modifier le VPS ni ZIVPN
+- [x] Rédiger les écarts techniques et les correctifs applicables à KIGHMU
