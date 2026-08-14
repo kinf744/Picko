@@ -18,8 +18,8 @@ describe("validateConfig", () => {
     expect(validateVpnConfig({ ...valid, port: "1-65536" }).port).toBeTruthy();
   });
 
-  it("requires all connection values", () => {
+  it("requires host, port and userpass while Obfs remains fixed", () => {
     const errors = validateVpnConfig({ host: "", port: "", obfs: "", password: "" });
-    expect(Object.keys(errors).sort()).toEqual(["host", "obfs", "password", "port"]);
+    expect(Object.keys(errors).sort()).toEqual(["host", "password", "port"]);
   });
 });

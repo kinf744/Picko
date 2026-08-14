@@ -256,3 +256,21 @@ Le workflow `31820187145` a d’abord échoué à `:kighmu-vpn-native:compileRel
 Le workflow corrigé `31820805134` a réussi : validation TypeScript/tests, compilation release Gradle et dépôt de l’artefact APK unique. L’APK contient `assets/index.android.bundle`, uniquement `lib/armeabi-v7a/` pour les bibliothèques natives, et `lib/armeabi-v7a/libkighmu.so`. Le Go BuildID et l’ELF BuildID du binaire KIGHMU embarqué correspondent à la copie source ; la différence de SHA-256 provient du traitement de packaging Gradle. L’APK contient aussi les bibliothèques ZIVPN/HEV comme ressources natives héritées, mais le service courant KIGHMU ne les lance pas.
 
 Le build Android a été réalisé exclusivement par GitHub Actions. L’installation sur appareil, le handshake KIGHMU et le trafic réel restent non validés.
+
+## 20. Vérification VPS de l’Obfs KIGHMU
+
+Une inspection SSH strictement en lecture seule a confirmé que `kighmu.service` est actif avec `/usr/local/bin/kighmu server --config /etc/kighmu/config.yaml`. Le serveur écoute sur UDP/25000 ; UDP-ZIVPN écoute séparément sur UDP/5667. La configuration contient bien les sections `obfs.salamander` et `auth.userpass`.
+
+La comparaison masquée montre que la valeur client `kighmu` ne correspond pas au secret Salamander actif : longueur côté serveur 32 caractères, empreinte différente de celle de `kighmu`. Le timeout Android est donc très probablement expliqué par un Obfs client incorrect, avant même de conclure à un défaut du moteur KIGHMU. Aucun secret n’a été écrit dans le rapport, le TODO ou les journaux ; aucun service distant n’a été modifié.
+
+## 21. Audit nftables/iptables VPS
+
+L’audit SSH en lecture seule montre que la migration nftables KIGHMU est déjà en place. La table `inet kighmu_porthop` contient une chaîne NAT `prerouting` qui redirige UDP/20000-24999 et UDP/25001-50000 vers UDP/25000 ; UDP/25000 est donc laissé au service directement. `kighmu.service` et `zivpn.service` sont actifs, avec KIGHMU sur UDP/25000 et UDP-ZIVPN sur UDP/5667.
+
+La table iptables legacy ne porte pas la redirection KIGHMU ; elle contient toutefois des chaînes Docker et d’autres règles système. Sa suppression globale serait dangereuse et n’est pas nécessaire pour KIGHMU. Le timeout Android n’est donc pas expliqué par l’absence d’une table nftables KIGHMU. Le point Obfs Salamander incorrect reste la cause prioritaire à corriger côté client.
+
+## 22. Obfs Salamander fixé à `kighmu`
+
+Après confirmation explicite, `/etc/kighmu/config.yaml` a été sauvegardé sur le VPS, puis uniquement `obfs.salamander.password` a été remplacé par `kighmu`. Seul `kighmu.service` a été redémarré. Le service est actif sur UDP/25000, la table nftables de port hopping est inchangée et le processus UDP-ZIVPN/5667 est resté inchangé.
+
+Côté Android, la valeur `kighmu` est maintenant définie dans le service natif Kotlin et le moteur ignore les anciennes valeurs utilisateur. Le profil local utilise également cette constante, la validation ne demande plus l’Obfs comme saisie, et l’écran Configuration l’affiche comme valeur fixe. TypeScript, Vitest et `git diff --check` réussissent localement. Le build Android doit rester exclusivement GitHub Actions.

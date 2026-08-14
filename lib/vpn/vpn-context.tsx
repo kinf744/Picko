@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
-import { validateVpnConfig } from "./validation";
+import { FIXED_OBFS, validateVpnConfig } from "./validation";
 
 export type TunnelStatus = "disconnected" | "connecting" | "connected" | "error";
 export type LogLevel = "info" | "connection" | "warning" | "error";
@@ -27,7 +27,7 @@ const CONFIG_KEY = "kighmu.vpn.config.v1";
 const PASSWORD_KEY = "kighmu.vpn.password.v1";
 const OBFS_KEY = "kighmu.vpn.obfs.v1";
 
-const EMPTY_CONFIG: VpnConfig = { host: "", port: "", obfs: "", password: "" };
+const EMPTY_CONFIG: VpnConfig = { host: "", port: "", obfs: FIXED_OBFS, password: "" };
 
 function redact(value: string) {
   return value ? "••••••" : "non défini";
@@ -82,7 +82,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
         const obfs = Platform.OS === "web" ? localStorage.getItem(OBFS_KEY) : await SecureStore.getItemAsync(OBFS_KEY);
         if (mounted && stored) {
           const parsed = JSON.parse(stored) as Partial<VpnConfig>;
-          setConfig({ ...EMPTY_CONFIG, ...parsed, password: password ?? "", obfs: obfs ?? parsed.obfs ?? "" });
+          setConfig({ ...EMPTY_CONFIG, ...parsed, password: password ?? "", obfs: FIXED_OBFS });
         }
         if (mounted) addLog("info", "STORAGE", "Profil local chargé ; les secrets restent masqués.");
       } catch {
@@ -128,10 +128,10 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(CONFIG_KEY, JSON.stringify({ host: config.host, port: config.port }));
       if (Platform.OS === "web") {
         localStorage.setItem(PASSWORD_KEY, config.password);
-        localStorage.setItem(OBFS_KEY, config.obfs);
+        localStorage.setItem(OBFS_KEY, FIXED_OBFS);
       } else {
         await SecureStore.setItemAsync(PASSWORD_KEY, config.password);
-        await SecureStore.setItemAsync(OBFS_KEY, config.obfs);
+        await SecureStore.setItemAsync(OBFS_KEY, FIXED_OBFS);
       }
       addLog("info", "STORAGE", `Profil enregistré pour ${config.host}:${config.port}; password=${redact(config.password)}; obfs=${redact(config.obfs)}.`);
       return true;

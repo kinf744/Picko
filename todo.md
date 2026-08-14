@@ -495,3 +495,53 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Ajouter le helper `fail(generation, message)` et conserver le nettoyage existant
 - [x] Republier le correctif et relancer le workflow GitHub Actions
 - [x] Vérifier l’APK release et son contenu armeabi-v7a
+
+## Timeout KIGHMU observé sur Android
+
+- [ ] Corréler le Diagnostic utilisateur avec la séquence actuelle du service
+- [ ] Vérifier le YAML, l’authentification, l’Obfs, le port range et le descripteur TUN transmis
+- [ ] Comparer le chemin réseau KIGHMU avec le chemin libuz fonctionnel
+- [ ] Déterminer pourquoi aucune activité réseau n’est observée avant le timeout
+- [ ] Préparer un correctif KIGHMU isolé et le valider localement
+- [ ] Republier uniquement via GitHub Actions après validation
+
+## Vérification de la configuration client KIGHMU fournie
+
+- [ ] Confirmer que `yomlk:komport4` est transmis comme userpass et non comme Obfs
+- [x] Confirmer que `kighmu` ne correspond pas au secret Salamander actif côté serveur
+- [ ] Vérifier le mapping Host/port range/Obfs/auth vers le YAML généré par Android
+- [ ] Produire un diagnostic local masqué sans conserver les valeurs secrètes en clair
+
+## Vérification VPS de l’Obfs KIGHMU
+
+- [x] Inspecter en lecture seule les fichiers de configuration KIGHMU actifs
+- [x] Inspecter le service et les journaux KIGHMU sans toucher à UDP-ZIVPN
+- [x] Comparer l’Obfs actif avec la valeur client sans afficher le secret en clair
+- [x] Vérifier le port d’écoute et le port hopping KIGHMU
+- [x] Documenter la confirmation ou l’incertitude restante
+
+## Migration contrôlée vers nftables pour KIGHMU
+
+- [x] Inspecter les règles nftables et iptables actuelles en lecture seule
+- [x] Vérifier les dépendances de SSH/109, KIGHMU/25000 et UDP-ZIVPN/5667
+- [x] Identifier la table KIGHMU de port hopping existante et ses chaînes
+- [ ] Préparer une sauvegarde et une procédure de rollback avant toute suppression
+- [ ] Demander confirmation explicite avant toute modification distante
+- [ ] Vérifier les services après migration si elle est autorisée
+
+## Obfs fixe demandé : cohérence avant activation
+
+- [ ] Vérifier à nouveau l’écart entre `kighmu` et le secret Salamander actif sans afficher le secret
+- [ ] Décider si le serveur doit réellement être reconfiguré vers `kighmu`
+- [ ] Préparer une stratégie de configuration Android fixe sans exposer le secret dans les logs
+- [ ] Ne modifier le VPS qu’après confirmation explicite de la nouvelle valeur
+- [ ] Ne lancer le build GitHub Actions qu’après validation serveur/client cohérente
+
+## Reconfiguration confirmée de l’Obfs vers `kighmu`
+
+- [x] Sauvegarder `/etc/kighmu/config.yaml` avant modification
+- [x] Remplacer uniquement `obfs.salamander.password` par `kighmu`
+- [x] Redémarrer uniquement `kighmu.service` et vérifier son état
+- [x] Vérifier que UDP-ZIVPN/5667 et ses processus restent inchangés
+- [x] Fixer la valeur Obfs côté Android sans l’afficher dans les logs
+- [ ] Relancer le build release exclusivement via GitHub Actions

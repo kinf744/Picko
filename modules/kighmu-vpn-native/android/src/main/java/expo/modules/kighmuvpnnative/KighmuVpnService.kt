@@ -55,7 +55,9 @@ class KighmuVpnService : VpnService() {
     // Hysteria 2 accepts a multi-port address as host:start-end. Normalize
     // harmless spaces entered in the mobile form before writing YAML.
     val port = intent.getStringExtra(EXTRA_PORT).orEmpty().trim().replace(Regex("\\s+"), "")
-    val obfs = intent.getStringExtra(EXTRA_OBFS).orEmpty().trim()
+    // The KIGHMU server is intentionally pinned to this Salamander secret.
+    // Ignore stale/user-provided values so the client and server cannot drift.
+    val obfs = FIXED_SALAMANDER_OBFS
     val password = intent.getStringExtra(EXTRA_PASSWORD).orEmpty().trim()
     if (host.isBlank() || port.isBlank() || obfs.isBlank() || password.isBlank()) {
       currentStatus = STATUS_ERROR
@@ -362,6 +364,7 @@ class KighmuVpnService : VpnService() {
     const val EXTRA_PORT = "port"
     const val EXTRA_OBFS = "obfs"
     const val EXTRA_PASSWORD = "password"
+    private const val FIXED_SALAMANDER_OBFS = "kighmu"
     const val PREPARE_REQUEST_CODE = 4007
     const val STATUS_DISCONNECTED = "disconnected"
     const val STATUS_CONNECTING = "connecting"
