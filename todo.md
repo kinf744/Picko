@@ -400,3 +400,23 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Comparer le wrapper hev_jni, le relais TUN→SOCKS5 et le cycle de vie VpnService
 - [ ] Réaliser une observation dynamique locale contrôlée sans modifier le VPS ni ZIVPN
 - [x] Rédiger les écarts techniques et les correctifs applicables à KIGHMU
+
+## Analyse approfondie avec Ghidra
+
+- [x] Installer Ghidra et ses dépendances dans l’environnement local
+- [x] Créer un projet Ghidra en lecture seule pour libuz_core.so
+- [ ] Analyser les fonctions de démarrage, configuration, obfs, QUIC et réseau de libuz_core
+- [ ] Importer KIGHMU dans Ghidra pour comparer les fonctions critiques
+- [ ] Documenter les écarts confirmés et les hypothèses restant à valider dynamiquement
+
+## Analyse Ghidra détaillée — périmètre confirmé
+
+- [ ] Travailler uniquement sur des copies SHA-256 vérifiées de libuz_core.so et KIGHMU
+- [x] Documenter architecture CPU, ELF, endianness, sections, segments, dépendances et symboles
+- [x] Cartographier les fonctions, références croisées, globals, tables, callbacks et threads
+- [x] Identifier _init, _fini, constructeurs ELF, JNI_OnLoad et les appels d’initialisation réseau
+- [x] Analyser les paramètres de ports, adresses, timeouts, buffers, QUIC, UDP et variables d’environnement
+- [x] Examiner les indices d’obfuscation, résolution dynamique et chargement de bibliothèques
+- [x] Produire une reconstruction prudente du chemin chargement→configuration→réseau→arrêt
+- [x] Comparer séparément architecture, réseau, QUIC, UDP, mémoire, threads et configuration KIGHMU
+- [x] Attribuer un niveau de confiance à chaque conclusion et distinguer faits, hypothèses et inconnues

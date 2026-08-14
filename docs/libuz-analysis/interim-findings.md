@@ -19,3 +19,25 @@ Ces indices sont compatibles avec un client natif ZIVPN autonome intégrant sa p
 ## Hypothèse technique prioritaire
 
 L’intégration actuelle sépare deux responsabilités : `libuz_core.so` établit le tunnel UDP ZIVPN et expose un SOCKS5 local, tandis que `libhev-socks5-tunnel.so`/`hev_jni.cpp` transfère le trafic TUN vers ce SOCKS5. L’analyse doit donc comparer prioritairement le lancement/configuration de `libuz_core.so` avec le wrapper KIGHMU, puis seulement le relais HEV qui semble déjà fonctionnel puisque le trafic ZIVPN passe sur l’appareil réel.
+
+## Résultats Ghidra — première passe
+
+Ghidra 12.1.2 a été installé depuis la release officielle NSA, avec OpenJDK 21. L’import headless de `libuz_core.so` a réussi en langage `ARM:LE:32:v7`, image base `0x10000`. L’analyse automatique a atteint la limite contrôlée de 120 secondes pendant la phase de décompilation, mais le projet a été sauvegardé et le script d’export a pu s’exécuter.
+
+Ghidra a confirmé `main.main` à l’adresse `0x60dde4` comme point d’entrée Go reconnu. Les imports externes critiques incluent `__android_log_vprint` et `dlopen`. Les références textuelles repérées près des zones initialisées comprennent `/dev/log/main`, `/dev/socket/logdw`, `cannot create a socket`, `cannot connect to /dev/socket`, `init_tls: failed to dlopen main...` et `android_get_device_api_level`. Cela confirme une initialisation Android/Go spécifique et une résolution dynamique au moins partielle, mais ne prouve pas encore la logique exacte du handshake.
+
+La limite de 120 secondes concerne l’analyse Ghidra, pas l’import du fichier. La prochaine passe doit utiliser le projet déjà créé, désactiver les analyseurs coûteux non nécessaires et examiner les fonctions autour de `main.main`, les références croisées vers les chaînes réseau et les appels `dlopen`/sockets.
+
+## Références croisées Ghidra — libuz_core
+
+La recherche brute dans les blocs mémoire a retrouvé des chaînes applicatives spécialisées, même lorsque l’analyse Go ne les typait pas automatiquement. Résultats confirmés : `ZIVPN_UDP_BRUTAL_DEBUG` à `0x617d76` avec une référence de donnée à `0x5133e0`; `udp-zivpn` à `0x610735`, `0x62d41a` et `0x62d439`; `HandshakeTLSConfig` à `0x6108d3`; `Server mode` à `0x6116d5`; `raw-control` à `0x61172d`; `udpEnabled` à `0x610f4b` avec référence à `0x607c88`; `auth.type` à `0x610798` avec référence à `0x60a338`; `userpass` à `0x60ffc5` avec plusieurs références locales; `quicv2` à `0x610dec`, `0x610df5` et `0x6115db` avec plusieurs références dans la zone de code; `multipath` à `0x611dd9`; et `recvwindow` à `0x735c35`/`0x735c6c`.
+
+Les chaînes `down_mbps` et `up_mbps` n’ont pas été retrouvées sous cette forme exacte. Cela ne prouve pas l’absence de contrôle de débit : le binaire peut utiliser une autre nomenclature, des clés encodées, ou des structures sans chaîne correspondante. Les nombreuses occurrences de `timeout`, `socks5` et `obfs` confirment des sous-systèmes distincts, mais elles ne suffisent pas à déterminer leur logique sans décompilation ciblée.
+
+La recherche de chaînes révèle aussi un bloc de messages Android autour de `dlopen`, `/dev/log/main`, `/dev/socket/logdw` et `android_get_device_api_level`, cohérent avec le runtime Go Android observé précédemment.
+
+## Décompilation Ghidra de `main.main`
+
+La reconstruction Ghidra de `main.main` est minimale, ce qui est attendu pour un exécutable Go ARM stripped : les noms internes ne sont pas récupérés. Pour libuz, l’entrée est `0x60dde4`; les appels identifiés directement sont `FUN_00608398` et `FUN_000e87b4`. Pour KIGHMU, l’entrée est `0xB1EC18`; les appels directs sont `FUN_002C78DC` et `FUN_00B03A98`. Dans les deux cas, Ghidra reconstruit la boucle de vérification de pile Go et une branche vers une fonction interne, sans fournir à ce stade une preuve de différence protocolaire.
+
+Il ne faut pas interpréter les fonctions anonymes comme équivalentes sur la seule proximité du rôle apparent. La comparaison fiable doit utiliser les références croisées vers les chaînes et les appels externes, ainsi que les structures de configuration observées dans le code source d’intégration.

@@ -134,3 +134,32 @@ La prochaine correction raisonnable est donc une **intégration KIGHMU diagnosti
 [9]: ../modules/kighmu-vpn-native/android/src/main/cpp/hev_jni.cpp "Wrapper JNI HEV local"
 [10]: /home/ubuntu/Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/ZivpnEngine.kt "Lancement ZIVPN dans Stivaros"
 [11]: /home/ubuntu/Zamois-tun/app/src/main/java/com/kighmu/vpn/engines/HevTun2Socks.kt "Relais HEV dans Stivaros"
+
+## 11. Résultats Ghidra approfondis
+
+Ghidra 12.1.2 a été installé localement avec OpenJDK 21. Les deux exécutables ont été importés dans des projets séparés en langage `ARM:LE:32:v7`, en lecture seule pour l’analyse. Les copies analysées ont conservé leurs hashes SHA-256 documentés précédemment ; les fichiers originaux du dépôt n’ont pas été modifiés.
+
+L’analyse automatique complète d’un exécutable Go ARM de cette taille dépasse la fenêtre pratique du sandbox lorsqu’elle active la décompilation des switches. Elle a néanmoins importé et sauvegardé les projets, identifié `main.main`, les imports Android et `dlopen`, puis exécuté les scripts d’extraction. Le résultat est donc exploitable pour les indices structuraux, mais il ne constitue pas une décompilation exhaustive de toutes les fonctions.
+
+| Élément confirmé par Ghidra | `libuz_core.so` | KIGHMU |
+|---|---:|---:|
+| Langage processeur | `ARM:LE:32:v7` | `ARM:LE:32:v7` |
+| Image base | `0x10000` | `0x10000` |
+| Entrée `main.main` | `0x60DDE4` | `0xB1EC18` |
+| Imports critiques | `__android_log_vprint`, `dlopen` | `__android_log_vprint`, `dlopen` |
+| Appels directs visibles depuis `main.main` | `FUN_00608398`, `FUN_000E87B4` | `FUN_002C78DC`, `FUN_00B03A98` |
+| JNI explicite détecté | Non observé dans l’entrée Go | Non observé dans l’entrée Go |
+
+La reconstruction de `main.main` produite par Ghidra contient surtout la vérification de pile du runtime Go et un appel vers une fonction interne. Les fonctions anonymes `FUN_...` ne doivent pas être renommées arbitrairement en « handshake » ou « initialisation réseau » sans références croisées supplémentaires. La différence d’adresses et de tailles entre les deux entrées confirme seulement que les exécutables sont issus de builds différents.
+
+La recherche brute dans les blocs mémoire a en revanche retrouvé des chaînes applicatives spécialisées de libuz : `ZIVPN_UDP_BRUTAL_DEBUG`, `udp-zivpn`, `HandshakeTLSConfig`, `Server mode`, `raw-control`, `udpEnabled`, `auth.type`, `userpass`, `quicv2`, `multipath` et `recvwindow`. Plusieurs possèdent des références de données vers les zones de code ou de structures, notamment `ZIVPN_UDP_BRUTAL_DEBUG` à `0x617D76` référencé depuis `0x5133E0`, `udpEnabled` à `0x610F4B` référencé depuis `0x607C88`, `auth.type` à `0x610798` référencé depuis `0x60A338`, et `quicv2` à `0x610DEC`/`0x610DF5`/`0x6115DB` avec plusieurs références dans la zone `0x54...`.
+
+> **Interprétation prudente :** ces chaînes prouvent que le binaire contient des chemins de configuration et des marqueurs de fonctionnalités ZIVPN/QUIC. Elles ne prouvent pas, à elles seules, que chaque option est activée dans le profil utilisé par l’application ni qu’elle explique directement la performance observée.
+
+Ghidra a aussi retrouvé les chaînes Android `/dev/log/main`, `/dev/socket/logdw`, `android_get_device_api_level` et des messages relatifs à `dlopen`. Cela est cohérent avec l’utilisation d’un runtime Go Android et d’une résolution dynamique de composants TLS ou système. Aucune fonction `JNI_OnLoad` n’a été identifiée comme point d’entrée du moteur Go ; l’architecture observée reste celle d’un exécutable Go lancé par arguments, avec JNI réservé au relais HEV séparé.
+
+## 12. Conséquence pour KIGHMU
+
+L’installation et la première analyse Ghidra ne révèlent pas une bibliothèque Android manquante évidente dans KIGHMU. Les deux binaires partagent les imports Android principaux, mais leurs entrées et leurs graphes internes sont distincts. Le fait que ZIVPN fonctionne dans la même APK renforce l’hypothèse précédente : le problème KIGHMU doit être recherché dans son protocole `app/v2`, la construction YAML, la combinaison `server/auth/obfs`, la gestion du descripteur TUN ou l’environnement réseau du processus, et non dans le relais HEV déjà validé.
+
+La prochaine analyse Ghidra utile est ciblée : retrouver les call sites autour des chaînes `HandshakeTLSConfig`, `auth.type`, `quicv2` et `udpEnabled`, puis décompiler seulement les fonctions contenant ces références. Une analyse dynamique Frida/LLDB reste séparée et nécessite un processus Android réel ; elle ne peut pas être remplacée honnêtement par une exécution x86 du fichier ARM.
