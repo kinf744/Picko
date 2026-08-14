@@ -59,7 +59,7 @@ class KighmuVpnService : VpnService() {
       if (!connectivity.bindProcessToNetwork(physicalNetwork)) {
         error("Impossible de lier le client KIGHMU au réseau physique")
       }
-      emitLog("info", "NATIVE", "Client KIGHMU lié au réseau physique ${physicalNetwork!!.netId} avant le handshake.")
+      emitLog("info", "NATIVE", "Client KIGHMU lié au réseau physique avant le handshake (${physicalNetwork}).")
       val nativeDir = applicationInfo.nativeLibraryDir
       emitLog("info", "NATIVE", "Binaire prêt: ${executable.name}, taille=${executable.length()}, abi=${Build.SUPPORTED_ABIS.firstOrNull() ?: "inconnue"}.")
       nativeProcess = ProcessBuilder(executable.absolutePath, "client", "--config", config.absolutePath)
