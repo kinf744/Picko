@@ -451,3 +451,13 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Valider le parsing structurel de `20000-50000` et des ports unitaires dans le code local
 - [ ] Vérifier que le patch `fileDescriptor` est présent dans la révision de build
 - [ ] Préparer une reconstruction KIGHMU isolée uniquement si les preuves sont cohérentes
+
+## Cartographie complète libuz → spécification KIGHMU
+
+- [x] Inventorier toutes les fonctions et interfaces observables de libuz_core
+- [x] Cartographier les dépendances, l’initialisation, les constructeurs et les threads
+- [x] Décrire la gestion réseau : résolution, sockets UDP, QUIC, buffers, fenêtres et timeouts
+- [x] Extraire le contrat de configuration, obfs, auth, port range et logs
+- [x] Reconstruire l’architecture générale et la séquence moteur→SOCKS→HEV→TUN
+- [x] Traduire les constats en exigences légitimes pour le code source KIGHMU
+- [x] Documenter les niveaux de confiance et les éléments impossibles à prouver statiquement
