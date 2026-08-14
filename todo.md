@@ -248,3 +248,19 @@ Le dépôt Stivaros utilise la même stratégie native recommandée : `jniLibs/<
 - [ ] Ne pas déclarer le tunnel fonctionnel avant trafic réel confirmé
 
 Le binaire démarre correctement depuis `libkighmu.so`, mais son client échoue ensuite avec `connect error: timeout: no recent network activity`. Le problème est maintenant localisé après le lancement natif et avant le handshake réussi.
+
+
+## Permission réseau Android manquante — 14 août 2026
+
+- [ ] Ajouter `android.permission.ACCESS_NETWORK_STATE` dans la configuration Android
+- [ ] Vérifier que la permission apparaît dans le manifeste final de l’APK
+- [ ] Rendre le binding réseau tolérant si `activeNetwork` ou la permission est indisponible
+- [ ] Ajouter un Diagnostic distinct pour permission manquante, réseau absent et binding refusé
+- [ ] Republier via GitHub Actions uniquement
+- [ ] Vérifier l’artefact release unique armeabi-v7a
+- [ ] Retester le démarrage du moteur KIGHMU
+- [ ] Retester le handshake et le trafic réel
+- [ ] Ne pas modifier UDP-ZIVPN sur UDP/5667
+- [ ] Ne pas déclarer l’application prête avant trafic réel confirmé
+
+Le Diagnostic utilisateur confirme `Neither user 11761 nor current process has android.permission.ACCESS_NETWORK_STATE`. L’échec se produit dans `ConnectivityService` avant le handshake du binaire.
