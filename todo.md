@@ -216,3 +216,14 @@ Le Diagnostic utilisateur confirme `Cannot run program ... error=13, Permission 
 - [ ] Confirmer le handshake et le trafic avant de déclarer l’application prête
 
 Le second test réel reproduit exactement `error=13, Permission denied` malgré `setExecutable(true, false)` et `canExecute()`. Le problème semble lié à la politique d’exécution du chemin `filesDir`, et non aux paramètres du compte KIGHMU.
+
+
+## Comparaison Stivaros — corrections à intégrer
+
+- [x] Ajouter `android:extractNativeLibs="true"` au manifeste final Android
+- [x] Définir `LD_LIBRARY_PATH` vers `applicationInfo.nativeLibraryDir` pour le processus KIGHMU
+- [x] Vérifier la présence et l’exécution de `libkighmu.so` avant `ProcessBuilder.start()`
+- [ ] Publier un nouvel APK release uniquement via GitHub Actions
+- [ ] Retester le moteur et comparer le Diagnostic après installation propre
+
+Le dépôt Stivaros utilise la même stratégie native recommandée : `jniLibs/<abi>`, `nativeLibraryDir`, `useLegacyPackaging=true`, `android:extractNativeLibs=true` et `LD_LIBRARY_PATH` configuré pour les moteurs exécutés par `ProcessBuilder`.

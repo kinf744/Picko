@@ -51,10 +51,18 @@ class KighmuVpnService : VpnService() {
       tunInterface = null
       val executable = copyNativeBinary()
       val config = writeNativeConfig(host, port, obfs, password, nativeFd)
+      val nativeDir = applicationInfo.nativeLibraryDir
+      emitLog("info", "NATIVE", "Binaire prêt: ${executable.name}, taille=${executable.length()}, abi=${Build.SUPPORTED_ABIS.firstOrNull() ?: "inconnue"}.")
       nativeProcess = ProcessBuilder(executable.absolutePath, "client", "--config", config.absolutePath)
-        .redirectErrorStream(true)
+        .directory(filesDir)
+        .apply {
+          environment()["LD_LIBRARY_PATH"] = nativeDir
+          environment()["HOME"] = filesDir.absolutePath
+          environment()["TMPDIR"] = cacheDir.absolutePath
+          redirectErrorStream(true)
+        }
         .start()
-      emitLog("info", "NATIVE", "Processus KIGHMU démarré avec l’interface TUN Android.")
+      emitLog("info", "NATIVE", "Processus KIGHMU démarré depuis nativeLibraryDir avec l’interface TUN Android.")
       thread(isDaemon = true, name = "kighmu-native-log") {
         try {
           nativeProcess?.inputStream?.bufferedReader()?.useLines { lines -> lines.forEach { line ->
