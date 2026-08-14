@@ -344,3 +344,14 @@ Constat intermédiaire : pendant la capture du 14 août 2026 à 11:20–11:22 UT
 - [x] Republier la correction uniquement via GitHub Actions
 - [ ] Faire vérifier sur Android que le VPN se déconnecte entièrement
 - [ ] Vérifier que UDP-ZIVPN sur UDP/5667 reste inchangé
+
+## Blocage pendant connexion — arrêt immédiat et relance — 14 août 2026
+
+- [x] Auditer si `startVpn()` bloque le thread du service pendant le handshake
+- [x] Auditer les courses entre `ACTION_START`, `ACTION_STOP` et `onDestroy()`
+- [x] Rendre l’arrêt immédiat sans attendre la fin du handshake
+- [x] Empêcher une ancienne tentative de réécrire l’état après une nouvelle tentative
+- [x] Autoriser une relance propre après interruption de connexion
+- [ ] Ajouter des tests déterministes de génération/annulation de tentative
+- [ ] Republier uniquement via GitHub Actions
+- [ ] Faire tester interruption puis reconnexion sur appareil Android

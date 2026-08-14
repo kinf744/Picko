@@ -19,17 +19,37 @@ class KighmuVpnService : VpnService() {
   private var tunInterface: android.os.ParcelFileDescriptor? = null
   private var nativeProcess: Process? = null
   private var nativeFd: Int = -1
+  private var attemptGeneration: Long = 0L
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     when (intent?.action) {
       ACTION_STOP -> stopVpn()
-      ACTION_START -> startVpn(intent)
+      ACTION_START -> {
+        val generation = beginStart() ?: return START_NOT_STICKY
+        // VpnService callbacks run on the main thread. Never perform establish(),
+        // ProcessBuilder.start() or any native setup there, otherwise STOP is
+        // queued behind a slow connection attempt.
+        thread(isDaemon = true, name = "kighmu-vpn-start") {
+          startVpn(intent, generation)
+        }
+      }
     }
     return START_NOT_STICKY
   }
 
-  private fun startVpn(intent: Intent) {
-    if (currentStatus == STATUS_CONNECTED || currentStatus == STATUS_CONNECTING) return
+  private fun beginStart(): Long? = synchronized(lifecycleLock) {
+    if (currentStatus == STATUS_CONNECTED || currentStatus == STATUS_CONNECTING) return@synchronized null
+    attemptGeneration += 1
+    currentStatus = STATUS_CONNECTING
+    stateSink?.invoke(STATUS_CONNECTING)
+    attemptGeneration
+  }
+
+  private fun isActive(generation: Long): Boolean = synchronized(lifecycleLock) {
+    generation == attemptGeneration && currentStatus == STATUS_CONNECTING
+  }
+
+  private fun startVpn(intent: Intent, generation: Long) {
     val host = intent.getStringExtra(EXTRA_HOST).orEmpty().trim()
     // Hysteria 2 accepts a multi-port address as host:start-end. Normalize
     // harmless spaces entered in the mobile form before writing YAML.
@@ -41,8 +61,7 @@ class KighmuVpnService : VpnService() {
       return
     }
 
-    currentStatus = STATUS_CONNECTING
-    stateSink?.invoke(STATUS_CONNECTING)
+    if (!isActive(generation)) return
     createNotificationChannel()
     startForeground(NOTIFICATION_ID, notification("Connexion à $host:$port"))
 
@@ -53,10 +72,21 @@ class KighmuVpnService : VpnService() {
         .addAddress("100.100.100.101", 30)
         .addRoute("0.0.0.0", 0)
       val established = builder.establish() ?: error("Android n’a pas fourni d’interface VPN")
-      nativeFd = established.detachFd()
-      tunInterface = null
+      val localFd = established.detachFd()
+      synchronized(lifecycleLock) {
+        if (!isActive(generation)) {
+          ParcelFileDescriptor.adoptFd(localFd).close()
+          return
+        }
+        nativeFd = localFd
+        tunInterface = null
+      }
       val executable = copyNativeBinary()
-      val config = writeNativeConfig(host, port, obfs, password, nativeFd)
+      if (!isActive(generation)) {
+        ParcelFileDescriptor.adoptFd(localFd).close()
+        return
+      }
+      val config = writeNativeConfig(host, port, obfs, password, localFd)
       val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
       val physicalNetwork = connectivity.activeNetwork
       if (physicalNetwork == null) {
@@ -68,7 +98,7 @@ class KighmuVpnService : VpnService() {
       emitLog("info", "NATIVE", "Client KIGHMU lié au réseau physique avant le handshake (${physicalNetwork}).")
       val nativeDir = applicationInfo.nativeLibraryDir
       emitLog("info", "NATIVE", "Binaire prêt: ${executable.name}, taille=${executable.length()}, abi=${Build.SUPPORTED_ABIS.firstOrNull() ?: "inconnue"}.")
-      nativeProcess = ProcessBuilder(executable.absolutePath, "client", "--config", config.absolutePath)
+      val localProcess = ProcessBuilder(executable.absolutePath, "client", "--config", config.absolutePath)
         .directory(filesDir)
         .apply {
           environment()["LD_LIBRARY_PATH"] = nativeDir
@@ -77,23 +107,40 @@ class KighmuVpnService : VpnService() {
           redirectErrorStream(true)
         }
         .start()
+      synchronized(lifecycleLock) {
+        if (!isActive(generation)) {
+          localProcess.destroy()
+          ParcelFileDescriptor.adoptFd(localFd).close()
+          config.delete()
+          return
+        }
+        nativeProcess = localProcess
+      }
       emitLog("info", "NATIVE", "Processus KIGHMU démarré depuis nativeLibraryDir avec l’interface TUN Android.")
       thread(isDaemon = true, name = "kighmu-native-log") {
         try {
-          nativeProcess?.inputStream?.bufferedReader()?.useLines { lines -> lines.forEach { line ->
+          localProcess.inputStream.bufferedReader().useLines { lines -> lines.forEach { line ->
             if (line.isNotBlank()) emitLog("info", "KIGHMU", line.take(500))
           } }
         } catch (error: Throwable) {
           emitLog("warning", "NATIVE", "Lecture du journal natif interrompue : ${error.message ?: "erreur inconnue"}")
         }
       }
-      currentStatus = STATUS_CONNECTED
+      synchronized(lifecycleLock) {
+        if (!isActive(generation)) return
+        currentStatus = STATUS_CONNECTED
+        stateSink?.invoke(STATUS_CONNECTED)
+      }
       startForeground(NOTIFICATION_ID, notification("KIGHMU connecté à $host:$port"))
     } catch (error: Throwable) {
-      currentStatus = STATUS_ERROR
-      stateSink?.invoke(STATUS_ERROR)
-      emitLog("error", "NATIVE", "Échec de démarrage : ${errorMessage(error)}")
-      stopVpn(STATUS_ERROR)
+      if (isActive(generation)) {
+        currentStatus = STATUS_ERROR
+        stateSink?.invoke(STATUS_ERROR)
+        emitLog("error", "NATIVE", "Échec de démarrage : ${errorMessage(error)}")
+        stopVpn(STATUS_ERROR)
+      } else {
+        emitLog("info", "NATIVE", "Tentative KIGHMU annulée avant la fin du démarrage.")
+      }
     }
   }
 
@@ -104,54 +151,63 @@ class KighmuVpnService : VpnService() {
   private fun errorMessage(error: Throwable): String = error.message?.take(500) ?: error::class.java.simpleName
 
   private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
+    // Invalidate the current attempt first. Any worker still inside establish()
+    // or ProcessBuilder.start() must abandon its result instead of reviving the
+    // cancelled tunnel after the user has pressed Disconnect.
+    val process: Process?
+    val fd: Int
+    val tun: ParcelFileDescriptor?
     synchronized(lifecycleLock) {
-      val process = nativeProcess
+      attemptGeneration += 1
+      process = nativeProcess
       nativeProcess = null
-      if (process != null) {
-        process.destroy()
+      fd = nativeFd
+      nativeFd = -1
+      tun = tunInterface
+      tunInterface = null
+      currentStatus = finalStatus
+      stateSink?.invoke(finalStatus)
+    }
+
+    process?.destroy()
+    // Reaping is deliberately asynchronous: the STOP intent must return without
+    // waiting for a misbehaving native process or a pending QUIC handshake.
+    if (process != null) {
+      thread(isDaemon = true, name = "kighmu-vpn-reaper") {
         try {
-          if (!process.waitFor(1500, TimeUnit.MILLISECONDS)) {
-            process.destroyForcibly()
-            process.waitFor(500, TimeUnit.MILLISECONDS)
-          }
+          if (!process.waitFor(1500, TimeUnit.MILLISECONDS)) process.destroyForcibly()
         } catch (_: InterruptedException) {
           process.destroyForcibly()
           Thread.currentThread().interrupt()
         }
       }
-
-      // detachFd() transfers ownership away from ParcelFileDescriptor. Adopt and
-      // close it explicitly, otherwise the parent process keeps the TUN descriptor
-      // alive even after the native child has exited.
-      val fd = nativeFd
-      nativeFd = -1
-      if (fd >= 0) {
-        try {
-          ParcelFileDescriptor.adoptFd(fd).close()
-        } catch (error: Throwable) {
-          emitLog("warning", "NATIVE", "Fermeture du descripteur TUN : ${errorMessage(error)}")
-        }
-      }
-      try {
-        tunInterface?.close()
-      } catch (error: Throwable) {
-        emitLog("warning", "NATIVE", "Fermeture de l’interface TUN : ${errorMessage(error)}")
-      } finally {
-        tunInterface = null
-      }
-      try {
-        val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        connectivity.bindProcessToNetwork(null)
-      } catch (error: Throwable) {
-        emitLog("warning", "NATIVE", "Libération du réseau physique : ${errorMessage(error)}")
-      }
-      File(filesDir, "kighmu-client.yaml").delete()
-      currentStatus = finalStatus
-      stateSink?.invoke(finalStatus)
-      emitLog("info", "NATIVE", "Processus KIGHMU, TUN et binding réseau arrêtés.")
-      if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
-      stopSelf()
     }
+
+    // detachFd() transfers ownership away from ParcelFileDescriptor. Adopt and
+    // close it explicitly, otherwise the parent process keeps the TUN descriptor
+    // alive even after the native child has exited.
+    if (fd >= 0) {
+      try {
+        ParcelFileDescriptor.adoptFd(fd).close()
+      } catch (error: Throwable) {
+        emitLog("warning", "NATIVE", "Fermeture du descripteur TUN : ${errorMessage(error)}")
+      }
+    }
+    try {
+      tun?.close()
+    } catch (error: Throwable) {
+      emitLog("warning", "NATIVE", "Fermeture de l’interface TUN : ${errorMessage(error)}")
+    }
+    try {
+      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+      connectivity.bindProcessToNetwork(null)
+    } catch (error: Throwable) {
+      emitLog("warning", "NATIVE", "Libération du réseau physique : ${errorMessage(error)}")
+    }
+    File(filesDir, "kighmu-client.yaml").delete()
+    emitLog("info", "NATIVE", "Arrêt immédiat demandé : processus KIGHMU, TUN et binding réseau libérés.")
+    if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
+    stopSelf()
   }
 
   private fun copyNativeBinary(): File {
