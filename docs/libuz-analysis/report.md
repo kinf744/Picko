@@ -163,3 +163,28 @@ Ghidra a aussi retrouvé les chaînes Android `/dev/log/main`, `/dev/socket/logd
 L’installation et la première analyse Ghidra ne révèlent pas une bibliothèque Android manquante évidente dans KIGHMU. Les deux binaires partagent les imports Android principaux, mais leurs entrées et leurs graphes internes sont distincts. Le fait que ZIVPN fonctionne dans la même APK renforce l’hypothèse précédente : le problème KIGHMU doit être recherché dans son protocole `app/v2`, la construction YAML, la combinaison `server/auth/obfs`, la gestion du descripteur TUN ou l’environnement réseau du processus, et non dans le relais HEV déjà validé.
 
 La prochaine analyse Ghidra utile est ciblée : retrouver les call sites autour des chaînes `HandshakeTLSConfig`, `auth.type`, `quicv2` et `udpEnabled`, puis décompiler seulement les fonctions contenant ces références. Une analyse dynamique Frida/LLDB reste séparée et nécessite un processus Android réel ; elle ne peut pas être remplacée honnêtement par une exécution x86 du fichier ARM.
+
+## 13. Décompilation ciblée et call graphs
+
+La décompilation ciblée a retrouvé la chaîne `auth.type` à `0x610798`, avec une référence de donnée à `0x60A338` depuis la fonction `FUN_00609D34`. Cette fonction appelle notamment `FUN_00603FF0`, `FUN_000EA428`, `FUN_000EA438`, `FUN_000E87B4`, `FUN_0007AD40`, `FUN_00077BD8`, `FUN_001AD580` et `FUN_0006F918`. Le pseudo-code reconstruit montre des branches qui inspectent des chaînes de longueur 3, 4, 5, 7 et 8, avec des valeurs comme `cmd`, `http`, `https` et d’autres chemins de parsing. Il gère aussi des erreurs structurées lorsque des champs attendus sont absents. Cette fonction ressemble donc davantage à un **parseur/routeur de configuration ou d’URL** qu’à la négociation QUIC elle-même. Cette interprétation est très probable, mais les types Go d’origine ne sont pas récupérés.
+
+Les chaînes `HandshakeTLSConfig` et `udpEnabled` ont été retrouvées, mais leurs références n’ont pas été transformées en fonctions nommées par Ghidra dans la passe ciblée. Elles restent des points d’entrée prioritaires pour une analyse interactive plus fine ou une nouvelle passe limitée aux adresses de données concernées.
+
+Le graphe d’appels depth-3 généré automatiquement depuis `main.main` donne les métriques suivantes :
+
+| Métrique | libuz | KIGHMU |
+|---|---:|---:|
+| Fonctions reconnues | 4 603 | 3 322 |
+| Nœuds atteignables à profondeur 3 | 39 | 40 |
+| Arêtes atteignables à profondeur 3 | 42 | 43 |
+| Arêtes sortantes de `main.main` | 2 | 2 |
+| Degré sortant maximal | 26 | 27 |
+| Degré entrant maximal | 4 | 4 |
+
+Ces chiffres montrent une forme de démarrage Go comparable dans les trois premiers niveaux, mais ils ne prouvent ni une équivalence du protocole ni une supériorité de performance. Les adresses ne sont pas comparables directement puisque les deux exécutables sont issus de builds différents.
+
+## 14. Préparation de l’instrumentation dynamique
+
+Les outils hôte `adb`, `lldb` et `frida-tools` sont installés localement. Un script Frida en lecture seule est disponible dans `docs/libuz-analysis/frida-observe-network.js`. Il observe le chargement des modules natifs, `dlopen`, `connect`, `sendto`, `recvfrom`, `sendmsg`, `recvmsg` et les options de socket, sans modifier les arguments ni le trafic.
+
+La commande `adb devices -l` ne détecte actuellement aucun appareil Android. L’instrumentation dynamique ne peut donc pas encore être exécutée. Elle nécessitera un appareil autorisé avec débogage USB, ou un émulateur ARM compatible avec l’APK armeabi-v7a et un agent Frida correspondant à l’architecture. Cette absence d’appareil est une limite opérationnelle, non un résultat négatif sur le binaire.

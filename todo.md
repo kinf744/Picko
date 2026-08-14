@@ -420,3 +420,10 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Produire une reconstruction prudente du chemin chargement→configuration→réseau→arrêt
 - [x] Comparer séparément architecture, réseau, QUIC, UDP, mémoire, threads et configuration KIGHMU
 - [x] Attribuer un niveau de confiance à chaque conclusion et distinguer faits, hypothèses et inconnues
+
+## Décompilation ciblée et instrumentation dynamique
+
+- [x] Décompiler les fonctions référencées par `HandshakeTLSConfig`, `auth.type` et `udpEnabled`
+- [x] Extraire et comparer automatiquement les call graphs de libuz_core et KIGHMU
+- [x] Préparer les scripts et prérequis Frida/LLDB pour un appareil Android réel
+- [x] Documenter les résultats dynamiques et les limites de preuve
