@@ -7,30 +7,31 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
-import android.os.IBinder
 import android.os.ParcelFileDescriptor
-import java.io.File
-import java.util.concurrent.TimeUnit
 import androidx.core.app.NotificationCompat
+import java.io.File
+import java.net.InetAddress
+import java.net.Socket
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
+/**
+ * Temporary diagnostic client based on the UDP-ZIVPN engine from Zamois-tun.
+ * KIGHMU's libkighmu.so is intentionally not referenced in this test service.
+ */
 class KighmuVpnService : VpnService() {
   private val lifecycleLock = Any()
-  private var tunInterface: android.os.ParcelFileDescriptor? = null
-  private var nativeProcess: Process? = null
-  private var nativeFd: Int = -1
-  private var attemptGeneration: Long = 0L
+  private var tunFd = -1
+  private var zivpnProcess: Process? = null
+  private var attemptGeneration = 0L
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     when (intent?.action) {
       ACTION_STOP -> stopVpn()
       ACTION_START -> {
         val generation = beginStart() ?: return START_NOT_STICKY
-        // VpnService callbacks run on the main thread. Never perform establish(),
-        // ProcessBuilder.start() or any native setup there, otherwise STOP is
-        // queued behind a slow connection attempt.
-        thread(isDaemon = true, name = "kighmu-vpn-start") {
-          startVpn(intent, generation)
+        thread(isDaemon = true, name = "zivpn-test-start") {
+          startZivpn(intent, generation)
         }
       }
     }
@@ -49,244 +50,178 @@ class KighmuVpnService : VpnService() {
     generation == attemptGeneration && currentStatus == STATUS_CONNECTING
   }
 
-  private fun startVpn(intent: Intent, generation: Long) {
+  private fun startZivpn(intent: Intent, generation: Long) {
     val host = intent.getStringExtra(EXTRA_HOST).orEmpty().trim()
-    // Hysteria 2 accepts a multi-port address as host:start-end. Normalize
-    // harmless spaces entered in the mobile form before writing YAML.
     val port = intent.getStringExtra(EXTRA_PORT).orEmpty().trim().replace(Regex("\\s+"), "")
-    val obfs = intent.getStringExtra(EXTRA_OBFS).orEmpty()
-    val password = intent.getStringExtra(EXTRA_PASSWORD).orEmpty()
+    val obfs = intent.getStringExtra(EXTRA_OBFS).orEmpty().trim()
+    val password = intent.getStringExtra(EXTRA_PASSWORD).orEmpty().trim()
     if (host.isBlank() || port.isBlank() || obfs.isBlank() || password.isBlank()) {
-      currentStatus = STATUS_ERROR
+      fail(generation, "Host, port, Obfs et mot de passe sont obligatoires")
       return
     }
 
-    if (!isActive(generation)) return
-    createNotificationChannel()
-    startForeground(NOTIFICATION_ID, notification("Connexion à $host:$port"))
-
     try {
-      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-      val physicalNetwork = connectivity.activeNetwork
-        ?: error("Aucun réseau physique disponible pour le handshake KIGHMU")
+      createNotificationChannel()
+      startForeground(NOTIFICATION_ID, notification("Préparation du test UDP-ZIVPN"))
+      val physicalNetwork = (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).activeNetwork
+        ?: error("Aucun réseau physique disponible")
+      val resolvedHost = try { InetAddress.getByName(host).hostAddress ?: host } catch (_: Throwable) { host }
+      if (!isActive(generation)) return
+
       val builder = Builder()
-        .setSession("KIGHMU VPN")
-        .setMtu(1500)
-        .addAddress("100.100.100.101", 30)
+        .setSession("UDP-ZIVPN test")
+        .setMtu(1400)
+        .addAddress("10.0.0.2", 24)
         .addRoute("0.0.0.0", 0)
+        .addDnsServer("8.8.8.8")
         .setUnderlyingNetworks(arrayOf(physicalNetwork))
-      // The native client runs under this application's UID. Excluding this
-      // package keeps its QUIC/UDP control traffic on the physical network
-      // instead of looping it back into the TUN it is responsible for.
-      try {
-        builder.addDisallowedApplication(packageName)
-      } catch (error: Throwable) {
-        error("Impossible d’exclure KIGHMU du TUN : ${errorMessage(error)}")
-      }
-      val established = builder.establish() ?: error("Android n’a pas fourni d’interface VPN")
-      val localFd = established.detachFd()
+      builder.addDisallowedApplication(packageName)
+      val established = builder.establish() ?: error("Android n’a pas fourni l’interface VPN")
+      val fd = established.detachFd()
       synchronized(lifecycleLock) {
         if (!isActive(generation)) {
-          ParcelFileDescriptor.adoptFd(localFd).close()
+          ParcelFileDescriptor.adoptFd(fd).close()
           return
         }
-        nativeFd = localFd
-        tunInterface = null
+        tunFd = fd
       }
-      val executable = copyNativeBinary()
-      if (!isActive(generation)) {
-        ParcelFileDescriptor.adoptFd(localFd).close()
-        return
-      }
-      val config = writeNativeConfig(host, port, obfs, password, localFd)
+
+      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
       if (!connectivity.bindProcessToNetwork(physicalNetwork)) {
-        error("Impossible de lier le client KIGHMU au réseau physique")
+        error("Impossible de lier ZIVPN au réseau physique")
       }
-      emitLog("info", "NATIVE", "KIGHMU est exclu du TUN et lié au réseau physique avant le handshake (${physicalNetwork}).")
+      emitLog("info", "ZIVPN", "Application exclue du TUN et processus lié au réseau physique")
+
       val nativeDir = applicationInfo.nativeLibraryDir
-      emitLog("info", "NATIVE", "Binaire prêt: ${executable.name}, taille=${executable.length()}, abi=${Build.SUPPORTED_ABIS.firstOrNull() ?: "inconnue"}.")
-      val localProcess = ProcessBuilder(executable.absolutePath, "client", "--config", config.absolutePath)
+      val binary = File(nativeDir, "libuz_core.so")
+      if (!binary.exists() || binary.length() == 0L || !binary.canExecute()) {
+        error("libuz_core.so absent ou non exécutable dans nativeLibraryDir")
+      }
+      if (!ZivpnTun2Socks.init()) error("hev_jni indisponible dans l’APK")
+
+      val config = File(cacheDir, "zivpn-client.json")
+      config.writeText(buildUzConfig(resolvedHost, port, password, obfs))
+      val process = ProcessBuilder(binary.absolutePath, "-s", obfs, "--config", config.readText())
         .directory(filesDir)
         .apply {
           environment()["LD_LIBRARY_PATH"] = nativeDir
-          environment()["HOME"] = filesDir.absolutePath
+          environment()["HOME"] = cacheDir.absolutePath
           environment()["TMPDIR"] = cacheDir.absolutePath
           redirectErrorStream(true)
         }
         .start()
       synchronized(lifecycleLock) {
         if (!isActive(generation)) {
-          localProcess.destroy()
-          ParcelFileDescriptor.adoptFd(localFd).close()
+          process.destroyForcibly()
+          ParcelFileDescriptor.adoptFd(fd).close()
           config.delete()
           return
         }
-        nativeProcess = localProcess
+        zivpnProcess = process
       }
-      emitLog("info", "NATIVE", "Processus KIGHMU démarré depuis nativeLibraryDir avec l’interface TUN Android.")
-      thread(isDaemon = true, name = "kighmu-native-log") {
-        try {
-          localProcess.inputStream.bufferedReader().useLines { lines -> lines.forEach { line ->
-            if (line.isNotBlank()) emitLog("info", "KIGHMU", line.take(500))
-          } }
-        } catch (error: Throwable) {
-          emitLog("warning", "NATIVE", "Lecture du journal natif interrompue : ${error.message ?: "erreur inconnue"}")
-        }
-      }
+      emitLog("info", "ZIVPN", "libuz_core.so démarré, ABI armeabi-v7a, serveur=$resolvedHost:$port")
+      thread(isDaemon = true, name = "zivpn-native-log") { readNativeLogs(process) }
+
+      val socksReady = waitForLocalPort(process, 7778, 3500L)
+      if (!socksReady) error("Le relais SOCKS5 ZIVPN n’est pas apparu sur 127.0.0.1:7778")
+      if (!isActive(generation)) return
+      ZivpnTun2Socks.start(this, fd, 7778, 1400)
+      emitLog("info", "ZIVPN", "Relais TUN→SOCKS5 actif sur 127.0.0.1:7778")
       synchronized(lifecycleLock) {
         if (!isActive(generation)) return
         currentStatus = STATUS_CONNECTED
         stateSink?.invoke(STATUS_CONNECTED)
       }
-      startForeground(NOTIFICATION_ID, notification("KIGHMU connecté à $host:$port"))
+      startForeground(NOTIFICATION_ID, notification("UDP-ZIVPN connecté à $resolvedHost:$port"))
     } catch (error: Throwable) {
-      if (isActive(generation)) {
-        currentStatus = STATUS_ERROR
-        stateSink?.invoke(STATUS_ERROR)
-        emitLog("error", "NATIVE", "Échec de démarrage : ${errorMessage(error)}")
-        stopVpn(STATUS_ERROR)
-      } else {
-        emitLog("info", "NATIVE", "Tentative KIGHMU annulée avant la fin du démarrage.")
+      fail(generation, error.message ?: error::class.java.simpleName)
+    }
+  }
+
+  private fun buildUzConfig(host: String, port: String, password: String, obfs: String): String {
+    return """{"server":"${json(host + ":" + port)}","obfs":"${json(obfs)}","auth":"${json(password)}","socks5":{"listen":"127.0.0.1:7778"},"insecure":true,"recvwindowconn":65536,"recvwindow":262144,"disable_mtu_discovery":true,"down_mbps":50,"up_mbps":10}"""
+  }
+
+  private fun json(value: String): String = value
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+    .replace("\n", "\\n")
+    .replace("\r", "\\r")
+
+  private fun waitForLocalPort(process: Process, port: Int, timeoutMs: Long): Boolean {
+    val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+    while (System.nanoTime() < deadline && process.isAlive) {
+      try {
+        Socket("127.0.0.1", port).use { return true }
+      } catch (_: Throwable) {
+        Thread.sleep(50)
       }
     }
+    return false
+  }
+
+  private fun readNativeLogs(process: Process) {
+    try {
+      process.inputStream.bufferedReader().useLines { lines ->
+        lines.forEach { line -> if (line.isNotBlank()) emitLog("info", "ZIVPN", line.take(500)) }
+      }
+    } catch (error: Throwable) {
+      emitLog("warning", "ZIVPN", "Lecture du journal interrompue: ${error.message ?: "erreur"}")
+    }
+  }
+
+  private fun fail(generation: Long, message: String) {
+    if (!isActive(generation)) return
+    emitLog("error", "ZIVPN", "Échec du test client: $message")
+    stopVpn(STATUS_ERROR)
   }
 
   private fun emitLog(level: String, component: String, message: String) {
     logSink?.invoke(level, component, message)
   }
 
-  private fun errorMessage(error: Throwable): String = error.message?.take(500) ?: error::class.java.simpleName
-
   private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
-    // Invalidate the current attempt first. Any worker still inside establish()
-    // or ProcessBuilder.start() must abandon its result instead of reviving the
-    // cancelled tunnel after the user has pressed Disconnect.
     val process: Process?
     val fd: Int
-    val tun: ParcelFileDescriptor?
     synchronized(lifecycleLock) {
       attemptGeneration += 1
-      process = nativeProcess
-      nativeProcess = null
-      fd = nativeFd
-      nativeFd = -1
-      tun = tunInterface
-      tunInterface = null
+      process = zivpnProcess
+      zivpnProcess = null
+      fd = tunFd
+      tunFd = -1
       currentStatus = finalStatus
       stateSink?.invoke(finalStatus)
     }
-
-    process?.destroy()
-    // Reaping is deliberately asynchronous: the STOP intent must return without
-    // waiting for a misbehaving native process or a pending QUIC handshake.
-    if (process != null) {
-      thread(isDaemon = true, name = "kighmu-vpn-reaper") {
-        try {
-          if (!process.waitFor(1500, TimeUnit.MILLISECONDS)) process.destroyForcibly()
-        } catch (_: InterruptedException) {
-          process.destroyForcibly()
-          Thread.currentThread().interrupt()
-        }
-      }
-    }
-
-    // detachFd() transfers ownership away from ParcelFileDescriptor. Adopt and
-    // close it explicitly, otherwise the parent process keeps the TUN descriptor
-    // alive even after the native child has exited.
     if (fd >= 0) {
-      try {
-        ParcelFileDescriptor.adoptFd(fd).close()
-      } catch (error: Throwable) {
-        emitLog("warning", "NATIVE", "Fermeture du descripteur TUN : ${errorMessage(error)}")
-      }
+      try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
     }
-    try {
-      tun?.close()
-    } catch (error: Throwable) {
-      emitLog("warning", "NATIVE", "Fermeture de l’interface TUN : ${errorMessage(error)}")
-    }
-    try {
-      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-      connectivity.bindProcessToNetwork(null)
-    } catch (error: Throwable) {
-      emitLog("warning", "NATIVE", "Libération du réseau physique : ${errorMessage(error)}")
-    }
-    File(filesDir, "kighmu-client.yaml").delete()
-    emitLog("info", "NATIVE", "Arrêt immédiat demandé : processus KIGHMU, TUN et binding réseau libérés.")
+    try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).bindProcessToNetwork(null) } catch (_: Throwable) {}
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
+    thread(isDaemon = true, name = "zivpn-test-stop") {
+      try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
+      try { process?.waitFor(700, TimeUnit.MILLISECONDS) } catch (_: Throwable) {}
+      try { process?.destroyForcibly() } catch (_: Throwable) {}
+      File(cacheDir, "zivpn-client.json").delete()
+      emitLog("info", "ZIVPN", "Arrêt complet du test client UDP-ZIVPN")
+    }
     stopSelf()
   }
 
-  private fun copyNativeBinary(): File {
-    // The ELF is packaged as a native library so Android extracts it under
-    // nativeLibraryDir, which is executable. Running an asset copied to filesDir
-    // can fail with EACCES on devices mounting app data with noexec.
-    val nativeTarget = File(applicationInfo.nativeLibraryDir, "libkighmu.so")
-    if (!nativeTarget.exists() || nativeTarget.length() == 0L) {
-      error("Binaire KIGHMU absent de nativeLibraryDir : ${nativeTarget.absolutePath}")
-    }
-    if (!nativeTarget.canExecute()) {
-      error("Binaire KIGHMU non exécutable dans nativeLibraryDir : ${nativeTarget.absolutePath}")
-    }
-    return nativeTarget
-  }
-
-  private fun writeNativeConfig(host: String, port: String, obfs: String, password: String, fd: Int): File {
-    val target = File(filesDir, "kighmu-client.yaml")
-    val yaml = """
-      server: ${yamlScalar("$host:$port")}
-      auth: ${yamlScalar(password)}
-      obfs:
-        type: salamander
-        salamander:
-          password: ${yamlScalar(obfs)}
-      tls:
-        sni: ${yamlScalar(host)}
-        insecure: true
-      transport:
-        type: udp
-        udp:
-          hopInterval: 30s
-      quic:
-        disablePathMTUDiscovery: false
-      tun:
-        name: kighmu
-        mtu: 1500
-        fileDescriptor: $fd
-        timeout: 5m
-        address:
-          ipv4: 100.100.100.101/30
-          ipv6: 2001::ffff:ffff:ffff:fff1/126
-        route:
-          strict: true
-          ipv4: [0.0.0.0/0]
-          ipv6: ["2000::/3"]
-    """.trimIndent()
-    target.writeText(yaml)
-    return target
-  }
-
-  private fun yamlScalar(value: String): String = "'" + value.replace("'", "''") + "'"
-
   private fun createNotificationChannel() {
     if (Build.VERSION.SDK_INT >= 26) {
-      val manager = getSystemService(NotificationManager::class.java)
-      manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "KIGHMU VPN", NotificationManager.IMPORTANCE_LOW))
+      getSystemService(NotificationManager::class.java).createNotificationChannel(
+        NotificationChannel(CHANNEL_ID, "UDP-ZIVPN test", NotificationManager.IMPORTANCE_LOW),
+      )
     }
   }
 
   private fun notification(text: String): Notification {
     val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
     val pending = launchIntent?.let { PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT) }
-    val stopPending = PendingIntent.getService(
-      this,
-      NOTIFICATION_ID,
-      Intent(this, KighmuVpnService::class.java).apply { action = ACTION_STOP },
-      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-    )
+    val stopPending = PendingIntent.getService(this, NOTIFICATION_ID, Intent(this, KighmuVpnService::class.java).apply { action = ACTION_STOP }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.stat_sys_warning)
-      .setContentTitle("KIGHMU VPN")
+      .setContentTitle("UDP-ZIVPN test")
       .setContentText(text)
       .setOngoing(true)
       .setContentIntent(pending)
@@ -294,17 +229,9 @@ class KighmuVpnService : VpnService() {
       .build()
   }
 
-  override fun onRevoke() {
-    stopVpn()
-    super.onRevoke()
-  }
-
-  override fun onDestroy() {
-    stopVpn()
-    super.onDestroy()
-  }
-
-  override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
+  override fun onRevoke() { stopVpn(); super.onRevoke() }
+  override fun onDestroy() { stopVpn(); super.onDestroy() }
+  override fun onBind(intent: Intent?) = super.onBind(intent)
 
   companion object {
     const val ACTION_START = "expo.modules.kighmuvpnnative.START"
@@ -320,7 +247,7 @@ class KighmuVpnService : VpnService() {
     const val STATUS_ERROR = "error"
     const val CHANNEL_ID = "kighmu-vpn"
     const val NOTIFICATION_ID = 4008
-    @Volatile var currentStatus: String = STATUS_DISCONNECTED
+    @Volatile var currentStatus = STATUS_DISCONNECTED
     @Volatile var logSink: ((String, String, String) -> Unit)? = null
     @Volatile var stateSink: ((String) -> Unit)? = null
   }

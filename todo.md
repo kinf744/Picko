@@ -378,3 +378,17 @@ Constat intermédiaire : pendant la capture du 14 août 2026 à 11:20–11:22 UT
 - [ ] Confirmer le handshake et le trafic réel avant de déclarer le tunnel opérationnel
 
 Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au téléphone n’a atteint UDP/25000 ni la plage 20000-50000. Le serveur KIGHMU est actif sur UDP/25000 et les règles de redirection sont présentes. Cette absence, alors que le binaire Android est lancé, indique que le flux QUIC du processus applicatif est probablement repris par son propre TUN avant de sortir du téléphone. Le correctif exclut désormais le package KIGHMU du TUN et déclare le réseau physique sous-jacent avant l’établissement de l’interface.
+
+## Mode de test client UDP-ZIVPN — comparaison avec KIGHMU
+
+- [x] Cloner et analyser Zamois-tun en lecture seule
+- [x] Identifier le binaire UDP-ZIVPN, l’ABI et les bibliothèques associées
+- [x] Identifier la configuration, le format des paramètres et le lanceur natif
+- [x] Définir un mode de test client isolé sans modifier le serveur UDP-ZIVPN/5667
+- [x] Remplacer temporairement le moteur KIGHMU par ZIVPN dans l’APK de test
+- [x] Retirer entièrement le binaire KIGHMU de l’APK de test
+- [x] Valider TypeScript/tests sans compilation Android locale
+- [ ] Compiler uniquement via GitHub Actions
+- [ ] Tester la connexion ZIVPN réelle sur Android
+- [ ] Comparer le résultat avec le diagnostic KIGHMU
+- [ ] Restaurer ou conserver explicitement le mode choisi après comparaison
