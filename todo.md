@@ -472,3 +472,11 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Renforcer l’arrêt du moteur, du relais et du descripteur TUN
 - [x] Ajouter tests déterministes et logs sans secrets
 - [x] Préparer exclusivement le build Android GitHub Actions après validation
+
+## Build GitHub Actions KIGHMU après modification
+
+- [ ] Vérifier le workflow release, l’ABI armeabi-v7a et la présence de libkighmu.so
+- [ ] Lancer le workflow GitHub Actions depuis le dépôt Picko
+- [ ] Vérifier la réussite du build et l’artefact APK release unique
+- [ ] Vérifier le contenu de l’APK sans compiler localement
+- [ ] Installer l’APK release et recueillir le Diagnostic après test réel
