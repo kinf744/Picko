@@ -271,12 +271,19 @@ class KighmuVpnService : VpnService() {
   private fun notification(text: String): Notification {
     val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
     val pending = launchIntent?.let { PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT) }
+    val stopPending = PendingIntent.getService(
+      this,
+      NOTIFICATION_ID,
+      Intent(this, KighmuVpnService::class.java).apply { action = ACTION_STOP },
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.stat_sys_warning)
       .setContentTitle("KIGHMU VPN")
       .setContentText(text)
       .setOngoing(true)
       .setContentIntent(pending)
+      .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Arrêter", stopPending)
       .build()
   }
 

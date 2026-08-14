@@ -18,6 +18,7 @@ export default function HomeScreen() {
   const copy = statusCopy[status];
   const isBusy = status === "connecting";
   const isConnected = status === "connected";
+  const canDisconnect = isBusy || isConnected;
   const endpoint = config.host ? `${config.host}:${config.port || "—"}` : "Aucun profil enregistré";
 
   return (
@@ -39,11 +40,12 @@ export default function HomeScreen() {
           <Text className="mt-4 text-xl font-bold text-foreground">{copy.label}</Text>
           <Text className="mt-1 text-center text-sm text-muted">{lastError ?? copy.hint}</Text>
           <Pressable
-            onPress={isConnected ? disconnect : connect}
-            disabled={isBusy}
-            style={({ pressed }) => [styles.primaryButton, { backgroundColor: isConnected ? colors.error : colors.primary }, pressed && styles.pressed, isBusy && styles.disabled]}
+            onPress={canDisconnect ? disconnect : connect}
+            accessibilityRole="button"
+            accessibilityLabel={isBusy ? "Annuler la connexion VPN" : isConnected ? "Déconnecter le VPN" : "Connecter le VPN"}
+            style={({ pressed }) => [styles.primaryButton, { backgroundColor: canDisconnect ? colors.error : colors.primary }, pressed && styles.pressed]}
           >
-            {isBusy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>{isConnected ? "Déconnecter" : "Se connecter"}</Text>}
+            {isBusy ? <Text style={styles.primaryButtonText}>Annuler la connexion</Text> : <Text style={styles.primaryButtonText}>{isConnected ? "Déconnecter" : "Se connecter"}</Text>}
           </Pressable>
           <Pressable onPress={() => router.push("./configuration")} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
             <Text className="text-sm font-semibold text-primary">Modifier la configuration</Text>

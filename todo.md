@@ -355,3 +355,14 @@ Constat intermédiaire : pendant la capture du 14 août 2026 à 11:20–11:22 UT
 - [ ] Ajouter des tests déterministes de génération/annulation de tentative
 - [x] Republier uniquement via GitHub Actions
 - [ ] Faire tester interruption puis reconnexion sur appareil Android
+
+## Comparaison Stivaros pour le cycle d’arrêt — 14 août 2026
+
+- [x] Cloner Stivaros en lecture seule et repérer son service VPN
+- [x] Comparer les chemins START, STOP, `onDestroy()` et le traitement du processus natif
+- [x] Identifier le mécanisme qui rend l’interruption et la reconnexion rapides
+- [x] Rendre le bouton Annuler pressable pendant l’état `connecting`
+- [x] Ajouter une action Arrêter dans la notification VPN comme voie de secours
+- [x] Adapter uniquement le mécanisme d’arrêt nécessaire à KIGHMU
+- [ ] Publier la correction exclusivement via GitHub Actions
+- [ ] Faire valider sur Android l’interruption pendant la connexion puis la reconnexion
