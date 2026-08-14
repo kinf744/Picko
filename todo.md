@@ -353,5 +353,5 @@ Constat intermédiaire : pendant la capture du 14 août 2026 à 11:20–11:22 UT
 - [x] Empêcher une ancienne tentative de réécrire l’état après une nouvelle tentative
 - [x] Autoriser une relance propre après interruption de connexion
 - [ ] Ajouter des tests déterministes de génération/annulation de tentative
-- [ ] Republier uniquement via GitHub Actions
+- [x] Republier uniquement via GitHub Actions
 - [ ] Faire tester interruption puis reconnexion sur appareil Android
