@@ -248,3 +248,11 @@ Les changements appliqués sont limités à l’intégration Android : validatio
 Le service ne publie plus l’état connecté immédiatement après `ProcessBuilder.start()`. Il attend jusqu’à 15 secondes une indication de handshake dans les logs natifs (`handshake complete/established/succeeded`, `tunnel is ready` ou `connected to`). En cas d’absence, il remonte une erreur et nettoie le processus, le TUN et le binding réseau. Cette logique réduit les faux positifs UI, mais reste une preuve indirecte tant que le binaire ne fournit pas un événement de trafic vérifiable.
 
 Les validations locales TypeScript, Vitest et `git diff --check` réussissent. L’APK n’a pas été compilé localement, conformément à la contrainte GitHub Actions. Le binaire réintroduit est identique à la copie historique et à l’asset existant ; son SHA-256 est `c0290fb4bf18eca19f3aee157a5125d6231b5f9d9cb6a74bfc8ace19aa0ae000`. La chaîne `fileDescriptor` n’est pas visible dans ce binaire, donc le prochain build GitHub doit être considéré comme un test d’intégration et non comme une preuve de compatibilité YAML.
+
+## 19. Validation GitHub Actions de la première APK KIGHMU modifiée
+
+Le workflow `31820187145` a d’abord échoué à `:kighmu-vpn-native:compileReleaseKotlin` avec `Unresolved reference: fail` à la ligne 66. Le helper manquant a été ajouté dans `KighmuVpnService.kt`, puis les contrôles TypeScript et Vitest ont réussi localement.
+
+Le workflow corrigé `31820805134` a réussi : validation TypeScript/tests, compilation release Gradle et dépôt de l’artefact APK unique. L’APK contient `assets/index.android.bundle`, uniquement `lib/armeabi-v7a/` pour les bibliothèques natives, et `lib/armeabi-v7a/libkighmu.so`. Le Go BuildID et l’ELF BuildID du binaire KIGHMU embarqué correspondent à la copie source ; la différence de SHA-256 provient du traitement de packaging Gradle. L’APK contient aussi les bibliothèques ZIVPN/HEV comme ressources natives héritées, mais le service courant KIGHMU ne les lance pas.
+
+Le build Android a été réalisé exclusivement par GitHub Actions. L’installation sur appareil, le handshake KIGHMU et le trafic réel restent non validés.

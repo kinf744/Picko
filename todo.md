@@ -476,15 +476,15 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 ## Build GitHub Actions KIGHMU après modification
 
 - [ ] Vérifier le workflow release, l’ABI armeabi-v7a et la présence de libkighmu.so
-- [ ] Lancer le workflow GitHub Actions depuis le dépôt Picko
-- [ ] Vérifier la réussite du build et l’artefact APK release unique
-- [ ] Vérifier le contenu de l’APK sans compiler localement
+- [x] Lancer le workflow GitHub Actions depuis le dépôt Picko
+- [x] Vérifier le résultat de build et l’artefact APK release unique
+- [x] Vérifier le contenu de l’APK sans compiler localement
 - [ ] Installer l’APK release et recueillir le Diagnostic après test réel
 
 ## Réauthentification GitHub temporaire et workflow
 
-- [ ] Réauthentifier GitHub CLI avec le jeton temporaire sans l’écrire dans le projet
-- [ ] Pousser le commit KIGHMU vers `kinf744/Picko`
+- [x] Réauthentifier GitHub CLI avec le jeton temporaire sans l’écrire dans le projet
+- [x] Pousser le commit KIGHMU vers `kinf744/Picko`
 - [ ] Lancer le workflow `build-android.yml`
 - [ ] Surveiller le résultat et vérifier l’artefact release armeabi-v7a
 - [ ] Révoquer le jeton temporaire après utilisation si nécessaire
@@ -493,5 +493,5 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 
 - [x] Identifier `Unresolved reference: fail` dans KighmuVpnService.kt:66
 - [x] Ajouter le helper `fail(generation, message)` et conserver le nettoyage existant
-- [ ] Republier le correctif et relancer le workflow GitHub Actions
-- [ ] Vérifier l’APK release et son contenu armeabi-v7a
+- [x] Republier le correctif et relancer le workflow GitHub Actions
+- [x] Vérifier l’APK release et son contenu armeabi-v7a
