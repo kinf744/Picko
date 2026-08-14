@@ -100,7 +100,13 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     return subscribeNativeVpn(
       (payload) => {
         const level = payload.level === "error" || payload.level === "warning" || payload.level === "connection" ? payload.level : "info";
-        setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component: payload.component || "NATIVE", message: payload.message } as DiagnosticLog, ...current].slice(0, 300));
+        const component = payload.component || "NATIVE";
+        const message = payload.message;
+        setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component, message } as DiagnosticLog, ...current].slice(0, 300));
+        if (component === "KIGHMU" && /failed to initialize|timeout|connect error|no recent network activity/i.test(message)) {
+          setLastError("Le handshake KIGHMU a échoué ou a expiré.");
+          setStatus("error");
+        }
       },
       (payload) => {
         if (payload.status === "connected" || payload.status === "connecting" || payload.status === "disconnected" || payload.status === "error") setStatus(payload.status);
@@ -166,8 +172,8 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       await native.startVpn(config.host, config.port, config.obfs, config.password);
-      addLog("connection", "NATIVE", "Service VpnService démarré ; initialisation du moteur KIGHMU.");
-      setStatus("connected");
+      addLog("connection", "NATIVE", "Service VpnService démarré ; handshake KIGHMU en attente.");
+      setStatus("connecting");
     } catch (error) {
       setLastError("Le service VPN Android n’a pas pu démarrer.");
       setStatus("error");

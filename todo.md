@@ -264,3 +264,37 @@ Le binaire démarre correctement depuis `libkighmu.so`, mais son client échoue 
 - [ ] Ne pas déclarer l’application prête avant trafic réel confirmé
 
 Le Diagnostic utilisateur confirme `Neither user 11761 nor current process has android.permission.ACCESS_NETWORK_STATE`. L’échec se produit dans `ConnectivityService` avant le handshake du binaire.
+
+
+## Timeout de handshake persistant après binding réussi — 14 août 2026
+
+- [ ] Collecter le Diagnostic complet de la tentative à 02:56
+- [ ] Collecter les logs `kighmu.service` côté VPS au même instant
+- [ ] Vérifier si les paquets UDP Android arrivent sur UDP/25000 ou la plage 20000-50000
+- [ ] Vérifier si le serveur renvoie une réponse au client Android
+- [ ] Auditer le format exact Host/Port/Obfs/userpass transmis au binaire
+- [ ] Comparer la configuration Android avec un profil client KIGHMU connu fonctionnel
+- [ ] Vérifier la compatibilité de la version du binaire armeabi-v7a avec le serveur
+- [ ] Reproduire le handshake hors interface Android avec le même profil
+- [ ] Vérifier les erreurs de résolution, QUIC, Salamander, TLS et authentification
+- [ ] Corriger uniquement la configuration ou le binaire après preuve dans les logs
+- [ ] Republier toute correction exclusivement via GitHub Actions
+- [ ] Retester le handshake et le trafic réel
+- [ ] Ne pas modifier UDP-ZIVPN sur UDP/5667
+- [ ] Ne pas déclarer le tunnel fonctionnel avant trafic confirmé
+
+
+## Résultat des tests Android — 14 août 2026
+
+- [x] Confirmer l’ouverture de l’application et l’accès à Configuration/Diagnostic
+- [x] Confirmer le démarrage de `libkighmu.so` en armeabi-v7a
+- [x] Confirmer le binding au réseau physique après ajout de la permission
+- [x] Reproduire le timeout `no recent network activity` avec journal nettoyé
+- [x] Ne plus afficher « Tunnel actif » avant confirmation du handshake
+- [x] Afficher « Échec de connexion » lorsque le processus natif termine ou retourne une erreur
+- [ ] Auditer si `20000-50000` est accepté comme port par le binaire client
+- [ ] Auditer le format `auth: utilisateur:mot_de_passe` attendu par le binaire
+- [ ] Vérifier la réception UDP et la réponse du serveur au moment du test
+- [ ] Republier toute correction uniquement via GitHub Actions
+- [ ] Retester le trafic réel avant toute déclaration de disponibilité
+- [ ] Ne pas modifier UDP-ZIVPN sur UDP/5667
