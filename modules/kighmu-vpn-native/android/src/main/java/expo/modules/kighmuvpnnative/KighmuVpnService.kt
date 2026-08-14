@@ -55,6 +55,10 @@ class KighmuVpnService : VpnService() {
     // Hysteria 2 accepts a multi-port address as host:start-end. Normalize
     // harmless spaces entered in the mobile form before writing YAML.
     val port = intent.getStringExtra(EXTRA_PORT).orEmpty().trim().replace(Regex("\\s+"), "")
+    // A range is a hopping range, not the server socket. KIGHMU listens on
+    // the fixed base port and expects the range under transport.udp.hopPorts.
+    val serverPort = if (port.contains("-")) FIXED_SERVER_PORT else port
+    val hopPorts = port.takeIf { it.contains("-") }
     // The KIGHMU server is intentionally pinned to this Salamander secret.
     // Ignore stale/user-provided values so the client and server cannot drift.
     val obfs = FIXED_SALAMANDER_OBFS
@@ -105,7 +109,8 @@ class KighmuVpnService : VpnService() {
         ParcelFileDescriptor.adoptFd(localFd).close()
         return
       }
-      val config = writeNativeConfig(host, port, obfs, password, localFd)
+      val config = writeNativeConfig(host, serverPort, hopPorts, obfs, password, localFd)
+      emitLog("info", "NATIVE", "Destination KIGHMU: $host:$serverPort; port hopping=${hopPorts ?: "désactivé"}.")
       if (!connectivity.bindProcessToNetwork(physicalNetwork)) {
         error("Impossible de lier le client KIGHMU au réseau physique")
       }
@@ -282,10 +287,10 @@ class KighmuVpnService : VpnService() {
     return nativeTarget
   }
 
-  private fun writeNativeConfig(host: String, port: String, obfs: String, password: String, fd: Int): File {
+  private fun writeNativeConfig(host: String, serverPort: String, hopPorts: String?, obfs: String, password: String, fd: Int): File {
     val target = File(filesDir, "kighmu-client.yaml")
     val yaml = """
-      server: ${yamlScalar("$host:$port")}
+      server: ${yamlScalar("$host:$serverPort")}
       auth: ${yamlScalar(password)}
       obfs:
         type: salamander
@@ -297,7 +302,7 @@ class KighmuVpnService : VpnService() {
       transport:
         type: udp
         udp:
-          hopInterval: 30s
+          hopInterval: 30s${hopPorts?.let { "\n          hopPorts: ${yamlScalar(it)}" } ?: ""}
       quic:
         disablePathMTUDiscovery: true
       tun:
@@ -365,6 +370,7 @@ class KighmuVpnService : VpnService() {
     const val EXTRA_OBFS = "obfs"
     const val EXTRA_PASSWORD = "password"
     private const val FIXED_SALAMANDER_OBFS = "kighmu"
+    private const val FIXED_SERVER_PORT = "25000"
     const val PREPARE_REQUEST_CODE = 4007
     const val STATUS_DISCONNECTED = "disconnected"
     const val STATUS_CONNECTING = "connecting"

@@ -545,3 +545,27 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Vérifier que UDP-ZIVPN/5667 et ses processus restent inchangés
 - [x] Fixer la valeur Obfs côté Android sans l’afficher dans les logs
 - [x] Relancer le build release exclusivement via GitHub Actions
+
+## Vérification du binaire embarqué dans l’APK
+
+- [x] Identifier les bibliothèques natives présentes dans la release GitHub Actions
+- [x] Confirmer l’ABI et le nom du binaire lancé par KighmuVpnService
+- [x] Vérifier que libuz_core.so, libkighmu.so et les bibliothèques HEV sont présents
+- [x] Comparer le binaire embarqué avec les sources et le BuildID attendu
+
+## Nouveau timeout après démarrage KIGHMU — test 19:27
+
+- [x] Corréler le Diagnostic Android avec les journaux KIGHMU du VPS
+- [x] Vérifier si les paquets atteignent UDP/25000 ou la plage 20000-50000
+- [x] Vérifier les compteurs nftables de port hopping après le test
+- [x] Vérifier la configuration active Obfs/auth/port du serveur
+- [x] Déterminer que le chemin client n’atteint pas la destination KIGHMU observée côté VPS
+- [ ] Préparer un correctif uniquement après identification de la cause
+
+## Correctif après capture : premier paquet KIGHMU absent
+
+- [x] Confirmer la forme de destination attendue : serveur `:25000` et hopping explicite
+- [x] Modifier le YAML Android pour séparer port de base et plage de hopping
+- [x] Vérifier statiquement que le binaire client reçoit désormais la destination prévue avant handshake
+- [x] Ajouter les contrôles déterministes du rendu YAML masqué
+- [ ] Republier uniquement via GitHub Actions après validation

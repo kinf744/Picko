@@ -278,3 +278,9 @@ Côté Android, la valeur `kighmu` est maintenant définie dans le service natif
 ## 23. Build Android avec Obfs fixe
 
 Le commit `e2b6aca` fixe l’Obfs Salamander `kighmu` dans le service Kotlin, le profil local et l’interface de configuration. TypeScript, Vitest et le contrôle de diff ont réussi localement. Le workflow GitHub Actions `31825477151` a réussi exclusivement avec `assembleRelease` et a publié un artefact unique non expiré : `kighmu-vpn-android-release-e2b6aca71c5e31d74c47aa732564f70e81fe6e2e`, de 29 994 757 octets. L’installation Android et le handshake après la reconfiguration serveur restent à tester.
+
+## 24. Diagnostic du timeout et correction du port hopping
+
+La capture VPS réalisée pendant le test Android montre zéro paquet destiné à UDP/25000 ou à la plage 20000-50000 provenant du téléphone. Le serveur KIGHMU est actif, son port hopping nftables est chargé, et aucun journal de connexion n’est généré. Le YAML Android utilisait la plage directement dans `server: host:20000-50000`, alors que le contrat attendu sépare le socket serveur et la plage de hopping.
+
+Le correctif Android utilise maintenant `server: host:25000` lorsque l’utilisateur saisit une plage et place cette plage sous `transport.udp.hopPorts`, tout en conservant `hopInterval: 30s`. Un log masqué indique la destination et l’état du hopping sans secret. `git diff --check`, TypeScript et Vitest réussissent. Le test Android et le build GitHub Actions restent à effectuer.
