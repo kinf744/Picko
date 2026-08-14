@@ -544,4 +544,4 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Redémarrer uniquement `kighmu.service` et vérifier son état
 - [x] Vérifier que UDP-ZIVPN/5667 et ses processus restent inchangés
 - [x] Fixer la valeur Obfs côté Android sans l’afficher dans les logs
-- [ ] Relancer le build release exclusivement via GitHub Actions
+- [x] Relancer le build release exclusivement via GitHub Actions

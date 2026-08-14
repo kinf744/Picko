@@ -274,3 +274,7 @@ La table iptables legacy ne porte pas la redirection KIGHMU ; elle contient tout
 Après confirmation explicite, `/etc/kighmu/config.yaml` a été sauvegardé sur le VPS, puis uniquement `obfs.salamander.password` a été remplacé par `kighmu`. Seul `kighmu.service` a été redémarré. Le service est actif sur UDP/25000, la table nftables de port hopping est inchangée et le processus UDP-ZIVPN/5667 est resté inchangé.
 
 Côté Android, la valeur `kighmu` est maintenant définie dans le service natif Kotlin et le moteur ignore les anciennes valeurs utilisateur. Le profil local utilise également cette constante, la validation ne demande plus l’Obfs comme saisie, et l’écran Configuration l’affiche comme valeur fixe. TypeScript, Vitest et `git diff --check` réussissent localement. Le build Android doit rester exclusivement GitHub Actions.
+
+## 23. Build Android avec Obfs fixe
+
+Le commit `e2b6aca` fixe l’Obfs Salamander `kighmu` dans le service Kotlin, le profil local et l’interface de configuration. TypeScript, Vitest et le contrôle de diff ont réussi localement. Le workflow GitHub Actions `31825477151` a réussi exclusivement avec `assembleRelease` et a publié un artefact unique non expiré : `kighmu-vpn-android-release-e2b6aca71c5e31d74c47aa732564f70e81fe6e2e`, de 29 994 757 octets. L’installation Android et le handshake après la reconfiguration serveur restent à tester.
