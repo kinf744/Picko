@@ -374,7 +374,7 @@ Constat intermédiaire : pendant la capture du 14 août 2026 à 11:20–11:22 UT
 - [x] Identifier l’absence de paquet Android vers la plage KIGHMU et de réponse du VPS pendant la tentative
 - [ ] Comparer l’adresse multi-port, l’authentification et Salamander entre client et serveur
 - [x] Exclure le package KIGHMU de son propre TUN avant `establish()` pour éviter une boucle UDP
-- [ ] Corriger uniquement la cause démontrée puis publier via GitHub Actions
+- [x] Corriger uniquement la cause démontrée puis publier via GitHub Actions
 - [ ] Confirmer le handshake et le trafic réel avant de déclarer le tunnel opérationnel
 
 Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au téléphone n’a atteint UDP/25000 ni la plage 20000-50000. Le serveur KIGHMU est actif sur UDP/25000 et les règles de redirection sont présentes. Cette absence, alors que le binaire Android est lancé, indique que le flux QUIC du processus applicatif est probablement repris par son propre TUN avant de sortir du téléphone. Le correctif exclut désormais le package KIGHMU du TUN et déclare le réseau physique sous-jacent avant l’établissement de l’interface.
