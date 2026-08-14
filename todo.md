@@ -191,8 +191,8 @@ Le test utilise un compte KIGHMU valide créé avec `kighmu2`. Les secrets ne do
 - [x] Vérifier que le lancement natif n’utilise pas un fichier copié sans permission `execute`
 - [x] Ajouter une validation explicite du fichier exécutable avant démarrage
 - [x] Ajouter un message Diagnostic précis si la permission d’exécution échoue
-- [ ] Publier un nouvel APK uniquement via GitHub Actions
-- [ ] Vérifier l’ABI et le binaire dans le nouvel artefact release
+- [x] Publier un nouvel APK uniquement via GitHub Actions
+- [x] Vérifier l’ABI et le binaire dans le nouvel artefact release
 - [ ] Installer le nouvel APK après désinstallation propre
 - [ ] Retester l’autorisation VPN et le démarrage du moteur KIGHMU
 - [ ] Vérifier le handshake, le TUN et le trafic réel
