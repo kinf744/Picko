@@ -388,7 +388,7 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Remplacer temporairement le moteur KIGHMU par ZIVPN dans l’APK de test
 - [x] Retirer entièrement le binaire KIGHMU de l’APK de test
 - [x] Valider TypeScript/tests sans compilation Android locale
-- [ ] Compiler uniquement via GitHub Actions
+- [x] Compiler uniquement via GitHub Actions
 - [ ] Tester la connexion ZIVPN réelle sur Android
 - [ ] Comparer le résultat avec le diagnostic KIGHMU
 - [ ] Restaurer ou conserver explicitement le mode choisi après comparaison
