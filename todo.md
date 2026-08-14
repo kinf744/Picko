@@ -252,12 +252,12 @@ Le binaire démarre correctement depuis `libkighmu.so`, mais son client échoue 
 
 ## Permission réseau Android manquante — 14 août 2026
 
-- [ ] Ajouter `android.permission.ACCESS_NETWORK_STATE` dans la configuration Android
-- [ ] Vérifier que la permission apparaît dans le manifeste final de l’APK
-- [ ] Rendre le binding réseau tolérant si `activeNetwork` ou la permission est indisponible
-- [ ] Ajouter un Diagnostic distinct pour permission manquante, réseau absent et binding refusé
-- [ ] Republier via GitHub Actions uniquement
-- [ ] Vérifier l’artefact release unique armeabi-v7a
+- [x] Ajouter `android.permission.ACCESS_NETWORK_STATE` dans la configuration Android
+- [x] Vérifier que la permission apparaît dans le manifeste final de l’APK
+- [x] Rendre le binding réseau tolérant si `activeNetwork` ou la permission est indisponible
+- [x] Ajouter un Diagnostic distinct pour permission manquante, réseau absent et binding refusé
+- [x] Republier via GitHub Actions uniquement
+- [x] Vérifier l’artefact release unique armeabi-v7a
 - [ ] Retester le démarrage du moteur KIGHMU
 - [ ] Retester le handshake et le trafic réel
 - [ ] Ne pas modifier UDP-ZIVPN sur UDP/5667
