@@ -211,7 +211,7 @@ Le Diagnostic utilisateur confirme `Cannot run program ... error=13, Permission 
 - [x] Évaluer l’intégration du binaire comme bibliothèque native armeabi-v7a ou un lanceur natif
 - [x] Préserver le passage du descripteur TUN et des paramètres Salamander/userpass
 - [x] Ajouter un diagnostic distinguant `noexec`, ABI incorrecte et permission POSIX
-- [ ] Publier un nouvel APK via GitHub Actions uniquement
+- [x] Publier un nouvel APK via GitHub Actions uniquement
 - [ ] Retester le démarrage du moteur sans modifier UDP-ZIVPN
 - [ ] Confirmer le handshake et le trafic avant de déclarer l’application prête
 
@@ -231,18 +231,18 @@ Le dépôt Stivaros utilise la même stratégie native recommandée : `jniLibs/<
 
 ## Timeout handshake après démarrage réussi — 14 août 2026
 
-- [ ] Collecter le Diagnostic complet après l’échec `no recent network activity`
-- [ ] Vérifier les logs complets du binaire KIGHMU côté Android
+- [x] Collecter le Diagnostic complet après l’échec `no recent network activity`
+- [x] Vérifier les logs complets du binaire KIGHMU côté Android
 - [ ] Vérifier les logs de `kighmu.service` côté VPS au même instant
 - [ ] Vérifier que le serveur reçoit les paquets de l’appareil Android
-- [ ] Comparer l’hôte, la plage 20000-50000, Salamander et userpass
+- [x] Comparer l’hôte, la plage 20000-50000, Salamander et userpass
 - [ ] Vérifier le format exact de l’authentification transmis au binaire
 - [ ] Vérifier la compatibilité de la configuration YAML avec la version du binaire
 - [ ] Reproduire le timeout avec le même binaire hors interface Android si possible
-- [ ] Vérifier le binding réseau et `LD_LIBRARY_PATH` du processus natif
+- [x] Vérifier le binding réseau et `LD_LIBRARY_PATH` du processus natif
 - [ ] Vérifier le passage du descripteur TUN sans masquer l’erreur de handshake
-- [ ] Corriger le binaire ou la configuration uniquement après preuve dans les logs
-- [ ] Republier toute correction exclusivement via GitHub Actions
+- [x] Corriger le binaire ou la configuration uniquement après preuve dans les logs
+- [x] Republier toute correction exclusivement via GitHub Actions
 - [ ] Retester le trafic réel et le DNS après correction
 - [ ] Ne pas modifier UDP-ZIVPN sur UDP/5667
 - [ ] Ne pas déclarer le tunnel fonctionnel avant trafic réel confirmé
