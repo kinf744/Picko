@@ -1,0 +1,266 @@
+===== /home/ubuntu/ghidra-analysis-inputs/libuz_core.so =====
+/home/ubuntu/ghidra-analysis-inputs/libuz_core.so: ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /system/bin/linker, Go BuildID=0D86EpJ3UEl29uXMPXKm/wFqemsbkykxjDr-d6APH/AMWG1z5OFyFS2OoTxS81/7syFdc7BTFIhXRRn_Cmb, stripped
+  Class:                             ELF32
+  Data:                              2's complement, little endian
+  Type:                              DYN (Shared object file)
+  Machine:                           ARM
+  Entry point address:               0x5a268
+-- NEEDED --
+ 0x00000001 (NEEDED)                     Shared library: [liblog.so]
+ 0x00000001 (NEEDED)                     Shared library: [libdl.so]
+ 0x00000001 (NEEDED)                     Shared library: [libc.so]
+-- DYNAMIC SYMBOLS --
+    23: 00000000     0 FUNC    GLOBAL DEFAULT  UND __android_log_vprint
+    27: 00000000     0 FUNC    GLOBAL DEFAULT  UND dlopen@LIBC (3)
+===== /home/ubuntu/ghidra-analysis-inputs/kighmu-native-armeabi-v7a =====
+/home/ubuntu/ghidra-analysis-inputs/kighmu-native-armeabi-v7a: ELF 32-bit LSB pie executable, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /system/bin/linker, Go BuildID=8ly-gpm9r8dBoW6veI6j/W0Pr1CW2T8sXu7jTmjpW/FNZNPCb8rWiDbaiUjsPz/9AM7OvjyLJlANAtcyymE, BuildID[sha1]=e8e8c122c0c3f4e7a11bcc5732895a66e8a0bfcf, stripped
+  Class:                             ELF32
+  Data:                              2's complement, little endian
+  Type:                              DYN (Position-Independent Executable file)
+  Machine:                           ARM
+  Entry point address:               0x2214a4
+-- NEEDED --
+ 0x00000001 (NEEDED)                     Shared library: [liblog.so]
+ 0x00000001 (NEEDED)                     Shared library: [libdl.so]
+ 0x00000001 (NEEDED)                     Shared library: [libc.so]
+-- DYNAMIC SYMBOLS --
+    14: 00000000     0 FUNC    GLOBAL DEFAULT  UND __android_log_vprint
+    17: 00000000     0 FUNC    GLOBAL DEFAULT  UND dlopen@LIBC (3)
+===== /home/ubuntu/kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libhev-socks5-tunnel.so =====
+/home/ubuntu/kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libhev-socks5-tunnel.so: ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, BuildID[sha1]=dc2888b9cebb2775fb10f0e0641657403377fefd, stripped
+  Class:                             ELF32
+  Data:                              2's complement, little endian
+  Type:                              DYN (Shared object file)
+  Machine:                           ARM
+  Entry point address:               0x0
+-- NEEDED --
+ 0x00000001 (NEEDED)                     Shared library: [libc.so]
+ 0x00000001 (NEEDED)                     Shared library: [libm.so]
+ 0x00000001 (NEEDED)                     Shared library: [libdl.so]
+-- DYNAMIC SYMBOLS --
+    18: 00000000     0 FUNC    GLOBAL DEFAULT  UND setsockopt@LIBC (2)
+    24: 00000000     0 FUNC    GLOBAL DEFAULT  UND getsockname@LIBC (2)
+    27: 00000000     0 FUNC    GLOBAL DEFAULT  UND connect@LIBC (2)
+    28: 00000000     0 FUNC    GLOBAL DEFAULT  UND recvfrom@LIBC (2)
+    48: 00000000     0 FUNC    GLOBAL DEFAULT  UND socketpair@LIBC (2)
+    53: 00000000     0 FUNC    GLOBAL DEFAULT  UND socket@LIBC (2)
+   100: 00000000     0 FUNC    GLOBAL DEFAULT  UND sendto@LIBC (2)
+   101: 00000000     0 FUNC    GLOBAL DEFAULT  UND recvmsg@LIBC (2)
+   102: 00000000     0 FUNC    GLOBAL DEFAULT  UND sendmsg@LIBC (2)
+   103: 00000000     0 FUNC    GLOBAL DEFAULT  UND recvmmsg@LIBC (2)
+   104: 00000000     0 FUNC    GLOBAL DEFAULT  UND sendmmsg@LIBC (2)
+   109: 00013bfb     4 FUNC    GLOBAL DEFAULT   14 hev_socks5_tunnel_main
+   110: 00013c55    80 FUNC    GLOBAL DEFAULT   14 hev_mapped_dns_construct
+   111: 00013cb1    12 FUNC    GLOBAL DEFAULT   14 hev_mapped_dns_put
+   112: 00013cbd   636 FUNC    GLOBAL DEFAULT   14 hev_mapped_dns_handle
+   113: 0002bded   132 FUNC    GLOBAL DEFAULT   14 udp_disconnect
+   119: 0002d131    80 FUNC    GLOBAL DEFAULT   14 hev_task_io_readv
+   120: 00013afb    30 FUNC    GLOBAL DEFAULT   14 hev_socks5_tunnel_main_from_file
+   122: 00011689    34 FUNC    GLOBAL DEFAULT   14 hev_socks5_server_set_auth
+   124: 00015d99    46 FUNC    GLOBAL DEFAULT   14 hev_ring_buffer_reading
+   125: 00015dc7    28 FUNC    GLOBAL DEFAULT   14 hev_ring_buffer_read_finish
+   127: 00011c31   112 FUNC    GLOBAL DEFAULT   14 hev_socks5_server_class
+   128: 00015d95     4 FUNC    GLOBAL DEFAULT   14 hev_ring_buffer_get_use_size
+   132: 0002a219   132 FUNC    GLOBAL DEFAULT   14 tcp_send_fin
+   133: 0001011d    96 FUNC    GLOBAL DEFAULT   14 hev_socks5_authenticator_add
+   134: 000104d9   104 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_tcp_class
+   135: 000115dd    12 FUNC    GLOBAL DEFAULT   14 hev_socks5_set_udp_recv_buffer_size
+   136: 00014ff1   220 FUNC    GLOBAL DEFAULT   14 hev_socks5_tunnel_fini
+   141: 0000fdb7    18 FUNC    GLOBAL DEFAULT   14 hev_rbtree_last
+   142: 00013f79    64 FUNC    GLOBAL DEFAULT   14 hev_mapped_dns_class
+   144: 000137fd    12 FUNC    GLOBAL DEFAULT   14 hev_config_get_mapdns_port
+   148: 0002cedd    56 FUNC    GLOBAL DEFAULT   14 hev_task_dns_getaddrinfo
+   149: 0002c4df    22 FUNC    GLOBAL DEFAULT   14 hev_task_mutex_unlock
+   151: 000115e9    12 FUNC    GLOBAL DEFAULT   14 hev_socks5_set_udp_copy_buffer_nums
+   154: 00012c2d     4 FUNC    GLOBAL DEFAULT   14 hev_socks5_set_timeout
+   159: 0001122d   164 FUNC    GLOBAL DEFAULT   14 hev_socks5_addr_into_str
+   160: 00011365    18 FUNC    GLOBAL DEFAULT   14 hev_socks5_addr_from_ipv4
+   161: 00010901   224 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_handshake
+   162: 00013815    12 FUNC    GLOBAL DEFAULT   14 hev_config_get_mapdns_netmask
+   167: 0002d423    92 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_connect
+   172: 00011377    20 FUNC    GLOBAL DEFAULT   14 hev_socks5_addr_from_ipv6
+   173: 00011f95    12 FUNC    GLOBAL DEFAULT   14 hev_socks5_udp_iface
+   176: 00012c39    76 FUNC    GLOBAL DEFAULT   14 hev_socks5_construct
+   182: 0002cfd1    84 FUNC    GLOBAL DEFAULT   14 hev_task_io_openat
+   183: 00011ef5    12 FUNC    GLOBAL DEFAULT   14 hev_socks5_tcp_iface
+   184: 00014b9d   156 FUNC    GLOBAL DEFAULT   14 hev_socks5_session_run
+   185: 0002c537    82 FUNC    GLOBAL DEFAULT   14 hev_task_new
+   189: 0002c779     4 FUNC    GLOBAL DEFAULT   14 hev_task_get_data
+   190: 0002c711    32 FUNC    GLOBAL DEFAULT   14 hev_task_sleep
+   191: 00015c4d   252 FUNC    GLOBAL DEFAULT   14 hev_logger_log
+   192: 00013bdd    30 FUNC    GLOBAL DEFAULT   14 hev_socks5_tunnel_main_from_str
+   193: 00015d91     4 FUNC    GLOBAL DEFAULT   14 hev_ring_buffer_get_max_size
+   198: 00010fcd    44 FUNC    GLOBAL DEFAULT   14 hev_socks5_logger_enabled
+   203: 000145b5   108 FUNC    GLOBAL DEFAULT   14 hev_socks5_session_udp_construct
+   204: 00015a6d    32 FUNC    GLOBAL DEFAULT   14 hev_tunnel_get_index
+   205: 0002cf71    84 FUNC    GLOBAL DEFAULT   14 hev_task_io_open
+   214: 0002b5ad    44 FUNC    GLOBAL DEFAULT   14 udp_send_chksum
+   215: 0002b9e9    26 FUNC    GLOBAL DEFAULT   14 udp_sendto_if_src
+   216: 0002c749     4 FUNC    GLOBAL DEFAULT   14 hev_task_exit
+   217: 000115a1    12 FUNC    GLOBAL DEFAULT   14 hev_socks5_get_tcp_timeout
+   223: 0002dea9    56 FUNC    GLOBAL DEFAULT   14 hev_memory_allocator_default
+   224: 00010581    60 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_udp_new
+   225: 0002d889   328 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_sendmsg
+   226: 00014ca9    32 FUNC    GLOBAL DEFAULT   14 hev_socks5_session_get_node
+   228: 0002c471    92 FUNC    GLOBAL DEFAULT   14 hev_task_mutex_lock
+   229: 0002c731    24 FUNC    GLOBAL DEFAULT   14 hev_task_run
+   231: 00013765     2 FUNC    GLOBAL DEFAULT   14 hev_config_fini
+   238: 0002b59d    16 FUNC    GLOBAL DEFAULT   14 udp_sendto
+   239: 000113cd   188 FUNC    GLOBAL DEFAULT   14 hev_socks5_addr_into_sockaddr6
+   240: 000107d5   300 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_connect
+   241: 0002d4d3   152 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_recv
+   242: 00011ed1    36 FUNC    GLOBAL DEFAULT   14 hev_socks5_tcp_splice
+   244: 00013f39    62 FUNC    GLOBAL DEFAULT   14 hev_mapped_dns_lookup
+   246: 00015ae9    10 FUNC    GLOBAL DEFAULT   14 hev_tunnel_del_task
+   252: 0002c6fb    14 FUNC    GLOBAL DEFAULT   14 hev_task_del_whandle
+   253: 0002d56b   152 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_send
+   254: 0002c467    10 FUNC    GLOBAL DEFAULT   14 hev_task_mutex_init
+   255: 00010fbd    16 FUNC    GLOBAL DEFAULT   14 hev_socks5_logger_fini
+   256: 00013769    20 FUNC    GLOBAL DEFAULT   14 hev_config_get_tunnel_name
+   259: 00027485   104 FUNC    GLOBAL DEFAULT   14 tcp_eff_send_mss_netif
+   260: 000100ad    56 FUNC    GLOBAL DEFAULT   14 hev_socks5_authenticator_new
+   261: 0001163d    76 FUNC    GLOBAL DEFAULT   14 hev_socks5_server_construct
+   262: 00015799     4 FUNC    GLOBAL DEFAULT   14 hev_tunnel_close
+   263: 00012b61    72 FUNC    GLOBAL DEFAULT   14 hev_socks5_user_class
+   265: 0000fd4d    44 FUNC    GLOBAL DEFAULT   14 hev_rbtree_node_prev
+   266: 0002d413     8 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_socket
+   267: 000156e9   176 FUNC    GLOBAL DEFAULT   14 hev_tunnel_open
+   272: 0002dcc1    32 FUNC    GLOBAL DEFAULT   14 hev_object_atomic_construct
+   281: 00011319    32 FUNC    GLOBAL DEFAULT   14 hev_socks5_addr_len
+   282: 000105f5   112 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_udp_class
+   286: 0002713d   764 FUNC    GLOBAL DEFAULT   14 tcp_connect
+   290: 0002d41b     8 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_socketpair
+   291: 000103e1   124 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_tcp_new_ipv4
+   292: 00011489   244 FUNC    GLOBAL DEFAULT   14 hev_socks5_name_into_sockaddr6
+   293: 000150cd   120 FUNC    GLOBAL DEFAULT   14 hev_socks5_tunnel_run
+   294: 00015b8d    20 FUNC    GLOBAL DEFAULT   14 hev_list_add_tail
+   296: 0002c74d    44 FUNC    GLOBAL DEFAULT   14 hev_task_join
+   299: 00012d11   204 FUNC    GLOBAL DEFAULT   14 hev_config_init_from_file
+   300: 0001045d   124 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_tcp_new_ipv6
+   301: 00014c45    64 FUNC    GLOBAL DEFAULT   14 hev_socks5_session_terminate
+===== /home/ubuntu/kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libtun2socks.so =====
+/home/ubuntu/kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libtun2socks.so: ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, BuildID[sha1]=dc2888b9cebb2775fb10f0e0641657403377fefd, stripped
+  Class:                             ELF32
+  Data:                              2's complement, little endian
+  Type:                              DYN (Shared object file)
+  Machine:                           ARM
+  Entry point address:               0x0
+-- NEEDED --
+ 0x00000001 (NEEDED)                     Shared library: [libc.so]
+ 0x00000001 (NEEDED)                     Shared library: [libm.so]
+ 0x00000001 (NEEDED)                     Shared library: [libdl.so]
+-- DYNAMIC SYMBOLS --
+    18: 00000000     0 FUNC    GLOBAL DEFAULT  UND setsockopt@LIBC (2)
+    24: 00000000     0 FUNC    GLOBAL DEFAULT  UND getsockname@LIBC (2)
+    27: 00000000     0 FUNC    GLOBAL DEFAULT  UND connect@LIBC (2)
+    28: 00000000     0 FUNC    GLOBAL DEFAULT  UND recvfrom@LIBC (2)
+    48: 00000000     0 FUNC    GLOBAL DEFAULT  UND socketpair@LIBC (2)
+    53: 00000000     0 FUNC    GLOBAL DEFAULT  UND socket@LIBC (2)
+   100: 00000000     0 FUNC    GLOBAL DEFAULT  UND sendto@LIBC (2)
+   101: 00000000     0 FUNC    GLOBAL DEFAULT  UND recvmsg@LIBC (2)
+   102: 00000000     0 FUNC    GLOBAL DEFAULT  UND sendmsg@LIBC (2)
+   103: 00000000     0 FUNC    GLOBAL DEFAULT  UND recvmmsg@LIBC (2)
+   104: 00000000     0 FUNC    GLOBAL DEFAULT  UND sendmmsg@LIBC (2)
+   109: 00013bfb     4 FUNC    GLOBAL DEFAULT   14 hev_socks5_tunnel_main
+   110: 00013c55    80 FUNC    GLOBAL DEFAULT   14 hev_mapped_dns_construct
+   111: 00013cb1    12 FUNC    GLOBAL DEFAULT   14 hev_mapped_dns_put
+   112: 00013cbd   636 FUNC    GLOBAL DEFAULT   14 hev_mapped_dns_handle
+   113: 0002bded   132 FUNC    GLOBAL DEFAULT   14 udp_disconnect
+   119: 0002d131    80 FUNC    GLOBAL DEFAULT   14 hev_task_io_readv
+   120: 00013afb    30 FUNC    GLOBAL DEFAULT   14 hev_socks5_tunnel_main_from_file
+   122: 00011689    34 FUNC    GLOBAL DEFAULT   14 hev_socks5_server_set_auth
+   124: 00015d99    46 FUNC    GLOBAL DEFAULT   14 hev_ring_buffer_reading
+   125: 00015dc7    28 FUNC    GLOBAL DEFAULT   14 hev_ring_buffer_read_finish
+   127: 00011c31   112 FUNC    GLOBAL DEFAULT   14 hev_socks5_server_class
+   128: 00015d95     4 FUNC    GLOBAL DEFAULT   14 hev_ring_buffer_get_use_size
+   132: 0002a219   132 FUNC    GLOBAL DEFAULT   14 tcp_send_fin
+   133: 0001011d    96 FUNC    GLOBAL DEFAULT   14 hev_socks5_authenticator_add
+   134: 000104d9   104 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_tcp_class
+   135: 000115dd    12 FUNC    GLOBAL DEFAULT   14 hev_socks5_set_udp_recv_buffer_size
+   136: 00014ff1   220 FUNC    GLOBAL DEFAULT   14 hev_socks5_tunnel_fini
+   141: 0000fdb7    18 FUNC    GLOBAL DEFAULT   14 hev_rbtree_last
+   142: 00013f79    64 FUNC    GLOBAL DEFAULT   14 hev_mapped_dns_class
+   144: 000137fd    12 FUNC    GLOBAL DEFAULT   14 hev_config_get_mapdns_port
+   148: 0002cedd    56 FUNC    GLOBAL DEFAULT   14 hev_task_dns_getaddrinfo
+   149: 0002c4df    22 FUNC    GLOBAL DEFAULT   14 hev_task_mutex_unlock
+   151: 000115e9    12 FUNC    GLOBAL DEFAULT   14 hev_socks5_set_udp_copy_buffer_nums
+   154: 00012c2d     4 FUNC    GLOBAL DEFAULT   14 hev_socks5_set_timeout
+   159: 0001122d   164 FUNC    GLOBAL DEFAULT   14 hev_socks5_addr_into_str
+   160: 00011365    18 FUNC    GLOBAL DEFAULT   14 hev_socks5_addr_from_ipv4
+   161: 00010901   224 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_handshake
+   162: 00013815    12 FUNC    GLOBAL DEFAULT   14 hev_config_get_mapdns_netmask
+   167: 0002d423    92 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_connect
+   172: 00011377    20 FUNC    GLOBAL DEFAULT   14 hev_socks5_addr_from_ipv6
+   173: 00011f95    12 FUNC    GLOBAL DEFAULT   14 hev_socks5_udp_iface
+   176: 00012c39    76 FUNC    GLOBAL DEFAULT   14 hev_socks5_construct
+   182: 0002cfd1    84 FUNC    GLOBAL DEFAULT   14 hev_task_io_openat
+   183: 00011ef5    12 FUNC    GLOBAL DEFAULT   14 hev_socks5_tcp_iface
+   184: 00014b9d   156 FUNC    GLOBAL DEFAULT   14 hev_socks5_session_run
+   185: 0002c537    82 FUNC    GLOBAL DEFAULT   14 hev_task_new
+   189: 0002c779     4 FUNC    GLOBAL DEFAULT   14 hev_task_get_data
+   190: 0002c711    32 FUNC    GLOBAL DEFAULT   14 hev_task_sleep
+   191: 00015c4d   252 FUNC    GLOBAL DEFAULT   14 hev_logger_log
+   192: 00013bdd    30 FUNC    GLOBAL DEFAULT   14 hev_socks5_tunnel_main_from_str
+   193: 00015d91     4 FUNC    GLOBAL DEFAULT   14 hev_ring_buffer_get_max_size
+   198: 00010fcd    44 FUNC    GLOBAL DEFAULT   14 hev_socks5_logger_enabled
+   203: 000145b5   108 FUNC    GLOBAL DEFAULT   14 hev_socks5_session_udp_construct
+   204: 00015a6d    32 FUNC    GLOBAL DEFAULT   14 hev_tunnel_get_index
+   205: 0002cf71    84 FUNC    GLOBAL DEFAULT   14 hev_task_io_open
+   214: 0002b5ad    44 FUNC    GLOBAL DEFAULT   14 udp_send_chksum
+   215: 0002b9e9    26 FUNC    GLOBAL DEFAULT   14 udp_sendto_if_src
+   216: 0002c749     4 FUNC    GLOBAL DEFAULT   14 hev_task_exit
+   217: 000115a1    12 FUNC    GLOBAL DEFAULT   14 hev_socks5_get_tcp_timeout
+   223: 0002dea9    56 FUNC    GLOBAL DEFAULT   14 hev_memory_allocator_default
+   224: 00010581    60 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_udp_new
+   225: 0002d889   328 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_sendmsg
+   226: 00014ca9    32 FUNC    GLOBAL DEFAULT   14 hev_socks5_session_get_node
+   228: 0002c471    92 FUNC    GLOBAL DEFAULT   14 hev_task_mutex_lock
+   229: 0002c731    24 FUNC    GLOBAL DEFAULT   14 hev_task_run
+   231: 00013765     2 FUNC    GLOBAL DEFAULT   14 hev_config_fini
+   238: 0002b59d    16 FUNC    GLOBAL DEFAULT   14 udp_sendto
+   239: 000113cd   188 FUNC    GLOBAL DEFAULT   14 hev_socks5_addr_into_sockaddr6
+   240: 000107d5   300 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_connect
+   241: 0002d4d3   152 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_recv
+   242: 00011ed1    36 FUNC    GLOBAL DEFAULT   14 hev_socks5_tcp_splice
+   244: 00013f39    62 FUNC    GLOBAL DEFAULT   14 hev_mapped_dns_lookup
+   246: 00015ae9    10 FUNC    GLOBAL DEFAULT   14 hev_tunnel_del_task
+   252: 0002c6fb    14 FUNC    GLOBAL DEFAULT   14 hev_task_del_whandle
+   253: 0002d56b   152 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_send
+   254: 0002c467    10 FUNC    GLOBAL DEFAULT   14 hev_task_mutex_init
+   255: 00010fbd    16 FUNC    GLOBAL DEFAULT   14 hev_socks5_logger_fini
+   256: 00013769    20 FUNC    GLOBAL DEFAULT   14 hev_config_get_tunnel_name
+   259: 00027485   104 FUNC    GLOBAL DEFAULT   14 tcp_eff_send_mss_netif
+   260: 000100ad    56 FUNC    GLOBAL DEFAULT   14 hev_socks5_authenticator_new
+   261: 0001163d    76 FUNC    GLOBAL DEFAULT   14 hev_socks5_server_construct
+   262: 00015799     4 FUNC    GLOBAL DEFAULT   14 hev_tunnel_close
+   263: 00012b61    72 FUNC    GLOBAL DEFAULT   14 hev_socks5_user_class
+   265: 0000fd4d    44 FUNC    GLOBAL DEFAULT   14 hev_rbtree_node_prev
+   266: 0002d413     8 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_socket
+   267: 000156e9   176 FUNC    GLOBAL DEFAULT   14 hev_tunnel_open
+   272: 0002dcc1    32 FUNC    GLOBAL DEFAULT   14 hev_object_atomic_construct
+   281: 00011319    32 FUNC    GLOBAL DEFAULT   14 hev_socks5_addr_len
+   282: 000105f5   112 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_udp_class
+   286: 0002713d   764 FUNC    GLOBAL DEFAULT   14 tcp_connect
+   290: 0002d41b     8 FUNC    GLOBAL DEFAULT   14 hev_task_io_socket_socketpair
+   291: 000103e1   124 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_tcp_new_ipv4
+   292: 00011489   244 FUNC    GLOBAL DEFAULT   14 hev_socks5_name_into_sockaddr6
+   293: 000150cd   120 FUNC    GLOBAL DEFAULT   14 hev_socks5_tunnel_run
+   294: 00015b8d    20 FUNC    GLOBAL DEFAULT   14 hev_list_add_tail
+   296: 0002c74d    44 FUNC    GLOBAL DEFAULT   14 hev_task_join
+   299: 00012d11   204 FUNC    GLOBAL DEFAULT   14 hev_config_init_from_file
+   300: 0001045d   124 FUNC    GLOBAL DEFAULT   14 hev_socks5_client_tcp_new_ipv6
+   301: 00014c45    64 FUNC    GLOBAL DEFAULT   14 hev_socks5_session_terminate
+===== /home/ubuntu/kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libuz_core.so =====
+/home/ubuntu/kighmu-vpn-android/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libuz_core.so: ELF 32-bit LSB shared object, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /system/bin/linker, Go BuildID=0D86EpJ3UEl29uXMPXKm/wFqemsbkykxjDr-d6APH/AMWG1z5OFyFS2OoTxS81/7syFdc7BTFIhXRRn_Cmb, stripped
+  Class:                             ELF32
+  Data:                              2's complement, little endian
+  Type:                              DYN (Shared object file)
+  Machine:                           ARM
+  Entry point address:               0x5a268
+-- NEEDED --
+ 0x00000001 (NEEDED)                     Shared library: [liblog.so]
+ 0x00000001 (NEEDED)                     Shared library: [libdl.so]
+ 0x00000001 (NEEDED)                     Shared library: [libc.so]
+-- DYNAMIC SYMBOLS --
+    23: 00000000     0 FUNC    GLOBAL DEFAULT  UND __android_log_vprint
+    27: 00000000     0 FUNC    GLOBAL DEFAULT  UND dlopen@LIBC (3)

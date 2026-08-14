@@ -427,3 +427,11 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Extraire et comparer automatiquement les call graphs de libuz_core et KIGHMU
 - [x] Préparer les scripts et prérequis Frida/LLDB pour un appareil Android réel
 - [x] Documenter les résultats dynamiques et les limites de preuve
+
+## Analyse entièrement locale sans appareil Android
+
+- [x] Étendre la cartographie Ghidra aux fonctions réseau, QUIC, UDP, obfs et initialisation
+- [x] Analyser statiquement les wrappers JNI et les bibliothèques HEV locales
+- [x] Simuler localement le lancement, l’environnement, les descripteurs et les erreurs Android pertinentes
+- [x] Comparer les résultats simulés avec les logs et captures déjà collectés
+- [x] Mettre à jour le rapport en séparant les preuves locales des limites d’exécution Android

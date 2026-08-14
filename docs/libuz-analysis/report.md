@@ -188,3 +188,21 @@ Ces chiffres montrent une forme de démarrage Go comparable dans les trois premi
 Les outils hôte `adb`, `lldb` et `frida-tools` sont installés localement. Un script Frida en lecture seule est disponible dans `docs/libuz-analysis/frida-observe-network.js`. Il observe le chargement des modules natifs, `dlopen`, `connect`, `sendto`, `recvfrom`, `sendmsg`, `recvmsg` et les options de socket, sans modifier les arguments ni le trafic.
 
 La commande `adb devices -l` ne détecte actuellement aucun appareil Android. L’instrumentation dynamique ne peut donc pas encore être exécutée. Elle nécessitera un appareil autorisé avec débogage USB, ou un émulateur ARM compatible avec l’APK armeabi-v7a et un agent Frida correspondant à l’architecture. Cette absence d’appareil est une limite opérationnelle, non un résultat négatif sur le binaire.
+
+## 15. Analyse locale complète sans appareil
+
+L’analyse locale a été étendue aux wrappers JNI, à HEV, au packaging Android et à une tentative d’émulation ARM. Aucun élément ne montre qu’une dépendance Android essentielle manque à libuz : son ELF partagé dépend de `liblog`, `libdl` et `libc`, exactement comme le binaire KIGHMU PIE. La chaîne ZIVPN est toutefois plus complète au niveau de l’intégration : elle sépare le moteur QUIC/UDP (`libuz_core`) du relais TUN→SOCKS5 (`libhev-socks5-tunnel`), attend une socket SOCKS locale, puis démarre le relais avec un descripteur TUN déjà établi.
+
+| Écart local observé | ZIVPN fonctionnel | Ancien chemin KIGHMU | Importance estimée |
+|---|---|---|---|
+| Chemin de trafic | Moteur → SOCKS local → HEV → TUN | Moteur directement avec YAML TUN | Élevée |
+| Preuve avant état connecté | Socket `127.0.0.1:7778` attendue | État connecté publié immédiatement | Élevée pour le diagnostic |
+| Réseau de contrôle | Processus lié au réseau physique et package exclu du VPN | Ancienne version sans cette séquence complète | Élevée pour le timeout |
+| Configuration | JSON inline libuz avec champs ZIVPN spécifiques | YAML KIGHMU avec `fileDescriptor` | Élevée, à vérifier avec la version exacte |
+| MTU | 1400 | 1500 | Moyenne, dépend du chemin QUIC/UDP |
+| Relais natif | HEV avec fonctions SOCKS5/UDP explicites | Non utilisé dans le chemin KIGHMU | Élevée pour le trafic après handshake |
+| ABI/loader | ELF ARMv7 partagé chargé par `nativeLibraryDir` | ELF ARMv7 PIE lancé comme binaire | À vérifier sur Android réel, statiquement cohérent |
+
+La conclusion locale la plus solide est que **KIGHMU ne manque pas nécessairement d’une bibliothèque**, mais que son chemin Android combine le handshake, le TUN et le processus natif dans une séquence différente de ZIVPN. Les améliorations prioritaires sont donc : lier le processus au réseau physique avant le handshake, vérifier la configuration réellement acceptée par le binaire, ne publier `connected` qu’après une preuve de handshake, et capturer séparément les erreurs de parsing, de socket et de TUN.
+
+L’émulation QEMU ARM échoue avant le démarrage sur l’absence de `/system/bin/linker`. Il est donc possible de simuler localement la génération de configuration, l’ordre des appels et les erreurs de loader, mais pas d’affirmer localement le comportement cryptographique ou le handshake Android sans sysroot bionic compatible. Cette limite est documentée explicitement plutôt que masquée par une exécution Linux non représentative.
