@@ -443,3 +443,11 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Reproduire localement les deux configurations et la séquence TUN/réseau
 - [x] Identifier la cause probable de l’échec KIGHMU sans décompiler davantage KIGHMU
 - [x] Documenter les correctifs minimaux à appliquer uniquement à KIGHMU
+
+## Vérification provenance, port range et patch TUN
+
+- [x] Comparer les hashes et Go BuildID de toutes les copies KIGHMU locales
+- [x] Relier le binaire KIGHMU analysé au commit ou patch source disponible
+- [x] Valider le parsing structurel de `20000-50000` et des ports unitaires dans le code local
+- [ ] Vérifier que le patch `fileDescriptor` est présent dans la révision de build
+- [ ] Préparer une reconstruction KIGHMU isolée uniquement si les preuves sont cohérentes

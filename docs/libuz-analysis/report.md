@@ -230,3 +230,11 @@ Le client KIGHMU généré précédemment ne déclare pas explicitement `transpo
 ### Conclusion opérationnelle
 
 La comparaison doit maintenant suivre cet ordre : **(1)** vérifier que le binaire KIGHMU contient réellement le support `fileDescriptor` attendu par le patch ; **(2)** valider que le YAML produit utilise les clés reconnues par cette révision ; **(3)** vérifier explicitement le mode de port hopping dans le code source ; **(4)** seulement ensuite modifier la configuration Android. libuz sert de référence d’architecture d’intégration, pas de code à décompiler ou copier aveuglément.
+
+## 17. Vérification de provenance et du port range
+
+Les deux copies locales du binaire KIGHMU — `assets/bin/kighmu-native-armeabi-v7a` et la copie d’analyse Ghidra — sont strictement identiques : SHA-256 `c0290fb4bf18eca19f3aee157a5125d6231b5f9d9cb6a74bfc8ace19aa0ae000`, Go BuildID `8ly-gpm9r8dBoW6veI6j/W0Pr1CW2T8sXu7jTmjpW/FNZNPCb8rWiDbaiUjsPz/9AM7OvjyLJlANAtcyymE` et Build ID ELF `e8e8c122c0c3f4e7a11bcc5732895a66e8a0bfcf`. Il n’existe pas de seconde copie locale divergente permettant d’attribuer l’échec à une différence entre APK et analyse.
+
+Le validateur local confirme que les générateurs connus préservent `20000-50000`, `6000-19999` et `25000` dans les chaînes `host:port` de libuz JSON et KIGHMU YAML. Cette validation est structurelle uniquement : le parser Go exact de KIGHMU n’est pas présent dans le dépôt local, donc elle ne prouve pas que la révision du binaire accepte effectivement un range. La prochaine vérification de source doit porter sur la fonction qui transforme `server` en adresse UDP et sur l’activation du port hopping côté client.
+
+Aucune reconstruction KIGHMU n’est lancée à ce stade. Le dépôt local contient le patch TUN, mais pas le code Go complet nécessaire pour produire un nouveau binaire vérifiable. Recompiler sans la source exacte risquerait de créer un binaire incompatible et ne fournirait aucune preuve utile.
