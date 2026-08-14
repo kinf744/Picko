@@ -200,3 +200,19 @@ Le test utilise un compte KIGHMU valide créé avec `kighmu2`. Les secrets ne do
 - [ ] Ne pas déclarer l’application prête avant un tunnel réel réussi
 
 Le Diagnostic utilisateur confirme `Cannot run program ... error=13, Permission denied` après le démarrage de `VpnService`. Le profil et la plage de ports sont donc atteints ; l’échec se produit au lancement du moteur local.
+
+
+## Error=13 persistant après réapplication du mode exécutable
+
+- [x] Confirmer les contraintes Android/SELinux du répertoire `filesDir` sur l’appareil réel
+- [ ] Vérifier si le montage du stockage applicatif est `noexec`
+- [x] Vérifier le mode et le chemin réellement utilisés par `ProcessBuilder`
+- [x] Éviter de dépendre uniquement de `File.setExecutable()`
+- [x] Évaluer l’intégration du binaire comme bibliothèque native armeabi-v7a ou un lanceur natif
+- [x] Préserver le passage du descripteur TUN et des paramètres Salamander/userpass
+- [x] Ajouter un diagnostic distinguant `noexec`, ABI incorrecte et permission POSIX
+- [ ] Publier un nouvel APK via GitHub Actions uniquement
+- [ ] Retester le démarrage du moteur sans modifier UDP-ZIVPN
+- [ ] Confirmer le handshake et le trafic avant de déclarer l’application prête
+
+Le second test réel reproduit exactement `error=13, Permission denied` malgré `setExecutable(true, false)` et `canExecute()`. Le problème semble lié à la politique d’exécution du chemin `filesDir`, et non aux paramètres du compte KIGHMU.

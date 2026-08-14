@@ -93,21 +93,17 @@ class KighmuVpnService : VpnService() {
   }
 
   private fun copyNativeBinary(): File {
-    val target = File(filesDir, "kighmu-native-armeabi-v7a")
-    if (!target.exists() || target.length() == 0L) {
-      assets.open("kighmu-native-armeabi-v7a").use { input ->
-        target.outputStream().use { output -> input.copyTo(output) }
-      }
+    // The ELF is packaged as a native library so Android extracts it under
+    // nativeLibraryDir, which is executable. Running an asset copied to filesDir
+    // can fail with EACCES on devices mounting app data with noexec.
+    val nativeTarget = File(applicationInfo.nativeLibraryDir, "libkighmu.so")
+    if (!nativeTarget.exists() || nativeTarget.length() == 0L) {
+      error("Binaire KIGHMU absent de nativeLibraryDir : ${nativeTarget.absolutePath}")
     }
-
-    // Android may preserve an existing app-private file without execute permission.
-    // Re-apply the mode on every start so upgrades and previous failed attempts recover.
-    target.setReadable(true, false)
-    target.setExecutable(true, false)
-    if (!target.canExecute()) {
-      error("Binaire KIGHMU non exécutable après extraction : ${target.absolutePath}")
+    if (!nativeTarget.canExecute()) {
+      error("Binaire KIGHMU non exécutable dans nativeLibraryDir : ${nativeTarget.absolutePath}")
     }
-    return target
+    return nativeTarget
   }
 
   private fun writeNativeConfig(host: String, port: String, obfs: String, password: String, fd: Int): File {
