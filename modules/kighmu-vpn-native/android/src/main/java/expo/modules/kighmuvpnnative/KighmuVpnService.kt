@@ -200,6 +200,12 @@ class KighmuVpnService : VpnService() {
 
   private fun errorMessage(error: Throwable): String = error.message?.take(500) ?: error::class.java.simpleName
 
+  private fun fail(generation: Long, message: String) {
+    if (!isActive(generation)) return
+    emitLog("error", "NATIVE", message.take(500))
+    stopVpn(STATUS_ERROR)
+  }
+
   private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
     // Invalidate the current attempt first. Any worker still inside establish()
     // or ProcessBuilder.start() must abandon its result instead of reviving the
