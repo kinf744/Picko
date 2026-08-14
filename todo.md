@@ -341,6 +341,6 @@ Constat intermédiaire : pendant la capture du 14 août 2026 à 11:20–11:22 UT
 - [x] Vérifier l’arrêt de la notification VPN et le retour d’état React Native
 - [x] Rendre `stopVpn()` idempotent et résistant aux appels répétés
 - [ ] Ajouter ou renforcer les tests déterministes du cycle déconnexion
-- [ ] Republier la correction uniquement via GitHub Actions
+- [x] Republier la correction uniquement via GitHub Actions
 - [ ] Faire vérifier sur Android que le VPN se déconnecte entièrement
 - [ ] Vérifier que UDP-ZIVPN sur UDP/5667 reste inchangé
