@@ -238,3 +238,13 @@ Les deux copies locales du binaire KIGHMU — `assets/bin/kighmu-native-armeabi-
 Le validateur local confirme que les générateurs connus préservent `20000-50000`, `6000-19999` et `25000` dans les chaînes `host:port` de libuz JSON et KIGHMU YAML. Cette validation est structurelle uniquement : le parser Go exact de KIGHMU n’est pas présent dans le dépôt local, donc elle ne prouve pas que la révision du binaire accepte effectivement un range. La prochaine vérification de source doit porter sur la fonction qui transforme `server` en adresse UDP et sur l’activation du port hopping côté client.
 
 Aucune reconstruction KIGHMU n’est lancée à ce stade. Le dépôt local contient le patch TUN, mais pas le code Go complet nécessaire pour produire un nouveau binaire vérifiable. Recompiler sans la source exacte risquerait de créer un binaire incompatible et ne fournirait aucune preuve utile.
+
+## 18. Première adaptation KIGHMU basée sur la cartographie libuz
+
+Le mode de test ZIVPN a été remplacé dans le service Android par le service KIGHMU historique, et `libkighmu.so` armeabi-v7a a été réintroduit dans `jniLibs/armeabi-v7a`. Les bibliothèques `libuz_core.so`, HEV et tun2socks restent présentes mais ne sont pas utilisées par le chemin KIGHMU.
+
+Les changements appliqués sont limités à l’intégration Android : validation stricte d’un port unitaire ou d’une plage, conservation textuelle de `host:port-range`, Obfs et authentification nettoyés sans exposition dans les logs, MTU 1400 côté VPN et YAML TUN, `disablePathMTUDiscovery: true`, `hopInterval: 30s`, binding au réseau physique avant le lancement, exclusion de l’application du TUN, `LD_LIBRARY_PATH` vers `nativeLibraryDir`, et fermeture idempotente du processus/fd TUN.
+
+Le service ne publie plus l’état connecté immédiatement après `ProcessBuilder.start()`. Il attend jusqu’à 15 secondes une indication de handshake dans les logs natifs (`handshake complete/established/succeeded`, `tunnel is ready` ou `connected to`). En cas d’absence, il remonte une erreur et nettoie le processus, le TUN et le binding réseau. Cette logique réduit les faux positifs UI, mais reste une preuve indirecte tant que le binaire ne fournit pas un événement de trafic vérifiable.
+
+Les validations locales TypeScript, Vitest et `git diff --check` réussissent. L’APK n’a pas été compilé localement, conformément à la contrainte GitHub Actions. Le binaire réintroduit est identique à la copie historique et à l’asset existant ; son SHA-256 est `c0290fb4bf18eca19f3aee157a5125d6231b5f9d9cb6a74bfc8ace19aa0ae000`. La chaîne `fileDescriptor` n’est pas visible dans ce binaire, donc le prochain build GitHub doit être considéré comme un test d’intégration et non comme une preuve de compatibilité YAML.

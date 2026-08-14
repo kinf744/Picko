@@ -461,3 +461,14 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Reconstruire l’architecture générale et la séquence moteur→SOCKS→HEV→TUN
 - [x] Traduire les constats en exigences légitimes pour le code source KIGHMU
 - [x] Documenter les niveaux de confiance et les éléments impossibles à prouver statiquement
+
+## Modification KIGHMU basée sur la référence libuz
+
+- [x] Auditer le service KIGHMU et le wrapper natif avant modification
+- [x] Séparer le moteur KIGHMU du relais SOCKS5 et du TUN comme dans l’architecture validée
+- [x] Préserver exactement le host, le port range, l’Obfs et l’authentification
+- [x] Appliquer le binding réseau physique avant le handshake
+- [x] Ajouter une détection fiable du handshake avant l’état connecté
+- [x] Renforcer l’arrêt du moteur, du relais et du descripteur TUN
+- [x] Ajouter tests déterministes et logs sans secrets
+- [x] Préparer exclusivement le build Android GitHub Actions après validation

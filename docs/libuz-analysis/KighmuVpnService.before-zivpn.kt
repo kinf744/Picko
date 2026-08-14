@@ -11,7 +11,6 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import java.io.File
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import androidx.core.app.NotificationCompat
 import kotlin.concurrent.thread
 
@@ -55,17 +54,13 @@ class KighmuVpnService : VpnService() {
     // Hysteria 2 accepts a multi-port address as host:start-end. Normalize
     // harmless spaces entered in the mobile form before writing YAML.
     val port = intent.getStringExtra(EXTRA_PORT).orEmpty().trim().replace(Regex("\\s+"), "")
-    val obfs = intent.getStringExtra(EXTRA_OBFS).orEmpty().trim()
-    val password = intent.getStringExtra(EXTRA_PASSWORD).orEmpty().trim()
+    val obfs = intent.getStringExtra(EXTRA_OBFS).orEmpty()
+    val password = intent.getStringExtra(EXTRA_PASSWORD).orEmpty()
     if (host.isBlank() || port.isBlank() || obfs.isBlank() || password.isBlank()) {
       currentStatus = STATUS_ERROR
       return
     }
 
-    if (!isValidPortSpec(port)) {
-      fail(generation, "Port invalide : utilisez un port ou une plage, par exemple 25000 ou 20000-50000")
-      return
-    }
     if (!isActive(generation)) return
     createNotificationChannel()
     startForeground(NOTIFICATION_ID, notification("Connexion à $host:$port"))
@@ -76,7 +71,7 @@ class KighmuVpnService : VpnService() {
         ?: error("Aucun réseau physique disponible pour le handshake KIGHMU")
       val builder = Builder()
         .setSession("KIGHMU VPN")
-        .setMtu(1400)
+        .setMtu(1500)
         .addAddress("100.100.100.101", 30)
         .addRoute("0.0.0.0", 0)
         .setUnderlyingNetworks(arrayOf(physicalNetwork))
@@ -128,21 +123,21 @@ class KighmuVpnService : VpnService() {
         }
         nativeProcess = localProcess
       }
-      emitLog("info", "NATIVE", "Processus KIGHMU démarré depuis nativeLibraryDir; attente du handshake avant l’état connecté.")
-      val handshakeObserved = AtomicBoolean(false)
+      emitLog("info", "NATIVE", "Processus KIGHMU démarré depuis nativeLibraryDir avec l’interface TUN Android.")
       thread(isDaemon = true, name = "kighmu-native-log") {
-        readNativeLogs(localProcess, handshakeObserved)
+        try {
+          localProcess.inputStream.bufferedReader().useLines { lines -> lines.forEach { line ->
+            if (line.isNotBlank()) emitLog("info", "KIGHMU", line.take(500))
+          } }
+        } catch (error: Throwable) {
+          emitLog("warning", "NATIVE", "Lecture du journal natif interrompue : ${error.message ?: "erreur inconnue"}")
+        }
       }
-      if (!waitForHandshake(localProcess, handshakeObserved, 15_000L)) {
-        error("Handshake KIGHMU non confirmé après 15 secondes; aucun état connecté n’a été publié")
-      }
-      if (!isActive(generation)) return
       synchronized(lifecycleLock) {
         if (!isActive(generation)) return
         currentStatus = STATUS_CONNECTED
         stateSink?.invoke(STATUS_CONNECTED)
       }
-      emitLog("info", "NATIVE", "Handshake KIGHMU confirmé; tunnel déclaré connecté.")
       startForeground(NOTIFICATION_ID, notification("KIGHMU connecté à $host:$port"))
     } catch (error: Throwable) {
       if (isActive(generation)) {
@@ -158,44 +153,6 @@ class KighmuVpnService : VpnService() {
 
   private fun emitLog(level: String, component: String, message: String) {
     logSink?.invoke(level, component, message)
-  }
-
-  private fun isValidPortSpec(value: String): Boolean {
-    val single = value.toIntOrNull()
-    if (single != null) return single in 1..65535
-    val parts = value.split("-", limit = 2)
-    if (parts.size != 2) return false
-    val start = parts[0].toIntOrNull() ?: return false
-    val end = parts[1].toIntOrNull() ?: return false
-    return start in 1..65535 && end in 1..65535 && start <= end
-  }
-
-  private fun waitForHandshake(process: Process, observed: AtomicBoolean, timeoutMs: Long): Boolean {
-    val deadline = System.nanoTime() + timeoutMs * 1_000_000L
-    while (System.nanoTime() < deadline && process.isAlive) {
-      if (observed.get()) return true
-      Thread.sleep(50)
-    }
-    return observed.get() && process.isAlive
-  }
-
-  private fun readNativeLogs(process: Process, handshakeObserved: AtomicBoolean) {
-    try {
-      process.inputStream.bufferedReader().useLines { lines -> lines.forEach { line ->
-        val clean = line.trim()
-        if (clean.isNotEmpty()) {
-          val lower = clean.lowercase()
-          if ((lower.contains("handshake") && (lower.contains("complete") || lower.contains("confirmed") || lower.contains("established") || lower.contains("succeeded"))) || lower.contains("tunnel is ready") || lower.contains("connected to")) {
-            handshakeObserved.set(true)
-            emitLog("info", "HANDSHAKE", clean.take(500))
-          } else {
-            emitLog("info", "KIGHMU", clean.take(500))
-          }
-        }
-      } }
-    } catch (error: Throwable) {
-      emitLog("warning", "NATIVE", "Lecture du journal natif interrompue : ${error.message ?: "erreur inconnue"}")
-    }
   }
 
   private fun errorMessage(error: Throwable): String = error.message?.take(500) ?: error::class.java.simpleName
@@ -291,10 +248,10 @@ class KighmuVpnService : VpnService() {
         udp:
           hopInterval: 30s
       quic:
-        disablePathMTUDiscovery: true
+        disablePathMTUDiscovery: false
       tun:
         name: kighmu
-        mtu: 1400
+        mtu: 1500
         fileDescriptor: $fd
         timeout: 5m
         address:
