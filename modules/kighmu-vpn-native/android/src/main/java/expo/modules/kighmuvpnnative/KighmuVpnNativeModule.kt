@@ -19,10 +19,14 @@ class KighmuVpnNativeModule : Module() {
           "timestamp" to System.currentTimeMillis().toString(),
         ))
       }
+      KighmuVpnService.stateSink = { status ->
+        sendEvent("onStateChanged", mapOf("status" to status))
+      }
     }
 
     OnDestroy {
       KighmuVpnService.logSink = null
+      KighmuVpnService.stateSink = null
     }
 
     Function("getStatus") {
@@ -59,7 +63,7 @@ class KighmuVpnNativeModule : Module() {
       context.startService(Intent(context, KighmuVpnService::class.java).apply {
         action = KighmuVpnService.ACTION_STOP
       })
-      sendEvent("onStateChanged", mapOf("status" to KighmuVpnService.STATUS_DISCONNECTED))
+      // The service emits DISCONNECTED after process/TUN/network cleanup.
       true
     }
   }

@@ -8,11 +8,14 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
+import android.os.ParcelFileDescriptor
 import java.io.File
+import java.util.concurrent.TimeUnit
 import androidx.core.app.NotificationCompat
 import kotlin.concurrent.thread
 
 class KighmuVpnService : VpnService() {
+  private val lifecycleLock = Any()
   private var tunInterface: android.os.ParcelFileDescriptor? = null
   private var nativeProcess: Process? = null
   private var nativeFd: Int = -1
@@ -39,6 +42,7 @@ class KighmuVpnService : VpnService() {
     }
 
     currentStatus = STATUS_CONNECTING
+    stateSink?.invoke(STATUS_CONNECTING)
     createNotificationChannel()
     startForeground(NOTIFICATION_ID, notification("Connexion à $host:$port"))
 
@@ -87,8 +91,9 @@ class KighmuVpnService : VpnService() {
       startForeground(NOTIFICATION_ID, notification("KIGHMU connecté à $host:$port"))
     } catch (error: Throwable) {
       currentStatus = STATUS_ERROR
+      stateSink?.invoke(STATUS_ERROR)
       emitLog("error", "NATIVE", "Échec de démarrage : ${errorMessage(error)}")
-      stopVpn()
+      stopVpn(STATUS_ERROR)
     }
   }
 
@@ -98,21 +103,55 @@ class KighmuVpnService : VpnService() {
 
   private fun errorMessage(error: Throwable): String = error.message?.take(500) ?: error::class.java.simpleName
 
-  private fun stopVpn() {
-    nativeProcess?.destroy()
-    nativeProcess = null
-    try {
-      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-      connectivity.bindProcessToNetwork(null)
-    } catch (_: Exception) {}
-    emitLog("info", "NATIVE", "Processus KIGHMU arrêté.")
-    tunInterface?.close()
-    tunInterface = null
-    nativeFd = -1
-    File(filesDir, "kighmu-client.yaml").delete()
-    currentStatus = STATUS_DISCONNECTED
-    if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
-    stopSelf()
+  private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
+    synchronized(lifecycleLock) {
+      val process = nativeProcess
+      nativeProcess = null
+      if (process != null) {
+        process.destroy()
+        try {
+          if (!process.waitFor(1500, TimeUnit.MILLISECONDS)) {
+            process.destroyForcibly()
+            process.waitFor(500, TimeUnit.MILLISECONDS)
+          }
+        } catch (_: InterruptedException) {
+          process.destroyForcibly()
+          Thread.currentThread().interrupt()
+        }
+      }
+
+      // detachFd() transfers ownership away from ParcelFileDescriptor. Adopt and
+      // close it explicitly, otherwise the parent process keeps the TUN descriptor
+      // alive even after the native child has exited.
+      val fd = nativeFd
+      nativeFd = -1
+      if (fd >= 0) {
+        try {
+          ParcelFileDescriptor.adoptFd(fd).close()
+        } catch (error: Throwable) {
+          emitLog("warning", "NATIVE", "Fermeture du descripteur TUN : ${errorMessage(error)}")
+        }
+      }
+      try {
+        tunInterface?.close()
+      } catch (error: Throwable) {
+        emitLog("warning", "NATIVE", "Fermeture de l’interface TUN : ${errorMessage(error)}")
+      } finally {
+        tunInterface = null
+      }
+      try {
+        val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        connectivity.bindProcessToNetwork(null)
+      } catch (error: Throwable) {
+        emitLog("warning", "NATIVE", "Libération du réseau physique : ${errorMessage(error)}")
+      }
+      File(filesDir, "kighmu-client.yaml").delete()
+      currentStatus = finalStatus
+      stateSink?.invoke(finalStatus)
+      emitLog("info", "NATIVE", "Processus KIGHMU, TUN et binding réseau arrêtés.")
+      if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
+      stopSelf()
+    }
   }
 
   private fun copyNativeBinary(): File {
@@ -190,6 +229,11 @@ class KighmuVpnService : VpnService() {
     super.onRevoke()
   }
 
+  override fun onDestroy() {
+    stopVpn()
+    super.onDestroy()
+  }
+
   override fun onBind(intent: Intent?): IBinder? = super.onBind(intent)
 
   companion object {
@@ -208,5 +252,6 @@ class KighmuVpnService : VpnService() {
     const val NOTIFICATION_ID = 4008
     @Volatile var currentStatus: String = STATUS_DISCONNECTED
     @Volatile var logSink: ((String, String, String) -> Unit)? = null
+    @Volatile var stateSink: ((String) -> Unit)? = null
   }
 }

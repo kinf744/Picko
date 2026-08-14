@@ -333,3 +333,14 @@ La première capture n’a pas produit de fichier exploitable, mais le serveur e
 - [ ] Vérifier le trafic réel dans le TUN après handshake
 
 Constat intermédiaire : pendant la capture du 14 août 2026 à 11:20–11:22 UTC, aucun paquet entrant n’a atteint directement UDP/25000 et aucun journal KIGHMU correspondant n’a été produit. Les règles nftables de port hopping existent bien. Le YAML Android utilise actuellement `server: host:port` et ne déclare pas explicitement `transport.udp`; la prochaine vérification porte sur la construction de l’adresse multi-port et sur la section transport documentée par Hysteria 2.
+
+## Bug de déconnexion complète — 14 août 2026
+
+- [x] Auditer l’arrêt du service `VpnService` et du processus KIGHMU
+- [x] Vérifier la fermeture du descripteur TUN et la libération de la liaison réseau
+- [x] Vérifier l’arrêt de la notification VPN et le retour d’état React Native
+- [x] Rendre `stopVpn()` idempotent et résistant aux appels répétés
+- [ ] Ajouter ou renforcer les tests déterministes du cycle déconnexion
+- [ ] Republier la correction uniquement via GitHub Actions
+- [ ] Faire vérifier sur Android que le VPN se déconnecte entièrement
+- [ ] Vérifier que UDP-ZIVPN sur UDP/5667 reste inchangé
