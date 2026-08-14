@@ -295,6 +295,6 @@ Le Diagnostic utilisateur confirme `Neither user 11761 nor current process has a
 - [ ] Auditer si `20000-50000` est accepté comme port par le binaire client
 - [ ] Auditer le format `auth: utilisateur:mot_de_passe` attendu par le binaire
 - [ ] Vérifier la réception UDP et la réponse du serveur au moment du test
-- [ ] Republier toute correction uniquement via GitHub Actions
+- [x] Republier toute correction uniquement via GitHub Actions
 - [ ] Retester le trafic réel avant toute déclaration de disponibilité
 - [ ] Ne pas modifier UDP-ZIVPN sur UDP/5667
