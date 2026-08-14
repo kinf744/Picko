@@ -9,7 +9,7 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-#if defined(__arm__) || defined(__i386__)
+#if defined(__arm__)
 extern "C" {
 int hev_socks5_tunnel_main_from_str(const char* config_str, int tun_fd);
 void hev_socks5_tunnel_quit(void);

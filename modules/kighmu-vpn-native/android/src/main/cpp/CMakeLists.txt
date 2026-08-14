@@ -5,11 +5,12 @@ add_library(hev_jni SHARED hev_jni.cpp)
 target_compile_options(hev_jni PRIVATE -O2 -fvisibility=hidden)
 
 if(ANDROID_ABI STREQUAL "armeabi-v7a")
-  add_library(tun2socks SHARED IMPORTED)
-  set_target_properties(tun2socks PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libtun2socks.so"
+  add_library(hev_core SHARED IMPORTED)
+  set_target_properties(hev_core PROPERTIES
+    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libhev-socks5-tunnel.so"
   )
-  target_link_libraries(hev_jni tun2socks log)
+  target_link_libraries(hev_jni hev_core log)
 else()
+  target_compile_definitions(hev_jni PRIVATE ZIVPN_UNSUPPORTED_ABI=1)
   target_link_libraries(hev_jni log)
 endif()
