@@ -298,3 +298,38 @@ Le Diagnostic utilisateur confirme `Neither user 11761 nor current process has a
 - [x] Republier toute correction uniquement via GitHub Actions
 - [ ] Retester le trafic réel avant toute déclaration de disponibilité
 - [ ] Ne pas modifier UDP-ZIVPN sur UDP/5667
+
+
+## Timeout persistant après correction de l’état — isolation réseau/protocole
+
+- [ ] Capturer les paquets UDP reçus par KIGHMU pendant une tentative Android
+- [ ] Capturer les réponses UDP envoyées par KIGHMU pendant cette tentative
+- [ ] Comparer le port réellement utilisé avec UDP/25000 et la plage UDP/20000-50000
+- [ ] Relever les logs `kighmu.service` exactement à l’heure du test
+- [ ] Vérifier si le serveur voit le client Android ou seulement un silence réseau
+- [ ] Vérifier le format d’authentification et d’Obfs transmis au binaire
+- [ ] Tester temporairement un port unique connu pour isoler le port hopping
+- [ ] Ne modifier aucun réglage UDP-ZIVPN pendant la capture
+- [ ] Ne publier aucun nouvel APK avant preuve de la cause réseau/protocole
+
+
+## Capture UDP à refaire
+
+La première capture n’a pas produit de fichier exploitable, mais le serveur est confirmé actif sur UDP/25000 et UDP-ZIVPN reste actif sur UDP/5667. Une seconde capture doit être lancée en premier plan avec une fenêtre synchronisée avec la tentative Android. Aucun nouvel APK ne doit être publié avant cette preuve.
+
+- [ ] Lancer une capture UDP fiable avec fichier confirmé
+- [ ] Faire une tentative Android pendant la fenêtre de capture
+- [ ] Lire les paquets reçus et émis
+- [ ] Comparer avec les journaux KIGHMU
+
+## Diagnostic synchronisé du timeout — 14 août 2026
+
+- [x] Lancer une capture VPS synchronisée avec un essai Android
+- [x] Vérifier directement les paquets entrants vers UDP/25000
+- [x] Vérifier la présence des règles nftables de redirection 20000-50000 vers 25000
+- [x] Ajouter une configuration client explicite `transport.udp` pour le port hopping si nécessaire
+- [ ] Republier via GitHub Actions après correction de configuration
+- [ ] Retester avec capture synchronisée et confirmer le handshake
+- [ ] Vérifier le trafic réel dans le TUN après handshake
+
+Constat intermédiaire : pendant la capture du 14 août 2026 à 11:20–11:22 UTC, aucun paquet entrant n’a atteint directement UDP/25000 et aucun journal KIGHMU correspondant n’a été produit. Les règles nftables de port hopping existent bien. Le YAML Android utilise actuellement `server: host:port` et ne déclare pas explicitement `transport.udp`; la prochaine vérification porte sur la construction de l’adresse multi-port et sur la section transport documentée par Hysteria 2.

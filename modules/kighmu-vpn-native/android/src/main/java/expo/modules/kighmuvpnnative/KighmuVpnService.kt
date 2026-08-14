@@ -27,8 +27,10 @@ class KighmuVpnService : VpnService() {
 
   private fun startVpn(intent: Intent) {
     if (currentStatus == STATUS_CONNECTED || currentStatus == STATUS_CONNECTING) return
-    val host = intent.getStringExtra(EXTRA_HOST).orEmpty()
-    val port = intent.getStringExtra(EXTRA_PORT).orEmpty()
+    val host = intent.getStringExtra(EXTRA_HOST).orEmpty().trim()
+    // Hysteria 2 accepts a multi-port address as host:start-end. Normalize
+    // harmless spaces entered in the mobile form before writing YAML.
+    val port = intent.getStringExtra(EXTRA_PORT).orEmpty().trim().replace(Regex("\\s+"), "")
     val obfs = intent.getStringExtra(EXTRA_OBFS).orEmpty()
     val password = intent.getStringExtra(EXTRA_PASSWORD).orEmpty()
     if (host.isBlank() || port.isBlank() || obfs.isBlank() || password.isBlank()) {
@@ -139,6 +141,10 @@ class KighmuVpnService : VpnService() {
       tls:
         sni: ${yamlScalar(host)}
         insecure: true
+      transport:
+        type: udp
+        udp:
+          hopInterval: 30s
       quic:
         disablePathMTUDiscovery: false
       tun:
