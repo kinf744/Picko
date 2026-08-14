@@ -206,3 +206,27 @@ L’analyse locale a été étendue aux wrappers JNI, à HEV, au packaging Andro
 La conclusion locale la plus solide est que **KIGHMU ne manque pas nécessairement d’une bibliothèque**, mais que son chemin Android combine le handshake, le TUN et le processus natif dans une séquence différente de ZIVPN. Les améliorations prioritaires sont donc : lier le processus au réseau physique avant le handshake, vérifier la configuration réellement acceptée par le binaire, ne publier `connected` qu’après une preuve de handshake, et capturer séparément les erreurs de parsing, de socket et de TUN.
 
 L’émulation QEMU ARM échoue avant le démarrage sur l’absence de `/system/bin/linker`. Il est donc possible de simuler localement la génération de configuration, l’ordre des appels et les erreurs de loader, mais pas d’affirmer localement le comportement cryptographique ou le handshake Android sans sysroot bionic compatible. Cette limite est documentée explicitement plutôt que masquée par une exécution Linux non représentative.
+
+## 16. Recentrage : libuz comme référence fonctionnelle
+
+Le code source Stivaros montre le contrat exact de libuz : l’application lance `libuz_core.so` avec `-s <obfs>` et `--config <JSON inline>`. Le JSON contient `server: host:portRange`, `obfs`, `auth`, un serveur SOCKS local, `insecure`, les fenêtres de réception et les limites de débit. libuz ne reçoit pas le descripteur TUN ; il ouvre un SOCKS local. HEV reçoit ensuite le TUN et relaie vers ce SOCKS. Le processus libuz est lié au réseau physique avant son lancement.
+
+Le chemin KIGHMU historique est différent : le service construit un YAML, lance `client --config <fichier>`, puis transmet un `fileDescriptor` TUN au client via la configuration. Le client KIGHMU doit donc réussir simultanément le parsing YAML, l’initialisation TUN par descripteur et la connexion QUIC/UDP. Cette surface d’échec est beaucoup plus grande que celle de libuz.
+
+### Indice statique prioritaire : provenance du patch TUN
+
+Le dépôt contient `native-patches/tun-file-descriptor.patch`, qui ajoute le champ Go `FileDescriptor int` avec le tag `mapstructure:"fileDescriptor"`. Pourtant, la recherche brute Ghidra dans la copie KIGHMU analysée ne retrouve pas la chaîne `fileDescriptor`, alors qu’elle retrouve `Hysteria-UDP`, `udpEnabled`, `salamander`, `disablePathMTUDiscovery`, `auth`, `password`, `server`, `client`, `tun` et `TUNGETIFF`.
+
+> **Hypothèse prioritaire, confiance moyenne à élevée :** le binaire KIGHMU embarqué dans l’APK peut avoir été compilé sans le patch `fileDescriptor`, ou depuis une révision différente du code source. Dans ce cas, le YAML Android transmet une clé que le binaire ne reconnaît pas. Cela expliquerait pourquoi libuz fonctionne avec le même service VPN alors que KIGHMU échoue, même si le binding réseau physique est correct.
+
+Cette absence de chaîne n’est pas une preuve absolue, car une optimisation ou une représentation différente peut modifier les chaînes conservées. Elle est cependant suffisamment distinctive pour justifier une vérification locale de provenance avant tout changement de protocole : comparer le `Go BuildID`, les tags de build, le hash du binaire et la présence du patch dans la révision ayant produit l’APK.
+
+### Autres écarts prioritaires
+
+Le binaire libuz de référence contient `quicv2`, `raw-control`, `recvwindow`, `multipath` et `ZIVPN_UDP_BRUTAL_DEBUG`, tandis que KIGHMU contient `Hysteria-UDP`, `HYSTERIA-PR`, `udpEnabled` et des marqueurs Hysteria/Salamander plus génériques. Il ne faut pas copier ces chaînes, mais vérifier dans le code source KIGHMU si le client utilise réellement le même mode de port hopping et les mêmes paramètres de transport que le serveur.
+
+Le client KIGHMU généré précédemment ne déclare pas explicitement `transport.udp`/`hopInterval`, alors que la configuration serveur utilise un port hopping nftables. Cette omission est une candidate secondaire. L’absence de paquets entrant au VPS indique toutefois qu’il faut d’abord vérifier le parsing/initialisation locale et la provenance du binaire avant d’accuser le firewall ou le serveur.
+
+### Conclusion opérationnelle
+
+La comparaison doit maintenant suivre cet ordre : **(1)** vérifier que le binaire KIGHMU contient réellement le support `fileDescriptor` attendu par le patch ; **(2)** valider que le YAML produit utilise les clés reconnues par cette révision ; **(3)** vérifier explicitement le mode de port hopping dans le code source ; **(4)** seulement ensuite modifier la configuration Android. libuz sert de référence d’architecture d’intégration, pas de code à décompiler ou copier aveuglément.

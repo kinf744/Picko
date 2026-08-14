@@ -435,3 +435,11 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Simuler localement le lancement, l’environnement, les descripteurs et les erreurs Android pertinentes
 - [x] Comparer les résultats simulés avec les logs et captures déjà collectés
 - [x] Mettre à jour le rapport en séparant les preuves locales des limites d’exécution Android
+
+## Recentrage libuz → code source KIGHMU
+
+- [x] Cartographier le contrat réel de lancement et de configuration de libuz_core
+- [x] Comparer chaque exigence libuz avec le code source et le lancement KIGHMU
+- [x] Reproduire localement les deux configurations et la séquence TUN/réseau
+- [x] Identifier la cause probable de l’échec KIGHMU sans décompiler davantage KIGHMU
+- [x] Documenter les correctifs minimaux à appliquer uniquement à KIGHMU
