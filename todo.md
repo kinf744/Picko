@@ -227,3 +227,24 @@ Le second test réel reproduit exactement `error=13, Permission denied` malgré 
 - [ ] Retester le moteur et comparer le Diagnostic après installation propre
 
 Le dépôt Stivaros utilise la même stratégie native recommandée : `jniLibs/<abi>`, `nativeLibraryDir`, `useLegacyPackaging=true`, `android:extractNativeLibs=true` et `LD_LIBRARY_PATH` configuré pour les moteurs exécutés par `ProcessBuilder`.
+
+
+## Timeout handshake après démarrage réussi — 14 août 2026
+
+- [ ] Collecter le Diagnostic complet après l’échec `no recent network activity`
+- [ ] Vérifier les logs complets du binaire KIGHMU côté Android
+- [ ] Vérifier les logs de `kighmu.service` côté VPS au même instant
+- [ ] Vérifier que le serveur reçoit les paquets de l’appareil Android
+- [ ] Comparer l’hôte, la plage 20000-50000, Salamander et userpass
+- [ ] Vérifier le format exact de l’authentification transmis au binaire
+- [ ] Vérifier la compatibilité de la configuration YAML avec la version du binaire
+- [ ] Reproduire le timeout avec le même binaire hors interface Android si possible
+- [ ] Vérifier le binding réseau et `LD_LIBRARY_PATH` du processus natif
+- [ ] Vérifier le passage du descripteur TUN sans masquer l’erreur de handshake
+- [ ] Corriger le binaire ou la configuration uniquement après preuve dans les logs
+- [ ] Republier toute correction exclusivement via GitHub Actions
+- [ ] Retester le trafic réel et le DNS après correction
+- [ ] Ne pas modifier UDP-ZIVPN sur UDP/5667
+- [ ] Ne pas déclarer le tunnel fonctionnel avant trafic réel confirmé
+
+Le binaire démarre correctement depuis `libkighmu.so`, mais son client échoue ensuite avec `connect error: timeout: no recent network activity`. Le problème est maintenant localisé après le lancement natif et avant le handshake réussi.

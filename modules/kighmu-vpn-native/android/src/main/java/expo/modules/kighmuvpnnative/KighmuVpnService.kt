@@ -51,6 +51,15 @@ class KighmuVpnService : VpnService() {
       tunInterface = null
       val executable = copyNativeBinary()
       val config = writeNativeConfig(host, port, obfs, password, nativeFd)
+      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+      val physicalNetwork = connectivity.activeNetwork
+      if (physicalNetwork == null) {
+        error("Aucun réseau physique disponible pour le handshake KIGHMU")
+      }
+      if (!connectivity.bindProcessToNetwork(physicalNetwork)) {
+        error("Impossible de lier le client KIGHMU au réseau physique")
+      }
+      emitLog("info", "NATIVE", "Client KIGHMU lié au réseau physique ${physicalNetwork!!.netId} avant le handshake.")
       val nativeDir = applicationInfo.nativeLibraryDir
       emitLog("info", "NATIVE", "Binaire prêt: ${executable.name}, taille=${executable.length()}, abi=${Build.SUPPORTED_ABIS.firstOrNull() ?: "inconnue"}.")
       nativeProcess = ProcessBuilder(executable.absolutePath, "client", "--config", config.absolutePath)
@@ -90,6 +99,10 @@ class KighmuVpnService : VpnService() {
   private fun stopVpn() {
     nativeProcess?.destroy()
     nativeProcess = null
+    try {
+      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+      connectivity.bindProcessToNetwork(null)
+    } catch (_: Exception) {}
     emitLog("info", "NATIVE", "Processus KIGHMU arrêté.")
     tunInterface?.close()
     tunInterface = null
