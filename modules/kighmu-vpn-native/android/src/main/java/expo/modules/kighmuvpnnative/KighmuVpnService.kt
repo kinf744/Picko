@@ -66,11 +66,23 @@ class KighmuVpnService : VpnService() {
     startForeground(NOTIFICATION_ID, notification("Connexion à $host:$port"))
 
     try {
+      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+      val physicalNetwork = connectivity.activeNetwork
+        ?: error("Aucun réseau physique disponible pour le handshake KIGHMU")
       val builder = Builder()
         .setSession("KIGHMU VPN")
         .setMtu(1500)
         .addAddress("100.100.100.101", 30)
         .addRoute("0.0.0.0", 0)
+        .setUnderlyingNetworks(arrayOf(physicalNetwork))
+      // The native client runs under this application's UID. Excluding this
+      // package keeps its QUIC/UDP control traffic on the physical network
+      // instead of looping it back into the TUN it is responsible for.
+      try {
+        builder.addDisallowedApplication(packageName)
+      } catch (error: Throwable) {
+        error("Impossible d’exclure KIGHMU du TUN : ${errorMessage(error)}")
+      }
       val established = builder.establish() ?: error("Android n’a pas fourni d’interface VPN")
       val localFd = established.detachFd()
       synchronized(lifecycleLock) {
@@ -87,15 +99,10 @@ class KighmuVpnService : VpnService() {
         return
       }
       val config = writeNativeConfig(host, port, obfs, password, localFd)
-      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-      val physicalNetwork = connectivity.activeNetwork
-      if (physicalNetwork == null) {
-        error("Aucun réseau physique disponible pour le handshake KIGHMU")
-      }
       if (!connectivity.bindProcessToNetwork(physicalNetwork)) {
         error("Impossible de lier le client KIGHMU au réseau physique")
       }
-      emitLog("info", "NATIVE", "Client KIGHMU lié au réseau physique avant le handshake (${physicalNetwork}).")
+      emitLog("info", "NATIVE", "KIGHMU est exclu du TUN et lié au réseau physique avant le handshake (${physicalNetwork}).")
       val nativeDir = applicationInfo.nativeLibraryDir
       emitLog("info", "NATIVE", "Binaire prêt: ${executable.name}, taille=${executable.length()}, abi=${Build.SUPPORTED_ABIS.firstOrNull() ?: "inconnue"}.")
       val localProcess = ProcessBuilder(executable.absolutePath, "client", "--config", config.absolutePath)
