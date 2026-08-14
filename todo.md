@@ -364,5 +364,5 @@ Constat intermédiaire : pendant la capture du 14 août 2026 à 11:20–11:22 UT
 - [x] Rendre le bouton Annuler pressable pendant l’état `connecting`
 - [x] Ajouter une action Arrêter dans la notification VPN comme voie de secours
 - [x] Adapter uniquement le mécanisme d’arrêt nécessaire à KIGHMU
-- [ ] Publier la correction exclusivement via GitHub Actions
+- [x] Publier la correction exclusivement via GitHub Actions
 - [ ] Faire valider sur Android l’interruption pendant la connexion puis la reconnexion
