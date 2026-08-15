@@ -70,7 +70,7 @@
 - [x] Documenter l’analyse comparative de handshake
 - [x] Documenter la compilation exclusivement via GitHub Actions
 - [x] Documenter la cause et le correctif du blocage Android
-- [ ] Mettre à jour la procédure d’installation après correction
+- [x] Mettre à jour la procédure d’installation après correction
 
 ## Règles de sécurité de ce projet
 
@@ -503,7 +503,7 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [ ] Comparer le chemin réseau KIGHMU avec le chemin libuz fonctionnel
 - [ ] Déterminer pourquoi aucune activité réseau n’est observée avant le timeout
 - [ ] Préparer un correctif KIGHMU isolé et le valider localement
-- [ ] Republier uniquement via GitHub Actions après validation
+- [x] Republier uniquement via GitHub Actions après validation — run 31830090143 réussi
 
 ## Vérification de la configuration client KIGHMU fournie
 
@@ -560,7 +560,7 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Vérifier les compteurs nftables de port hopping après le test
 - [x] Vérifier la configuration active Obfs/auth/port du serveur
 - [x] Déterminer que le chemin client n’atteint pas la destination KIGHMU observée côté VPS
-- [ ] Préparer un correctif uniquement après identification de la cause
+- [x] Préparer un correctif uniquement après identification de la cause
 
 ## Correctif après capture : premier paquet KIGHMU absent
 
@@ -568,4 +568,24 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Modifier le YAML Android pour séparer port de base et plage de hopping
 - [x] Vérifier statiquement que le binaire client reçoit désormais la destination prévue avant handshake
 - [x] Ajouter les contrôles déterministes du rendu YAML masqué
-- [ ] Republier uniquement via GitHub Actions après validation
+- [x] Republier uniquement via GitHub Actions après validation — run 31830090143 réussi
+
+## Test direct du binaire serveur KIGHMU
+
+- [x] Identifier le binaire serveur KIGHMU et son format de configuration réellement supporté
+- [x] Préparer une configuration de test isolée sans toucher à UDP-ZIVPN ni SSH
+- [x] Vérifier la syntaxe JSON/YAML, l’authentification et l’Obfs fixe `kighmu`
+- [x] Tester le démarrage et l’écoute UDP/25000 du binaire KIGHMU
+- [x] Vérifier les journaux et un handshake local contrôlé
+- [x] Documenter les résultats et les limites du test VPS
+- [ ] Ne pas déclarer le tunnel Android fonctionnel sans test réel depuis l’application
+
+## Alignement JSON Android/VPS
+
+- [x] Auditer le générateur de configuration KIGHMU Android actuel
+- [x] Comparer chaque champ Android avec le JSON VPS validé
+- [x] Corriger le rendu Android pour utiliser la même structure serveur/client validée
+- [x] Ajouter ou renforcer un contrôle déterministe du JSON sans secrets via git diff, TypeScript et Vitest
+- [ ] Préparer la capture coordonnée du Diagnostic Android et des journaux KIGHMU
+- [ ] Publier via GitHub Actions uniquement si un correctif est nécessaire
+- [ ] Demander le test réel sur téléphone avant toute déclaration de disponibilité

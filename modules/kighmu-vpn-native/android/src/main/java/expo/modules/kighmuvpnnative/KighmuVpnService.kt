@@ -288,41 +288,38 @@ class KighmuVpnService : VpnService() {
   }
 
   private fun writeNativeConfig(host: String, serverPort: String, hopPorts: String?, obfs: String, password: String, fd: Int): File {
-    val target = File(filesDir, "kighmu-client.yaml")
-    val yaml = """
-      server: ${yamlScalar("$host:$serverPort")}
-      auth: ${yamlScalar(password)}
-      obfs:
-        type: salamander
-        salamander:
-          password: ${yamlScalar(obfs)}
-      tls:
-        sni: ${yamlScalar(host)}
-        insecure: true
-      transport:
-        type: udp
-        udp:
-          hopInterval: 30s${hopPorts?.let { "\n          hopPorts: ${yamlScalar(it)}" } ?: ""}
-      quic:
-        disablePathMTUDiscovery: true
-      tun:
-        name: kighmu
-        mtu: 1400
-        fileDescriptor: $fd
-        timeout: 5m
-        address:
-          ipv4: 100.100.100.101/30
-          ipv6: 2001::ffff:ffff:ffff:fff1/126
-        route:
-          strict: true
-          ipv4: [0.0.0.0/0]
-          ipv6: ["2000::/3"]
+    val target = File(filesDir, "kighmu-client.json")
+    val hopConfig = hopPorts?.let {
+      "\"hopInterval\":\"30s\",\"hopPorts\":${jsonString(it)}"
+    } ?: "\"hopInterval\":\"30s\""
+    val json = """
+      {
+        "server":${jsonString("$host:$serverPort")},
+        "auth":${jsonString(password)},
+        "tls":{"sni":${jsonString(host)},"insecure":true},
+        "obfs":{"type":"salamander","salamander":{"password":${jsonString(obfs)}}},
+        "transport":{"type":"udp","udp":{$hopConfig}},
+        "quic":{"disablePathMTUDiscovery":true},
+        "tun":{
+          "name":"kighmu",
+          "mtu":1400,
+          "fileDescriptor":$fd,
+          "timeout":"5m",
+          "address":{"ipv4":"100.100.100.101/30","ipv6":"2001::ffff:ffff:ffff:fff1/126"},
+          "route":{"strict":true,"ipv4":["0.0.0.0/0"],"ipv6":["2000::/3"]}
+        }
+      }
     """.trimIndent()
-    target.writeText(yaml)
+    target.writeText(json)
     return target
   }
 
-  private fun yamlScalar(value: String): String = "'" + value.replace("'", "''") + "'"
+  private fun jsonString(value: String): String = "\"" + value
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+    .replace("\n", "\\n")
+    .replace("\r", "\\r")
+    .replace("\t", "\\t") + "\""
 
   private fun createNotificationChannel() {
     if (Build.VERSION.SDK_INT >= 26) {

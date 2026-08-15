@@ -284,3 +284,23 @@ Le commit `e2b6aca` fixe l’Obfs Salamander `kighmu` dans le service Kotlin, le
 La capture VPS réalisée pendant le test Android montre zéro paquet destiné à UDP/25000 ou à la plage 20000-50000 provenant du téléphone. Le serveur KIGHMU est actif, son port hopping nftables est chargé, et aucun journal de connexion n’est généré. Le YAML Android utilisait la plage directement dans `server: host:20000-50000`, alors que le contrat attendu sépare le socket serveur et la plage de hopping.
 
 Le correctif Android utilise maintenant `server: host:25000` lorsque l’utilisateur saisit une plage et place cette plage sous `transport.udp.hopPorts`, tout en conservant `hopInterval: 30s`. Un log masqué indique la destination et l’état du hopping sans secret. `git diff --check`, TypeScript et Vitest réussissent. Le test Android et le build GitHub Actions restent à effectuer.
+
+## 25. Correctif du port de base KIGHMU
+
+Pendant le second essai Android, aucune trame destinée à UDP/25000 ou à la plage KIGHMU n’a été observée depuis le téléphone ; les trames capturées étaient du trafic UDP externe sans rapport. La configuration Android envoyait auparavant `host:20000-50000` comme socket serveur. Le service est maintenant corrigé pour envoyer `host:25000` et déclarer `20000-50000` sous `transport.udp.hopPorts`, avec `hopInterval: 30s`.
+
+Le commit `af0dc3f` a été validé par `git diff --check`, TypeScript et Vitest. Le workflow GitHub Actions `31830090143` a réussi et a publié l’artefact release unique `kighmu-vpn-android-release-af0dc3f9da3c07e40f9790bb0ab627f752f48900`. Le serveur et UDP-ZIVPN n’ont pas été modifiés pour ce correctif. Le test Android réel doit confirmer l’émission vers UDP/25000 et le handshake.
+
+## 26. Test direct VPS avec configuration JSON
+
+Un test isolé a été exécuté directement sur le VPS avec `/usr/local/bin/kighmu`, sans arrêter ni recharger `kighmu.service` et sans modifier UDP-ZIVPN. Le serveur temporaire écoutait uniquement sur `127.0.0.1:25002`, tandis que le client temporaire exposait un SOCKS5 sur `127.0.0.1:21082`. Les deux configurations ont été écrites en JSON et contenaient TLS, authentification `userpass`, Salamander et le mode UDP.
+
+Le binaire a démarré sur la configuration JSON, le serveur a enregistré une connexion authentifiée, le client a indiqué `connected to server` avec `udpEnabled: true`, et une requête HTTPS effectuée via le SOCKS5 a retourné HTTP 200. Le test démontre donc que le binaire serveur KIGHMU et la chaîne d’authentification/Obfs fonctionnent localement avec JSON, indépendamment du problème Android.
+
+Après le test, les processus et fichiers temporaires ont été supprimés. Les services `kighmu.service` et `zivpn.service` sont restés actifs, avec UDP/25000 et UDP/5667 toujours à l’écoute. Ce résultat ne prouve pas encore que le client Android transmet correctement ses paquets vers le VPS public ni que le port hopping fonctionne depuis le réseau mobile ; il isole cependant le problème Android du cœur serveur KIGHMU.
+
+## 27. Alignement Android sur le contrat JSON validé
+
+Le service Android génère désormais `kighmu-client.json` au lieu de `kighmu-client.yaml`. La structure reprend le profil client JSON validé sur le VPS : `server` contient le port de base `25000`, `auth` contient le couple userpass, `tls` contient le SNI et le mode de test TLS, `obfs.salamander.password` contient la valeur fixe KIGHMU, et `transport.udp` contient `hopInterval` ainsi que `hopPorts` lorsqu’une plage est saisie. Les champs `tun`, `quic` et les routes sont conservés pour l’intégration Android.
+
+Le générateur utilise un échappement JSON explicite pour l’hôte, l’identifiant userpass, le SNI et les valeurs d’Obfs. Aucun secret n’est écrit dans le Diagnostic. `git diff --check`, TypeScript et les quatre tests Vitest actifs réussissent. La compilation Android n’est pas lancée localement ; elle doit passer par GitHub Actions.
