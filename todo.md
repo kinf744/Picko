@@ -586,6 +586,52 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Comparer chaque champ Android avec le JSON VPS validé
 - [x] Corriger le rendu Android pour utiliser la même structure serveur/client validée
 - [x] Ajouter ou renforcer un contrôle déterministe du JSON sans secrets via git diff, TypeScript et Vitest
-- [ ] Préparer la capture coordonnée du Diagnostic Android et des journaux KIGHMU
-- [ ] Publier via GitHub Actions uniquement si un correctif est nécessaire
+- [x] Préparer la procédure de capture coordonnée du Diagnostic Android et des journaux KIGHMU
+- [x] Publier via GitHub Actions uniquement si un correctif est nécessaire — run 31854556253 réussi
 - [ ] Demander le test réel sur téléphone avant toute déclaration de disponibilité
+
+## Nouveau timeout Android — 15 août 2026
+
+- [x] Enregistrer le Diagnostic Android : processus démarré, JSON lancé, handshake absent après 15 secondes
+- [x] Corréler l’heure du test avec les journaux `kighmu.service`
+- [x] Vérifier l’état nftables, l’écoute UDP/25000 et l’absence de trace serveur
+- [x] Comparer l’Obfs, l’authentification, le SNI et le format JSON réellement utilisés
+- [ ] Vérifier si le trafic sort par le réseau physique après `bindProcessToNetwork`
+- [ ] Ne modifier le code ou le VPS qu’après preuve du point de rupture
+- [x] Conserver UDP-ZIVPN et SSH inchangés
+- [ ] Demander un nouveau test Android après correction éventuelle
+
+## Nouvel utilisateur KIGHMU VPS
+
+- [x] Générer un identifiant et un mot de passe KIGHMU dédiés
+- [x] Créer le compte dans la configuration serveur active sans toucher à UDP-ZIVPN
+- [x] Vérifier la syntaxe et le redémarrage contrôlé du service KIGHMU
+- [x] Vérifier le compte par handshake local et HTTPS sans exposer les secrets dans les journaux
+- [x] Fournir les paramètres d’utilisation dans l’application
+
+## Capture VPS en direct — nouvel essai Android
+
+- [x] Préparer une capture UDP limitée à UDP/25000 et 20000–50000
+- [x] Observer simultanément le journal KIGHMU pendant une tentative Android unique
+- [x] Comparer l’heure Android avec les paquets réellement reçus sur le VPS
+- [x] Déterminer que le serveur ne reçoit aucun paquet KIGHMU identifiable pendant l’essai
+- [x] Nettoyer/laisser expirer la capture temporaire sans modifier aucun service
+
+## Correction de l’analyse du port hopping
+
+- [x] Recompter les paquets entrants sur chaque port destination 20000–50000
+- [x] Identifier les adresses source et ports source observés pendant l’essai Android
+- [x] Distinguer la source mobile `104.166.161.69:8130` du trafic externe
+- [x] Comparer les ports observés aux règles nftables de redirection
+- [x] Corriger le rapport : les paquets Android atteignent plusieurs ports hopping
+
+## Correction ciblée du handshake KIGHMU
+
+- [x] Comparer les captures Android et client local sur les ports hopping
+- [x] Vérifier le sens et les tailles des réponses QUIC sur les ports 49111/24870 et autres ports observés
+- [x] Comparer les JSON, l’Obfs, l’authentification, le SNI et les options UDP des deux clients
+- [x] Identifier l’écart responsable du handshake non confirmé : auth Android envoyait le mot de passe seul au lieu de `username:password`
+- [x] Appliquer un correctif uniquement dans l’intégration KIGHMU : username séparé et auth userpass complète
+- [x] Valider le correctif localement sans modifier UDP-ZIVPN
+- [ ] Compiler l’APK uniquement via GitHub Actions
+- [ ] Faire un nouveau test Android avant toute déclaration de disponibilité

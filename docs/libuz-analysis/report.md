@@ -304,3 +304,25 @@ Après le test, les processus et fichiers temporaires ont été supprimés. Les 
 Le service Android génère désormais `kighmu-client.json` au lieu de `kighmu-client.yaml`. La structure reprend le profil client JSON validé sur le VPS : `server` contient le port de base `25000`, `auth` contient le couple userpass, `tls` contient le SNI et le mode de test TLS, `obfs.salamander.password` contient la valeur fixe KIGHMU, et `transport.udp` contient `hopInterval` ainsi que `hopPorts` lorsqu’une plage est saisie. Les champs `tun`, `quic` et les routes sont conservés pour l’intégration Android.
 
 Le générateur utilise un échappement JSON explicite pour l’hôte, l’identifiant userpass, le SNI et les valeurs d’Obfs. Aucun secret n’est écrit dans le Diagnostic. `git diff --check`, TypeScript et les quatre tests Vitest actifs réussissent. La compilation Android n’est pas lancée localement ; elle doit passer par GitHub Actions.
+
+Le commit `0a8a7bc` a ensuite été compilé avec succès par le workflow GitHub Actions `31854556253`. L’artefact unique non expiré est `kighmu-vpn-android-release-0a8a7bc28ba103ebcf7b788efee6e860b2f44d69`, d’environ 30 MB. L’installation et le test réel sur téléphone restent obligatoires.
+
+## 28. Trois essais Android sans trace serveur
+
+Les captures du téléphone montrent trois tentatives avec le processus `libkighmu.so` démarré depuis `nativeLibraryDir`, le TUN établi, le binding au réseau physique effectué et la destination normalisée vers `204.152.219.23:25000` avec `hopPorts=20000-50000`. Dans chaque cas, le handshake n’a pas été confirmé après 15 secondes, puis la lecture du journal natif a été interrompue pendant l’arrêt.
+
+La corrélation VPS effectuée après les essais montre que `kighmu.service` et `zivpn.service` étaient actifs, que KIGHMU écoutait sur UDP/25000, que UDP-ZIVPN écoutait sur UDP/5667 et que les règles nftables `20000-24999` et `25001-50000` redirigeaient vers UDP/25000. Pourtant, aucun événement de connexion KIGHMU n’apparaît dans la fenêtre UTC correspondant aux captures Android, et aucun journal KIGHMU alternatif récent n’a été trouvé. Le serveur n’a donc pas observé de handshake exploitable pendant ces trois essais.
+
+La preuve actuelle localise le problème avant l’authentification serveur : soit aucun datagramme Android n’atteint le VPS, soit il est bloqué/altéré avant d’atteindre le socket KIGHMU. Le serveur KIGHMU ne doit pas être reconfiguré sur cette seule base ; la prochaine mesure doit être une capture `tcpdump` active pendant un nouvel essai unique, avec vérification simultanée du réseau mobile, du port de base et de la plage hopping.
+
+## 29. Compte KIGHMU dédié pour test Android
+
+Un compte utilisateur KIGHMU dédié a été ajouté à la configuration active du VPS. La configuration a été sauvegardée avant modification, puis seul `kighmu.service` a été redémarré. Le service KIGHMU est resté actif sur UDP/25000, UDP-ZIVPN est resté actif sur UDP/5667 et aucun changement n’a été effectué sur SSH ou le pare-feu.
+
+Le nouveau compte a été vérifié localement contre le service actif : le client KIGHMU a obtenu `connected to server` avec `udpEnabled: true`, puis une requête HTTPS via SOCKS5 a retourné HTTP 200. Le mot de passe n’est pas enregistré dans ce rapport ; il est fourni séparément à l’utilisateur pour la saisie dans l’application.
+
+## 30. Capture VPS synchronisée avec un essai Android
+
+Une capture de 90 secondes a été activée sur `eth0` avec observation du journal systemd KIGHMU. La première lecture était trop restrictive parce qu’elle s’est focalisée sur UDP/25000 et n’a pas suffisamment isolé toute la plage hopping. La relecture complète montre que la source mobile `104.166.161.69:8130` a envoyé 431 datagrammes vers le VPS sur plusieurs ports hopping, notamment `49111` et `24870`, tous deux compris dans `20000-50000`.
+
+Le VPS a également renvoyé des datagrammes vers cette source sur ces mêmes ports. Les règles nftables actives redirigent bien `20000-24999` et `25001-50000` vers `25000`. Aucun événement `client connected` n’apparaît cependant dans le journal KIGHMU pendant la fenêtre de test. La preuve correcte est donc : **les paquets Android atteignent le VPS et obtiennent des réponses sur le port hopping, mais le handshake applicatif KIGHMU n’est pas accepté ou n’est pas journalisé comme connexion établie**. La conclusion précédente « aucun paquet Android n’atteint le VPS » était incorrecte et doit être écartée.

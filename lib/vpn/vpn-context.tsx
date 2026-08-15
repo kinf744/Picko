@@ -12,6 +12,7 @@ export type VpnConfig = {
   host: string;
   port: string;
   obfs: string;
+  username: string;
   password: string;
 };
 
@@ -24,10 +25,11 @@ export type DiagnosticLog = {
 };
 
 const CONFIG_KEY = "kighmu.vpn.config.v1";
+const USERNAME_KEY = "kighmu.vpn.username.v1";
 const PASSWORD_KEY = "kighmu.vpn.password.v1";
 const OBFS_KEY = "kighmu.vpn.obfs.v1";
 
-const EMPTY_CONFIG: VpnConfig = { host: "", port: "", obfs: FIXED_OBFS, password: "" };
+const EMPTY_CONFIG: VpnConfig = { host: "", port: "", obfs: FIXED_OBFS, username: "", password: "" };
 
 function redact(value: string) {
   return value ? "••••••" : "non défini";
@@ -78,11 +80,12 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const stored = await AsyncStorage.getItem(CONFIG_KEY);
+        const username = Platform.OS === "web" ? localStorage.getItem(USERNAME_KEY) : await SecureStore.getItemAsync(USERNAME_KEY);
         const password = Platform.OS === "web" ? localStorage.getItem(PASSWORD_KEY) : await SecureStore.getItemAsync(PASSWORD_KEY);
         const obfs = Platform.OS === "web" ? localStorage.getItem(OBFS_KEY) : await SecureStore.getItemAsync(OBFS_KEY);
         if (mounted && stored) {
           const parsed = JSON.parse(stored) as Partial<VpnConfig>;
-          setConfig({ ...EMPTY_CONFIG, ...parsed, password: password ?? "", obfs: FIXED_OBFS });
+          setConfig({ ...EMPTY_CONFIG, ...parsed, username: username ?? parsed.username ?? "", password: password ?? "", obfs: FIXED_OBFS });
         }
         if (mounted) addLog("info", "STORAGE", "Profil local chargé ; les secrets restent masqués.");
       } catch {
@@ -125,15 +128,17 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
     try {
-      await AsyncStorage.setItem(CONFIG_KEY, JSON.stringify({ host: config.host, port: config.port }));
+      await AsyncStorage.setItem(CONFIG_KEY, JSON.stringify({ host: config.host, port: config.port, username: config.username }));
       if (Platform.OS === "web") {
+        localStorage.setItem(USERNAME_KEY, config.username);
         localStorage.setItem(PASSWORD_KEY, config.password);
         localStorage.setItem(OBFS_KEY, FIXED_OBFS);
       } else {
+        await SecureStore.setItemAsync(USERNAME_KEY, config.username);
         await SecureStore.setItemAsync(PASSWORD_KEY, config.password);
         await SecureStore.setItemAsync(OBFS_KEY, FIXED_OBFS);
       }
-      addLog("info", "STORAGE", `Profil enregistré pour ${config.host}:${config.port}; password=${redact(config.password)}; obfs=${redact(config.obfs)}.`);
+      addLog("info", "STORAGE", `Profil enregistré pour ${config.host}:${config.port}; username=${redact(config.username)}; password=${redact(config.password)}; obfs=${redact(config.obfs)}.`);
       return true;
     } catch {
       addLog("error", "STORAGE", "Échec d’enregistrement du profil sécurisé.");
@@ -154,7 +159,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     setLastError(null);
     setStatus("connecting");
     addLog("connection", "TUNNEL", `Préparation de la connexion vers ${config.host}:${config.port}.`);
-    addLog("connection", "AUTH", `Paramètres chargés; password=${redact(config.password)}; obfs=${redact(config.obfs)}.`);
+    addLog("connection", "AUTH", `Paramètres chargés; username=${redact(config.username)}; password=${redact(config.password)}; obfs=${redact(config.obfs)}.`);
     const native = getNativeVpn();
     if (!native) {
       addLog("warning", "NATIVE", "Aucun module Android chargé dans ce preview ; la connexion réelle nécessite un build natif personnalisé.");
@@ -171,7 +176,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
         addLog("warning", "ANDROID", "L’autorisation VPN doit être confirmée dans la fenêtre système.");
         return;
       }
-      await native.startVpn(config.host, config.port, config.obfs, config.password);
+      await native.startVpn(config.host, config.port, config.obfs, config.username, config.password);
       addLog("connection", "NATIVE", "Service VpnService démarré ; handshake KIGHMU en attente.");
       setStatus("connecting");
     } catch (error) {
@@ -198,9 +203,11 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   const resetConfig = useCallback(async () => {
     await AsyncStorage.removeItem(CONFIG_KEY);
     if (Platform.OS === "web") {
+      localStorage.removeItem(USERNAME_KEY);
       localStorage.removeItem(PASSWORD_KEY);
       localStorage.removeItem(OBFS_KEY);
     } else {
+      await SecureStore.deleteItemAsync(USERNAME_KEY);
       await SecureStore.deleteItemAsync(PASSWORD_KEY);
       await SecureStore.deleteItemAsync(OBFS_KEY);
     }

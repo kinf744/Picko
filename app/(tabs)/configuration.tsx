@@ -47,6 +47,7 @@ export default function ConfigurationScreen() {
           <Text className="text-sm font-semibold text-foreground">Obfs Salamander</Text>
           <Text className="mt-1 text-sm text-muted">{FIXED_OBFS} · valeur fixe intégrée au moteur KIGHMU</Text>
         </View>
+        <Field label="Identifiant KIGHMU" value={config.username} onChangeText={(username) => { updateConfig({ username }); setSaved(false); }} placeholder="Nom d’utilisateur du serveur" error={errors.username} />
         <Field label="Mot de passe" value={config.password} onChangeText={(password) => { updateConfig({ password }); setSaved(false); }} placeholder="Mot de passe du serveur" secureTextEntry error={errors.password} />
       </View>
       <Pressable onPress={handleSave} style={({ pressed }) => [styles.saveButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><Text style={styles.saveText}>{saved ? "Profil enregistré" : "Enregistrer le profil"}</Text></Pressable>

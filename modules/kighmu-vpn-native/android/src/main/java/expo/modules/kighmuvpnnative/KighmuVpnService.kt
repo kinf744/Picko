@@ -55,6 +55,7 @@ class KighmuVpnService : VpnService() {
     // Hysteria 2 accepts a multi-port address as host:start-end. Normalize
     // harmless spaces entered in the mobile form before writing YAML.
     val port = intent.getStringExtra(EXTRA_PORT).orEmpty().trim().replace(Regex("\\s+"), "")
+    val username = intent.getStringExtra(EXTRA_USERNAME).orEmpty().trim()
     // A range is a hopping range, not the server socket. KIGHMU listens on
     // the fixed base port and expects the range under transport.udp.hopPorts.
     val serverPort = if (port.contains("-")) FIXED_SERVER_PORT else port
@@ -63,7 +64,7 @@ class KighmuVpnService : VpnService() {
     // Ignore stale/user-provided values so the client and server cannot drift.
     val obfs = FIXED_SALAMANDER_OBFS
     val password = intent.getStringExtra(EXTRA_PASSWORD).orEmpty().trim()
-    if (host.isBlank() || port.isBlank() || obfs.isBlank() || password.isBlank()) {
+    if (host.isBlank() || port.isBlank() || obfs.isBlank() || username.isBlank() || password.isBlank()) {
       currentStatus = STATUS_ERROR
       return
     }
@@ -109,7 +110,7 @@ class KighmuVpnService : VpnService() {
         ParcelFileDescriptor.adoptFd(localFd).close()
         return
       }
-      val config = writeNativeConfig(host, serverPort, hopPorts, obfs, password, localFd)
+      val config = writeNativeConfig(host, serverPort, hopPorts, obfs, username, password, localFd)
       emitLog("info", "NATIVE", "Destination KIGHMU: $host:$serverPort; port hopping=${hopPorts ?: "désactivé"}.")
       if (!connectivity.bindProcessToNetwork(physicalNetwork)) {
         error("Impossible de lier le client KIGHMU au réseau physique")
@@ -267,7 +268,7 @@ class KighmuVpnService : VpnService() {
     } catch (error: Throwable) {
       emitLog("warning", "NATIVE", "Libération du réseau physique : ${errorMessage(error)}")
     }
-    File(filesDir, "kighmu-client.yaml").delete()
+    File(filesDir, "kighmu-client.json").delete()
     emitLog("info", "NATIVE", "Arrêt immédiat demandé : processus KIGHMU, TUN et binding réseau libérés.")
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
     stopSelf()
@@ -287,7 +288,7 @@ class KighmuVpnService : VpnService() {
     return nativeTarget
   }
 
-  private fun writeNativeConfig(host: String, serverPort: String, hopPorts: String?, obfs: String, password: String, fd: Int): File {
+  private fun writeNativeConfig(host: String, serverPort: String, hopPorts: String?, obfs: String, username: String, password: String, fd: Int): File {
     val target = File(filesDir, "kighmu-client.json")
     val hopConfig = hopPorts?.let {
       "\"hopInterval\":\"30s\",\"hopPorts\":${jsonString(it)}"
@@ -295,7 +296,7 @@ class KighmuVpnService : VpnService() {
     val json = """
       {
         "server":${jsonString("$host:$serverPort")},
-        "auth":${jsonString(password)},
+        "auth":${jsonString("$username:$password")},
         "tls":{"sni":${jsonString(host)},"insecure":true},
         "obfs":{"type":"salamander","salamander":{"password":${jsonString(obfs)}}},
         "transport":{"type":"udp","udp":{$hopConfig}},
@@ -365,6 +366,7 @@ class KighmuVpnService : VpnService() {
     const val EXTRA_HOST = "host"
     const val EXTRA_PORT = "port"
     const val EXTRA_OBFS = "obfs"
+    const val EXTRA_USERNAME = "username"
     const val EXTRA_PASSWORD = "password"
     private const val FIXED_SALAMANDER_OBFS = "kighmu"
     private const val FIXED_SERVER_PORT = "25000"

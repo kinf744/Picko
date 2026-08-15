@@ -21,6 +21,6 @@ export type KighmuVpnNativeViewProps = {
 export type KighmuVpnNativeModuleApi = {
   getStatus: () => NativeVpnStatus;
   prepareVpn: () => Promise<boolean>;
-  startVpn: (host: string, port: string, obfs: string, password: string) => Promise<boolean>;
+  startVpn: (host: string, port: string, obfs: string, username: string, password: string) => Promise<boolean>;
   stopVpn: () => Promise<boolean>;
 };

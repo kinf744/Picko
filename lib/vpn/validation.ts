@@ -4,6 +4,7 @@ export type VpnValidationConfig = {
   host: string;
   port: string;
   obfs: string;
+  username: string;
   password: string;
 };
 
@@ -24,6 +25,7 @@ export function validateVpnConfig(config: VpnValidationConfig) {
   const errors: Partial<Record<keyof VpnValidationConfig, string>> = {};
   if (!config.host.trim()) errors.host = "Saisissez un Host ou une adresse IP.";
   if (!isValidPort(config.port)) errors.port = "Utilisez un port ou une plage, par exemple 6000-19999.";
+  if (!config.username.trim()) errors.username = "L’identifiant KIGHMU est requis.";
   if (!config.password.trim()) errors.password = "Le mot de passe est requis.";
   return errors;
 }

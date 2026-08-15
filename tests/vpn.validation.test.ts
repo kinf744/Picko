@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateVpnConfig, type VpnValidationConfig } from "../lib/vpn/validation";
 
-const valid: VpnValidationConfig = { host: "203.0.113.10", port: "6000-19999", obfs: "salamander-key", password: "secret" };
+const valid: VpnValidationConfig = { host: "203.0.113.10", port: "6000-19999", obfs: "salamander-key", username: "android", password: "secret" };
 
 describe("validateConfig", () => {
   it("accepts a host, a single port and the required secrets", () => {
@@ -19,7 +19,11 @@ describe("validateConfig", () => {
   });
 
   it("requires host, port and userpass while Obfs remains fixed", () => {
-    const errors = validateVpnConfig({ host: "", port: "", obfs: "", password: "" });
-    expect(Object.keys(errors).sort()).toEqual(["host", "password", "port"]);
+    const errors = validateVpnConfig({ host: "", port: "", obfs: "", username: "", password: "" });
+    expect(Object.keys(errors).sort()).toEqual(["host", "password", "port", "username"]);
+  });
+
+  it("requires a username for userpass authentication", () => {
+    expect(validateVpnConfig({ ...valid, username: "" }).username).toBeTruthy();
   });
 });
