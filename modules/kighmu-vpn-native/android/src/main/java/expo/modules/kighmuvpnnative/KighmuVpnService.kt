@@ -127,7 +127,7 @@ class KighmuVpnService : VpnService() {
 
   private fun startCatalogTunnel(root: JSONObject, generation: Long) {
     val kind = root.optString("kind").trim()
-    require(kind in setOf("zivpn", "slowdns", "hysteria", "v2ray-dns", "v2ray-slowdns", "xray-v2ray")) { "Famille de tunnel inconnue" }
+    require(kind in setOf("zivpn", "slowdns", "hysteria", "v2ray-slowdns", "xray-v2ray")) { "Famille de tunnel inconnue" }
     val profiles = root.optJSONArray("profiles") ?: JSONArray()
     require(profiles.length() > 0) { "Aucun profil sélectionné pour $kind" }
     activeMode = kind
@@ -184,7 +184,6 @@ class KighmuVpnService : VpnService() {
       familyStopActions.add { tunnel.stop() }
       tunnel.start(profile)
     }
-    "v2ray-dns" -> startDnsXrayProfile(profile, "libdnstt-v2raydns.so", "libxray-v2raydns.so", "v2raydns")
     "v2ray-slowdns" -> startDnsXrayProfile(profile, "libdnstt-v2rayslowdns.so", "libxray-v2rayslowdns.so", "v2rayslowdns")
     else -> error("Famille de tunnel inconnue")
   }
@@ -240,7 +239,6 @@ class KighmuVpnService : VpnService() {
     "zivpn" -> "UDP-ZIVPN"
     "slowdns" -> "SSH/SlowDNS"
     "hysteria" -> "Hysteria UDP"
-    "v2ray-dns" -> "V2Ray DNS"
     "v2ray-slowdns" -> "V2Ray+SlowDNS"
     else -> "Xray/V2Ray"
   }

@@ -71,12 +71,12 @@ export default function ConfigurationScreen() {
         <View style={styles.inputModeRow}><Pressable onPress={() => setDraft({ ...draft, inputMode: "link" })} style={[styles.inputMode, { borderColor: draft.inputMode === "link" ? colors.primary : colors.border, backgroundColor: draft.inputMode === "link" ? colors.primary : colors.background }]}><Text style={{ color: draft.inputMode === "link" ? "#fff" : colors.foreground, fontWeight: "700", fontSize: 12 }}>Lien</Text></Pressable><Pressable onPress={() => setDraft({ ...draft, inputMode: "json" })} style={[styles.inputMode, { borderColor: draft.inputMode === "json" ? colors.primary : colors.border, backgroundColor: draft.inputMode === "json" ? colors.primary : colors.background }]}><Text style={{ color: draft.inputMode === "json" ? "#fff" : colors.foreground, fontWeight: "700", fontSize: 12 }}>JSON</Text></Pressable></View>
         {draft.inputMode === "link" ? field("Lien Xray/V2Ray", "link", "vless://, vmess:// ou trojan://", { multiline: true }) : field("Configuration Xray/V2Ray", "json", "{ \"inbounds\": [], \"outbounds\": [] }", { multiline: true })}
       </> : null}
-      {draft.kind === "v2ray-dns" || draft.kind === "v2ray-slowdns" ? <>
+      {draft.kind === "v2ray-slowdns" ? <>
         {field("Serveur DNS/UDP", "dnsServer", "203.0.113.10")}
         {field("Port DNS UDP", "dnsPort", "53", { keyboardType: "numeric" })}
-        {field("Nameserver DNS", "nameserver", "t.exemple.com")}
+        {field("Nameserver SlowDNS", "nameserver", "t.exemple.com")}
         {field("Clé publique dnstt", "publicKey", "Clé publique du serveur dnstt", { multiline: true })}
-        {field(draft.kind === "v2ray-dns" ? "Configuration V2Ray DNS" : "Configuration V2Ray+SlowDNS", "json", "{ \"inbounds\": [], \"outbounds\": [] }", { multiline: true })}
+        {field("Configuration V2Ray", "json", "{ \"inbounds\": [], \"outbounds\": [] }", { multiline: true, note: "Configuration V2Ray utilisée à travers le transport SlowDNS." })}
       </> : null}
       <Pressable onPress={handleSave} style={({ pressed }) => [styles.saveButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><Text style={styles.saveText}>{saved ? "Profil enregistré" : "Enregistrer le profil"}</Text></Pressable>
     </View>;

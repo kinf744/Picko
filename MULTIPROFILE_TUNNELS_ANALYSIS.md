@@ -2,7 +2,7 @@
 
 ## Portée demandée
 
-L’application doit proposer des profils séparés et un balancier optionnel **dans le tunnel sélectionné**, pour les familles UDP-ZIVPN, SSH/SlowDNS, Hysteria UDP, V2Ray DNS, V2Ray+SlowDNS et Xray/V2Ray. Une seule famille de tunnel doit posséder le TUN Android à la fois ; ses profils sélectionnés peuvent fournir plusieurs sorties SOCKS locales derrière un balancier propre à cette famille.
+L’application propose des profils séparés et un balancier optionnel **dans le tunnel sélectionné**, pour les familles UDP-ZIVPN, SSH/SlowDNS, Hysteria UDP, V2Ray+SlowDNS et Xray/V2Ray. Une seule famille de tunnel doit posséder le TUN Android à la fois ; ses profils sélectionnés peuvent fournir plusieurs sorties SOCKS locales derrière un balancier propre à cette famille.
 
 ## État de l’application KIGHMU
 
@@ -18,8 +18,7 @@ Référence analysée en lecture seule : <https://github.com/kinf744/Zamois-tun>
 | SSH/SlowDNS | Sessions dnstt + SSH + SOCKS local par profil | dnstt construit dans notre workflow | Ajouter un orchestrateur dédié, sans réemploi d’état entre profils |
 | Hysteria UDP | Binaire client SOCKS par profil + balancier | Workflow de compilation officiel ARMv7 présent | Construire une copie dédiée via GitHub Actions |
 | Xray/V2Ray | Xray local, config JSON ou lien, SOCKS local | `libxray.so` ARMv7 présent | Isoler la configuration et le binaire de la famille |
-| V2Ray DNS | La référence repose sur Xray avec config JSON spécifique | `libxray.so` ARMv7 présent | Créer un moteur et un espace de config propres |
-| V2Ray+SlowDNS | dnstt local relié à Xray local | dnstt + `libxray.so` | Créer un orchestrateur combiné, avec fichiers runtime propres |
+| V2Ray+SlowDNS | dnstt local relié à Xray local | dnstt + `libxray.so` | Conserver un orchestrateur combiné minimal, avec fichiers runtime propres |
 
 ## Contraintes d’isolement retenues
 

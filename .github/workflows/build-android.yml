@@ -83,7 +83,6 @@ jobs:
           )
           chmod 755 "$OUTPUT"
           test -s "$OUTPUT"
-          cp "$OUTPUT" "$OUTPUT_DIR/libdnstt-v2raydns.so"
           cp "$OUTPUT" "$OUTPUT_DIR/libdnstt-v2rayslowdns.so"
           chmod 755 "$OUTPUT_DIR"/libdnstt-*.so
           file "$OUTPUT_DIR"/libdnstt-*.so

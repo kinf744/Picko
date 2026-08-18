@@ -29,15 +29,18 @@ const LEGACY_PASSWORD_KEY = "kighmu.vpn.zivpn.password.v1";
 const LEGACY_OBFS_KEY = "kighmu.vpn.zivpn.obfs.v1";
 const LEGACY_SLOWDNS_PASSWORD_KEY = "kighmu.vpn.slowdns.ssh-password.v1";
 const ACTIVE_TUNNEL_KEY = "kighmu.vpn.catalog.active.v1";
+const REMOVED_V2RAY_DNS_PROFILE_KEY = "kighmu.vpn.v2ray-dns.profiles.v1";
+const REMOVED_V2RAY_DNS_SECRET_KEY = "kighmu.vpn.v2ray-dns.secrets.v1";
+const REMOVED_V2RAY_DNS_BALANCER_KEY = "kighmu.vpn.v2ray-dns.balancer.v1";
 const profileStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.profiles.v1`;
 const secretStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.secrets.v1`;
 const balancerStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.balancer.v1`;
 
 const emptyProfiles = (): ProfilesByKind => ({
-  zivpn: [], slowdns: [], hysteria: [], "v2ray-dns": [], "v2ray-slowdns": [], "xray-v2ray": [],
+  zivpn: [], slowdns: [], hysteria: [], "v2ray-slowdns": [], "xray-v2ray": [],
 });
 const emptyBalancers = (): BalancersByKind => ({
-  zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "v2ray-dns": defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(),
+  zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(),
 });
 const redact = (value: string) => value ? "••••••" : "non défini";
 const makeLog = (level: LogLevel, component: string, message: string): DiagnosticLog => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), level, component, message });
@@ -117,6 +120,14 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const activeStored = await AsyncStorage.getItem(ACTIVE_TUNNEL_KEY);
+        if (activeStored === "v2ray-dns") {
+          await AsyncStorage.setItem(ACTIVE_TUNNEL_KEY, "zivpn");
+        }
+        await Promise.all([
+          AsyncStorage.removeItem(REMOVED_V2RAY_DNS_PROFILE_KEY),
+          secretDelete(REMOVED_V2RAY_DNS_SECRET_KEY),
+          AsyncStorage.removeItem(REMOVED_V2RAY_DNS_BALANCER_KEY),
+        ]);
         const loaded = emptyProfiles();
         const loadedBalancers = emptyBalancers();
         await Promise.all(TUNNEL_KINDS.map(async (kind) => {

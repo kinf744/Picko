@@ -452,3 +452,12 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Capturer l’écran Tunnel avec les six familles et la sélection active
 - [x] Capturer la gestion de profils SSH/SlowDNS et son balancier optionnel
 - [x] Capturer le formulaire SSH/SlowDNS complet avec valeurs de démonstration
+
+## Correction — V2Ray DNS distinct de V2Ray+SlowDNS
+
+- [x] Recenser et retirer V2Ray DNS des profils, du moteur, des binaires, des tests et de l’interface
+- [x] Simplifier V2Ray+SlowDNS à un profil V2Ray et aux seuls paramètres dnstt nécessaires
+- [x] Conserver dnstt/SlowDNS uniquement dans le moteur V2Ray+SlowDNS
+- [x] Clarifier les champs et libellés de V2Ray+SlowDNS dans l’interface
+- [x] Ajouter des tests garantissant l’absence de V2Ray DNS
+- [ ] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions

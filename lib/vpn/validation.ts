@@ -85,13 +85,6 @@ export function validateTunnelProfile(profile: TunnelProfile): ProfileFieldError
       if (profile.inputMode === "link") required(errors, "link", profile.link, "Le lien Xray/V2Ray");
       else if (!isJsonObject(profile.json)) errors.json = "La configuration Xray/V2Ray doit être un objet JSON valide.";
       break;
-    case "v2ray-dns":
-      required(errors, "dnsServer", profile.dnsServer, "Le serveur DNS");
-      if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Le port DNS est invalide.";
-      if (!profile.nameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(profile.nameserver.trim())) errors.nameserver = "Le nameserver DNS est invalide.";
-      required(errors, "publicKey", profile.publicKey, "La clé publique dnstt");
-      if (!isJsonObject(profile.json)) errors.json = "La configuration V2Ray DNS doit être un objet JSON valide.";
-      break;
     case "v2ray-slowdns":
       required(errors, "dnsServer", profile.dnsServer, "Le serveur DNS/UDP");
       if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Le port DNS est invalide.";
