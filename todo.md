@@ -473,3 +473,13 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Ajouter les deux familles au sélecteur de tunnels et aux formulaires de configuration
 - [x] Ajouter tests de validation et d’isolement pour les deux nouveaux tunnels
 - [ ] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions
+
+## Refonte de l’onglet Tunnel — sélection par cases à cocher
+
+- [x] Remplacer les cartes actuelles par une grille compacte de cases à cocher
+- [x] Imposer la sélection exclusive d’un seul tunnel à la fois
+- [x] Afficher les sept tunnels disponibles avec des libellés simples
+- [x] Ajouter un bouton principal Connecter/Déconnecter sous la grille
+- [x] Conserver un accès secondaire aux profils et au balancier du tunnel sélectionné
+- [x] Vérifier le rendu et les interactions sur mobile
+- [ ] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions

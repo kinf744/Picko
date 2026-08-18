@@ -26,3 +26,7 @@ Sur l’onglet Tunnel, les cinq cartes restent visibles simultanément. La séle
 ## Extension HTTP Proxy+Payload et SSH SSL/TLS
 
 Le catalogue mobile présente désormais sept cartes visibles à une main : UDP-ZIVPN, SSH/SlowDNS, Hysteria UDP, HTTP Proxy+Payload, SSH SSL/TLS, V2Ray+SlowDNS et Xray/V2Ray. Les deux nouveaux tunnels s’insèrent dans la même grille, mais possèdent chacun leur collection de profils et leur réglage de balancier isolés.
+
+## Sélecteur à cases à cocher
+
+L’onglet Tunnel a remplacé la grille de cartes par un panneau sombre compact. Les sept familles s’affichent avec une case à cocher carrée ; une seule case est active à la fois et désigne la famille reliée au bouton principal. Le bouton Connecter/Déconnecter se situe directement sous la grille, tandis que la carte des profils et du balancier de la famille sélectionnée reste visible plus bas.
