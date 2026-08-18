@@ -499,5 +499,9 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Établir la répartition par bibliothèques natives, code et ressources
 - [x] Identifier les fichiers redondants ou supprimables sans retirer de tunnel
 - [x] Appliquer les optimisations de packaging compatibles avec armeabi-v7a
-- [ ] Compiler l’APK optimisé exclusivement via GitHub Actions
+- [x] Compiler l’APK optimisé exclusivement via GitHub Actions — 44,54 Mio, soit un gain de 6,32 Mio
+- [x] Retirer les modules Expo audio, vidéo, notifications, image et maintien d’écran non utilisés
+- [x] Retirer leurs plugins de configuration et vérifier les imports applicatifs
+- [x] Évaluer puis désactiver la nouvelle architecture React Native si la compatibilité VPN est conservée
+- [ ] Compiler l’APK après retrait des modules non utilisés exclusivement via GitHub Actions
 - [ ] Vérifier l’objectif de moins de 40 Mo et documenter l’écart éventuel
