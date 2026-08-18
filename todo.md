@@ -445,3 +445,10 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Corriger le workflow Hysteria v1 : utiliser Go 1.20 séparément du compilateur dnstt
 - [x] Corriger les erreurs Kotlin relevées lors du premier assemblage multi-tunnels GitHub Actions
 - [x] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions — run 32166608757 réussi, artefact release disponible
+
+## Aperçu visuel actualisé — catalogue multi-tunnels
+
+- [x] Préparer un profil SSH/SlowDNS fictif, sans adresse ni identifiants réels
+- [x] Capturer l’écran Tunnel avec les six familles et la sélection active
+- [x] Capturer la gestion de profils SSH/SlowDNS et son balancier optionnel
+- [x] Capturer le formulaire SSH/SlowDNS complet avec valeurs de démonstration
