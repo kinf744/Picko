@@ -1,16 +1,18 @@
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
+
+import { AppHeader, FamilySelector, IconAction, Panel, PrimaryAction, SectionLabel, StatusPill } from "@/components/kighmu-ui";
 import { ScreenContainer } from "@/components/screen-container";
-import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
-import { TUNNEL_CATALOG, TUNNEL_KINDS, profileEndpoint } from "@/lib/vpn/tunnel-profiles";
+import { TUNNEL_CATALOG, profileEndpoint } from "@/lib/vpn/tunnel-profiles";
 import { useVpn } from "@/lib/vpn/vpn-context";
 
 const statusCopy = {
-  disconnected: { label: "Prêt à se connecter", hint: "Choisissez un tunnel puis un ou plusieurs profils.", icon: "shield.fill" as const },
-  connecting: { label: "Connexion en cours", hint: "Préparation du tunnel sélectionné…", icon: "arrow.triangle.2.circlepath" as const },
-  connected: { label: "Tunnel actif", hint: "Le trafic passe par le tunnel choisi.", icon: "checkmark.shield.fill" as const },
-  error: { label: "Connexion interrompue", hint: "Consultez le diagnostic pour plus de détails.", icon: "exclamationmark.circle" as const },
+  disconnected: { label: "Prêt à se connecter", hint: "Choisissez une famille puis au moins un profil.", icon: "shield" as const },
+  connecting: { label: "Connexion en cours", hint: "Préparation sécurisée du tunnel sélectionné…", icon: "sync" as const },
+  connected: { label: "Tunnel actif", hint: "Le trafic utilise la famille sélectionnée.", icon: "verified-user" as const },
+  error: { label: "Connexion interrompue", hint: "Consultez le diagnostic pour identifier l’étape bloquante.", icon: "error-outline" as const },
 };
 
 export default function HomeScreen() {
@@ -22,30 +24,58 @@ export default function HomeScreen() {
   const canDisconnect = isBusy || isConnected;
   const balancer = balancersByKind[activeKind];
   const usesBalancer = balancer.enabled && activeProfiles.length > 1;
+  const tone = status === "connected" ? "success" : status === "error" ? "error" : status === "connecting" ? "warning" : "primary";
 
   return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}><Text className="text-sm font-semibold text-primary">KIGHMU VPN</Text><View style={[styles.brandMark, { backgroundColor: colors.primary }]}><IconSymbol name="shield.fill" size={22} color="#FFFFFF" /></View></View>
-      <Text className="text-2xl font-bold text-foreground">Sélectionner un tunnel</Text>
-      <Text className="mt-1 text-sm leading-5 text-muted">Cochez un seul tunnel, puis connectez-le. Les profils et le balancier restent propres au tunnel choisi.</Text>
-      <View style={styles.selectorPanel}>
-        <Text style={styles.selectorTitle}>TUNNELS DISPONIBLES</Text>
-        <View style={styles.checkboxGrid}>{TUNNEL_KINDS.map((kind) => {
-          const selected = activeKind === kind;
-          return <Pressable key={kind} accessibilityRole="radio" accessibilityState={{ checked: selected }} onPress={() => selectTunnel(kind)} style={({ pressed }) => [styles.tunnelOption, pressed && styles.pressed]}>
-            <View style={[styles.checkbox, selected && styles.checkboxSelected]}>{selected ? <Text style={styles.checkboxCheck}>✓</Text> : null}</View>
-            <Text numberOfLines={2} style={[styles.tunnelOptionText, selected && styles.tunnelOptionTextSelected]}>{TUNNEL_CATALOG[kind].label}</Text>
-          </Pressable>;
-        })}</View>
-        <View style={styles.selectorDivider} />
-        <Text style={[styles.selectionStatus, { color: status === "error" ? "#FF8896" : "#AEB6C1" }]}>{lastError ?? copy.hint}</Text>
-        <Pressable onPress={canDisconnect ? disconnect : connect} accessibilityRole="button" style={({ pressed }) => [styles.connectButton, { borderColor: canDisconnect ? "#F15B6C" : "#35C675" }, pressed && styles.pressed]}><View style={styles.buttonInner}>{isBusy ? <ActivityIndicator color="#35C675" /> : null}<Text style={[styles.connectButtonText, { color: canDisconnect ? "#F15B6C" : "#35C675" }]}>{isBusy ? "ANNULER" : isConnected ? "DÉCONNECTER" : "CONNECTER"}</Text></View></Pressable>
-        <Text style={styles.selectedTunnelNote}>Tunnel sélectionné : {TUNNEL_CATALOG[activeKind].label}</Text>
-      </View>
-      <View style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><View style={styles.cardHeader}><View><Text className="text-base font-bold text-foreground">{TUNNEL_CATALOG[activeKind].label}</Text><Text className="mt-1 text-xs text-muted">{activeProfiles.length} profil{activeProfiles.length > 1 ? "s" : ""} sélectionné{activeProfiles.length > 1 ? "s" : ""}</Text></View><Pressable onPress={() => router.push("./configuration")}><IconSymbol name="pencil" size={20} color={colors.primary} /></Pressable></View>{activeProfiles.length === 0 ? <Text className="text-sm text-muted">Aucun profil sélectionné. Ouvrez la configuration pour en ajouter.</Text> : <>{activeProfiles.slice(0, 3).map((profile) => <View key={profile.id} style={styles.row}><Text numberOfLines={1} className="max-w-[38%] text-sm font-semibold text-foreground">{profile.name}</Text><Text numberOfLines={1} className="max-w-[57%] text-right text-sm text-muted">{profileEndpoint(profile)}</Text></View>)}{activeProfiles.length > 3 ? <Text className="mt-2 text-xs text-muted">+ {activeProfiles.length - 3} autre(s) profil(s) sélectionné(s)</Text> : null}</>}<View style={[styles.balancerNote, { borderColor: colors.border }]}><Text className="text-xs font-bold text-foreground">Balancier</Text><Text className="text-xs text-muted">{usesBalancer ? "Actif · round-robin avec contrôle de santé" : "Inactif · sortie SOCKS du profil choisi"}</Text></View></View>
-      <Pressable onPress={() => router.push("./diagnostic")} style={({ pressed }) => [styles.diagnosticLink, pressed && styles.pressed]}><View style={[styles.diagnosticIcon, { backgroundColor: colors.background, borderColor: colors.border }]}><IconSymbol name="doc.text" size={20} color={colors.primary} /></View><View style={styles.diagnosticText}><Text className="text-sm font-bold text-foreground">Ouvrir le diagnostic</Text><Text className="mt-1 text-xs text-muted">Suivre le moteur, les profils et le balancier</Text></View><IconSymbol name="chevron.right" size={20} color={colors.muted} /></Pressable>
+      <AppHeader eyebrow="KIGHMU VPN" title="Centre de contrôle" subtitle="Votre connexion, vos profils, votre diagnostic." action={<View style={[styles.brandMark, { backgroundColor: colors.primary }]}><MaterialIcons name="shield" size={22} color="#FFFFFF" /></View>} />
+
+      <Panel raised style={styles.statusPanel}>
+        <View style={styles.statusTop}><StatusPill label={copy.label} tone={tone} /><MaterialIcons name={copy.icon} size={28} color={status === "error" ? colors.error : status === "connected" ? colors.success : colors.primary} /></View>
+        <Text style={[styles.activeFamily, { color: colors.foreground }]}>{TUNNEL_CATALOG[activeKind].label}</Text>
+        <Text style={[styles.statusHint, { color: status === "error" ? colors.error : colors.muted }]}>{lastError ?? copy.hint}</Text>
+        <View style={[styles.statusFooter, { borderTopColor: colors.border }]}><Text style={[styles.statusMeta, { color: colors.muted }]}>{activeProfiles.length} profil{activeProfiles.length > 1 ? "s" : ""} sélectionné{activeProfiles.length > 1 ? "s" : ""}</Text><Text style={[styles.statusMeta, { color: usesBalancer ? colors.success : colors.muted }]}>{usesBalancer ? "Balancier actif" : "Sortie directe"}</Text></View>
+      </Panel>
+
+      <View><SectionLabel>Famille de tunnel</SectionLabel><FamilySelector activeKind={activeKind} onSelect={selectTunnel} /></View>
+
+      <Panel style={styles.profilesPanel}>
+        <SectionLabel trailing={<IconAction label="Gérer" icon="tune" onPress={() => router.push("./configuration")} />}>Profils sélectionnés</SectionLabel>
+        {activeProfiles.length === 0 ? <View style={[styles.emptyState, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name="playlist-add" size={22} color={colors.primary} /><View style={styles.emptyCopy}><Text style={[styles.emptyTitle, { color: colors.foreground }]}>Aucun profil actif</Text><Text style={[styles.emptyText, { color: colors.muted }]}>Ajoutez puis sélectionnez un profil pour cette famille.</Text></View></View> : <View style={styles.profileList}>{activeProfiles.slice(0, 2).map((profile) => <View key={profile.id} style={[styles.profileRow, { borderBottomColor: colors.border }]}><View style={[styles.profileIndicator, { backgroundColor: colors.success }]} /><View style={styles.profileCopy}><Text numberOfLines={1} style={[styles.profileName, { color: colors.foreground }]}>{profile.name}</Text><Text numberOfLines={1} style={[styles.profileEndpoint, { color: colors.muted }]}>{profileEndpoint(profile)}</Text></View></View>)}{activeProfiles.length > 2 ? <Text style={[styles.moreProfiles, { color: colors.muted }]}>+ {activeProfiles.length - 2} autre{activeProfiles.length - 2 > 1 ? "s" : ""} profil{activeProfiles.length - 2 > 1 ? "s" : ""}</Text> : null}</View>}
+      </Panel>
+
+      <PrimaryAction label={isBusy ? "Annuler la connexion" : isConnected ? "Déconnecter" : "Connecter"} icon={canDisconnect ? "power-settings-new" : "bolt"} onPress={canDisconnect ? disconnect : connect} tone={canDisconnect ? "error" : "primary"} loading={isBusy} />
+
+      <Pressable onPress={() => router.push("./diagnostic")} style={({ pressed }) => [styles.diagnosticLink, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><View style={[styles.diagnosticIcon, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name="insights" size={20} color={colors.primary} /></View><View style={styles.diagnosticCopy}><Text style={[styles.diagnosticTitle, { color: colors.foreground }]}>Dernier événement</Text><Text numberOfLines={2} style={[styles.diagnosticText, { color: colors.muted }]}>{lastError ?? "Ouvrez le diagnostic pour suivre les étapes du tunnel."}</Text></View><MaterialIcons name="chevron-right" size={22} color={colors.muted} /></Pressable>
     </ScrollView>
   </ScreenContainer>;
 }
 
-const styles = StyleSheet.create({ content: { paddingBottom: 28, gap: 16 }, header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, brandMark: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" }, selectorPanel: { backgroundColor: "#17191D", borderRadius: 22, padding: 20, marginTop: 2 }, selectorTitle: { color: "#7C8591", fontSize: 11, fontWeight: "800", letterSpacing: 1.1, marginBottom: 16 }, checkboxGrid: { flexDirection: "row", flexWrap: "wrap", rowGap: 18 }, tunnelOption: { width: "50%", flexDirection: "row", alignItems: "center", paddingRight: 8, minHeight: 32 }, checkbox: { width: 25, height: 25, borderRadius: 3, borderWidth: 2, borderColor: "#626B76", alignItems: "center", justifyContent: "center", marginRight: 10 }, checkboxSelected: { backgroundColor: "#AAB1BA", borderColor: "#AAB1BA" }, checkboxCheck: { color: "#17191D", fontSize: 19, fontWeight: "900", lineHeight: 21 }, tunnelOptionText: { flex: 1, color: "#AEB6C1", fontSize: 13, fontWeight: "600", lineHeight: 17 }, tunnelOptionTextSelected: { color: "#F3F6F8" }, selectorDivider: { height: StyleSheet.hairlineWidth, backgroundColor: "#323840", marginTop: 19, marginBottom: 14 }, selectionStatus: { fontSize: 12, lineHeight: 17, textAlign: "center", marginBottom: 14 }, connectButton: { width: "100%", minHeight: 58, borderRadius: 4, borderWidth: 2, alignItems: "center", justifyContent: "center" }, buttonInner: { flexDirection: "row", alignItems: "center", gap: 9 }, connectButtonText: { fontSize: 16, fontWeight: "900", letterSpacing: 0.3 }, selectedTunnelNote: { color: "#7C8591", fontSize: 11, textAlign: "center", marginTop: 12 }, profileCard: { borderWidth: 1, borderRadius: 22, padding: 18 }, cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 11 }, row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 }, balancerNote: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 10, paddingTop: 12, flexDirection: "row", justifyContent: "space-between", gap: 12 }, diagnosticLink: { flexDirection: "row", alignItems: "center", borderRadius: 18, padding: 12 }, diagnosticIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1 }, diagnosticText: { flex: 1, marginHorizontal: 12 }, pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] } });
+const styles = StyleSheet.create({
+  content: { paddingBottom: 30, gap: 20 },
+  brandMark: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  statusPanel: { padding: 20 },
+  statusTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  activeFamily: { marginTop: 22, fontSize: 24, lineHeight: 29, fontWeight: "800", letterSpacing: -0.35 },
+  statusHint: { marginTop: 7, fontSize: 14, lineHeight: 20 },
+  statusFooter: { marginTop: 18, paddingTop: 13, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", justifyContent: "space-between", gap: 12 },
+  statusMeta: { fontSize: 12, fontWeight: "700" },
+  profilesPanel: { paddingBottom: 10 },
+  emptyState: { borderRadius: 15, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 },
+  emptyCopy: { flex: 1 },
+  emptyTitle: { fontSize: 14, fontWeight: "800" },
+  emptyText: { marginTop: 3, fontSize: 12, lineHeight: 17 },
+  profileList: { marginTop: 2 },
+  profileRow: { minHeight: 54, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  profileIndicator: { width: 8, height: 8, borderRadius: 20 },
+  profileCopy: { flex: 1 },
+  profileName: { fontSize: 14, fontWeight: "800" },
+  profileEndpoint: { marginTop: 3, fontSize: 12 },
+  moreProfiles: { marginTop: 12, fontSize: 12, fontWeight: "700" },
+  diagnosticLink: { minHeight: 78, borderRadius: 18, borderWidth: 1, flexDirection: "row", alignItems: "center", padding: 13, gap: 12 },
+  diagnosticIcon: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  diagnosticCopy: { flex: 1 },
+  diagnosticTitle: { fontSize: 14, fontWeight: "800" },
+  diagnosticText: { marginTop: 4, fontSize: 12, lineHeight: 17 },
+  pressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },
+});

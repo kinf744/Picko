@@ -519,3 +519,16 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Valider TypeScript, les tests de profils et la propreté du diff sans compilation Android locale
 - [x] Compiler l’APK armeabi-v7a exclusivement dans GitHub Actions et examiner les diagnostics de build — run 32181541074 réussi, 44,54 Mio
 - [x] Documenter les gains mesurés et les validations réelles restant à effectuer sur appareil Android — compatibilité compilée ; essais réseau réels encore nécessaires
+
+## Refonte UI/UX mobile professionnelle
+
+- [x] Créer et valider un skill UI/UX mobile, design system et implémentation frontend réutilisable
+- [x] Auditer les écrans Tunnel, Configuration et Diagnostic existants
+- [x] Définir une direction visuelle mobile portrait, une hiérarchie et des flux cohérents
+- [x] Écrire le design system KIGHMU VPN : palette, typographie, espacements, composants et états
+- [x] Refondre l’onglet Tunnel sans modifier la logique VPN ni les sept familles
+- [x] Refondre l’onglet Configuration avec des formulaires lisibles et adaptés à une main
+- [x] Refondre l’onglet Diagnostic avec une lecture claire des événements et des erreurs sans secrets
+- [x] Valider l’interface au format mobile, TypeScript et les tests sans compilation Android locale — revue des layouts portrait, TypeScript et 11 tests réussis
+- [ ] Vérifier visuellement la refonte sur un appareil Android avant de la considérer comme validée en conditions réelles
+- [ ] Compiler la refonte armeabi-v7a exclusivement avec GitHub Actions
