@@ -3,6 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
+import { buildConfigExport, parseConfigImport, type ConfigExport, type ImportResult } from "./config-transfer";
 import {
   TUNNEL_CATALOG,
   TUNNEL_KINDS,
@@ -79,6 +80,8 @@ type VpnContextValue = {
   disconnect: () => Promise<void>;
   clearLogs: () => void;
   resetAllProfiles: () => Promise<void>;
+  buildConfigExport: (kinds: TunnelKind[], includeSecrets?: boolean) => ConfigExport;
+  importConfig: (raw: string, mode: "append" | "replace-imported") => Promise<ImportResult>;
 };
 const VpnContext = createContext<VpnContextValue | null>(null);
 
@@ -269,7 +272,25 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     addLog("info", "STORAGE", "Toutes les collections de profils et leurs secrets ont été réinitialisés.");
   }, [addLog]);
 
-  const value = useMemo(() => ({ activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, clearLogs: () => setLogs([]), resetAllProfiles }), [activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, resetAllProfiles]);
+  const exportConfiguration = useCallback((kinds: TunnelKind[], includeSecrets = false) => buildConfigExport(profilesByKind, balancersByKind, kinds, includeSecrets), [balancersByKind, profilesByKind]);
+
+  const importConfig = useCallback(async (raw: string, mode: "append" | "replace-imported") => {
+    const parsed = parseConfigImport(raw);
+    const nextProfiles = { ...profilesByKind };
+    const nextBalancers = { ...balancersByKind };
+    parsed.tunnels.forEach((tunnel) => {
+      nextProfiles[tunnel.kind] = mode === "replace-imported" ? tunnel.profiles : [...nextProfiles[tunnel.kind], ...tunnel.profiles];
+      nextBalancers[tunnel.kind] = tunnel.balancer;
+    });
+    await Promise.all(TUNNEL_KINDS.map((kind) => persistKind(kind, nextProfiles[kind], nextBalancers[kind])));
+    setProfilesByKind(nextProfiles);
+    setBalancersByKind(nextBalancers);
+    if (parsed.importedKinds.length > 0) setActiveKind(parsed.importedKinds[0]);
+    addLog("info", "IMPORT", `Configuration importée : ${parsed.importedProfiles} profil(s), ${parsed.importedKinds.length} famille(s), secrets=${parsed.containsSecrets ? "présents" : "absents"}.`);
+    return parsed;
+  }, [addLog, balancersByKind, persistKind, profilesByKind]);
+
+  const value = useMemo(() => ({ activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, clearLogs: () => setLogs([]), resetAllProfiles, buildConfigExport: exportConfiguration, importConfig }), [activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, resetAllProfiles, exportConfiguration, importConfig]);
   return <VpnContext.Provider value={value}>{children}</VpnContext.Provider>;
 }
 

@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type Vie
 
 import { useColors } from "@/hooks/use-colors";
 import { TUNNEL_CATALOG, TUNNEL_KINDS, type TunnelKind } from "@/lib/vpn/tunnel-profiles";
+import { ConfigMenu } from "@/components/config-menu";
 
 type MaterialIconName = ComponentProps<typeof MaterialIcons>["name"];
 type Tone = "neutral" | "primary" | "success" | "warning" | "error";
@@ -18,17 +19,10 @@ const familyIcons: Record<TunnelKind, MaterialIconName> = {
   "xray-v2ray": "alt-route",
 };
 
-export function AppHeader({ eyebrow, title, subtitle, action }: { eyebrow: string; title: string; subtitle?: string; action?: ReactNode }) {
+export function AppHeader() {
   const colors = useColors();
   return (
-    <View style={styles.header}>
-      <View style={styles.headerText}>
-        <Text style={[styles.eyebrow, { color: colors.primary }]}>{eyebrow}</Text>
-        <Text style={[styles.title, { color: colors.foreground }]}>{title}</Text>
-        {subtitle ? <Text style={[styles.subtitle, { color: colors.muted }]}>{subtitle}</Text> : null}
-      </View>
-      {action}
-    </View>
+    <View style={styles.header}><View style={styles.headerSpacer} /><Text style={[styles.headerTitle, { color: colors.foreground }]}>KIGHMU VPN</Text><ConfigMenu /></View>
   );
 }
 
@@ -69,11 +63,9 @@ export function IconAction({ label, icon, onPress, destructive = false }: { labe
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 16 },
-  headerText: { flex: 1 },
-  eyebrow: { fontSize: 11, fontWeight: "800", letterSpacing: 1.1, textTransform: "uppercase", marginBottom: 6 },
-  title: { fontSize: 30, lineHeight: 36, fontWeight: "800", letterSpacing: -0.6 },
-  subtitle: { marginTop: 8, fontSize: 14, lineHeight: 20 },
+  header: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerSpacer: { width: 40, height: 40 },
+  headerTitle: { position: "absolute", left: 54, right: 54, textAlign: "center", fontSize: 17, fontWeight: "900", letterSpacing: 0.2 },
   panel: { borderWidth: 1, borderRadius: 20, padding: 16 },
   sectionLabel: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
   sectionText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.95, textTransform: "uppercase" },

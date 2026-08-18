@@ -533,3 +533,14 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [ ] Vérifier visuellement la refonte sur un appareil Android avant de la considérer comme validée en conditions réelles
 - [x] Compiler la refonte armeabi-v7a exclusivement avec GitHub Actions — run 32186454750 réussi, APK 44,54 Mio
 - [x] Retirer de Configuration le bloc visuel récapitulatif de famille et le contrôle de balancier, sans modifier la logique VPN
+
+## En-tête expert, import-export et confidentialité
+
+- [x] Remplacer l’en-tête actuel par le nom KIGHMU VPN centré et un menu à trois points
+- [x] Ajouter un menu Importer une configuration avec contrôle des fichiers et confirmation
+- [x] Ajouter un export de configuration sélectif par famille de tunnel, sans secrets par défaut
+- [x] Ajouter une réinitialisation globale explicitement confirmée
+- [x] Ajouter une politique de confidentialité détaillée et obligatoire au premier lancement
+- [x] Bloquer les fonctions VPN tant que la politique n’est pas acceptée et fermer l’accès après refus
+- [x] Tester les données importées/exportées, le consentement et l’absence de régression des profils — 14 tests réussis
+- [ ] Compiler l’APK armeabi-v7a exclusivement dans GitHub Actions

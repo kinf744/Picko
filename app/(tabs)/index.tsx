@@ -28,7 +28,7 @@ export default function HomeScreen() {
 
   return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <AppHeader eyebrow="KIGHMU VPN" title="Centre de contrôle" subtitle="Votre connexion, vos profils, votre diagnostic." action={<View style={[styles.brandMark, { backgroundColor: colors.primary }]}><MaterialIcons name="shield" size={22} color="#FFFFFF" /></View>} />
+      <AppHeader />
 
       <Panel raised style={styles.statusPanel}>
         <View style={styles.statusTop}><StatusPill label={copy.label} tone={tone} /><MaterialIcons name={copy.icon} size={28} color={status === "error" ? colors.error : status === "connected" ? colors.success : colors.primary} /></View>
@@ -53,7 +53,6 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   content: { paddingBottom: 30, gap: 20 },
-  brandMark: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center" },
   statusPanel: { padding: 20 },
   statusTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   activeFamily: { marginTop: 22, fontSize: 24, lineHeight: 29, fontWeight: "800", letterSpacing: -0.35 },

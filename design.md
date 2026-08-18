@@ -86,3 +86,11 @@ Le diagnostic présente d’abord une carte de session avec le nombre d’évén
 - Les écrans utilisent exclusivement les tokens, espacements et composants du design system.
 - La lisibilité reste bonne sur un écran de 360 px de large et les actions clés restent accessibles à une main.
 - TypeScript, les tests existants et le build `armeabi-v7a` GitHub Actions restent valides.
+
+## En-tête, gestion des configurations et confidentialité
+
+L’en-tête de chaque onglet n’affiche plus de sous-titre, de nom d’écran ni de marque graphique. Il présente uniquement **KIGHMU VPN**, centré et en gras, avec un bouton discret à trois points à droite. Ce bouton ouvre un menu de gestion global comprenant l’import, l’export et la réinitialisation ; ces opérations ne sont pas réparties entre les cartes techniques de chaque tunnel.
+
+L’export demande explicitement une ou plusieurs familles de tunnel. Le mode standard exclut les champs secrets. Un export avec secrets ne peut être choisi qu’après avertissement clair, car le fichier partagé peut contenir des identifiants, des mots de passe, des clés ou des valeurs Obfs. L’import lit uniquement des fichiers JSON KIGHMU de taille bornée, normalise les familles connues, ignore les champs inconnus et demande une confirmation avant d’ajouter ou de remplacer les collections locales.
+
+La politique de confidentialité apparaît avant tout accès aux onglets au premier lancement. L’acceptation est enregistrée localement avec une version de politique. Un refus ne laisse pas l’utilisateur accéder aux profils, au diagnostic ou au contrôle VPN ; sur Android, l’application propose alors de quitter. La politique rappelle que les configurations et diagnostics sont locaux par défaut, que le partage ou l’export est déclenché par l’utilisateur, et que le trafic VPN est dirigé vers le serveur choisi par l’utilisateur.
