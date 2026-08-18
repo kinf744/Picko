@@ -26,7 +26,9 @@ Hysteria v1 permet de définir côté client les débits annoncés, les tentativ
 
 ## Validation prévue
 
-Les modifications seront validées par TypeScript, les tests de profils et un build release `armeabi-v7a` dans GitHub Actions. Une mesure de débit ou de latence utile nécessitera ensuite des essais comparatifs sur le même téléphone et le même réseau, sans modifier le VPS.
+TypeScript et les 11 tests de profils ont été validés. Le build release `armeabi-v7a` GitHub Actions [`32181541074`](https://github.com/kinf744/Picko/actions/runs/32181541074) a également réussi. L’APK mesure **46 702 629 octets** (**44,54 Mio**), soit **756 octets** de plus que la précédente build de référence ; les améliorations ne créent donc pas de coût matériel de packaging.
+
+Une mesure de débit, de latence ou de stabilité nécessitera ensuite des essais comparatifs sur le **même téléphone** et le **même réseau**, sans modifier le VPS. À ce stade, la compilation confirme la compatibilité de l’implémentation, mais ne constitue pas une mesure de performance réseau réelle.
 
 ## Références
 
