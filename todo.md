@@ -504,5 +504,5 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Retirer leurs plugins de configuration et vérifier les imports applicatifs
 - [x] Évaluer puis désactiver la nouvelle architecture React Native si la compatibilité VPN est conservée
 - [x] Restaurer la nouvelle architecture React Native, exigée par Reanimated dans la configuration actuelle
-- [ ] Compiler l’APK après retrait des modules non utilisés exclusivement via GitHub Actions
-- [ ] Vérifier l’objectif de moins de 40 Mo et documenter l’écart éventuel
+- [x] Compiler l’APK après retrait des modules non utilisés exclusivement via GitHub Actions — run 32178614899, 44,54 Mio
+- [x] Vérifier l’objectif de moins de 40 Mo et documenter l’écart éventuel — 4,54 Mio au-dessus de la cible
