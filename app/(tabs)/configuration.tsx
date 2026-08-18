@@ -1,6 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { type ComponentProps, useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { type ComponentProps, useEffect, useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AppHeader, FamilySelector, IconAction, Panel, PrimaryAction, SectionLabel, StatusPill } from "@/components/kighmu-ui";
 import { ScreenContainer } from "@/components/screen-container";
@@ -22,13 +22,11 @@ function GroupTitle({ title, icon }: { title: string; icon: ComponentProps<typeo
 
 export default function ConfigurationScreen() {
   const colors = useColors();
-  const { activeKind, selectTunnel, profilesByKind, balancersByKind, createProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, resetAllProfiles } = useVpn();
+  const { activeKind, selectTunnel, profilesByKind, createProfile, saveProfile, deleteProfile, toggleProfileSelection, resetAllProfiles } = useVpn();
   const [draft, setDraft] = useState<TunnelProfile | null>(null);
   const [errors, setErrors] = useState<ProfileFieldErrors>({});
   const [saved, setSaved] = useState(false);
   const profiles = profilesByKind[activeKind];
-  const selectedCount = useMemo(() => profiles.filter((profile) => profile.selected).length, [profiles]);
-  const balancer = balancersByKind[activeKind];
 
   useEffect(() => { setDraft(null); setErrors({}); setSaved(false); }, [activeKind]);
   const patch = (field: string, value: string) => setDraft((current) => current ? ({ ...current, [field]: value } as TunnelProfile) : current);
@@ -59,7 +57,6 @@ export default function ConfigurationScreen() {
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <AppHeader eyebrow="KIGHMU VPN" title="Profils" subtitle="Chaque famille garde ses profils, secrets et runtime séparés." />
       <View><SectionLabel>Famille active</SectionLabel><FamilySelector activeKind={activeKind} onSelect={selectTunnel} /></View>
-      <Panel raised style={styles.overviewPanel}><View style={styles.overviewTop}><View><Text style={[styles.familyTitle, { color: colors.foreground }]}>{TUNNEL_CATALOG[activeKind].label}</Text><Text style={[styles.familyDescription, { color: colors.muted }]}>{TUNNEL_CATALOG[activeKind].description}</Text></View><StatusPill label={`${selectedCount} actif${selectedCount > 1 ? "s" : ""}`} tone={selectedCount > 0 ? "success" : "neutral"} /></View><View style={[styles.balancerRow, { borderTopColor: colors.border }]}><View style={styles.balancerCopy}><Text style={[styles.balancerTitle, { color: colors.foreground }]}>Balancier multi-profils</Text><Text style={[styles.balancerText, { color: colors.muted }]}>Round-robin local entre les sorties prêtes de cette famille.</Text></View><Switch value={balancer.enabled} onValueChange={(enabled) => setBalancer(activeKind, { enabled })} trackColor={{ false: colors.border, true: colors.primary }} /></View></Panel>
       <View style={styles.profilesHeading}><SectionLabel>Profils enregistrés</SectionLabel><IconAction label="Ajouter" icon="add" onPress={beginNew} /></View>
       {profiles.length === 0 ? <Panel style={styles.emptyPanel}><MaterialIcons name="add-circle-outline" size={28} color={colors.primary} /><Text style={[styles.emptyTitle, { color: colors.foreground }]}>Créez votre premier profil</Text><Text style={[styles.emptyText, { color: colors.muted }]}>Les paramètres resteront isolés de toutes les autres familles de tunnel.</Text><Pressable onPress={beginNew} style={({ pressed }) => [styles.emptyAction, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><Text style={[styles.emptyActionText, { color: colors.primary }]}>Ajouter un profil</Text></Pressable></Panel> : <View style={styles.profileList}>{profiles.map((profile) => <Panel key={profile.id} style={[styles.profileCard, profile.selected && { borderColor: colors.primary }]}><View style={styles.profileTop}><Pressable onPress={() => toggleProfileSelection(activeKind, profile.id)} accessibilityRole="checkbox" accessibilityState={{ checked: profile.selected }} style={({ pressed }) => [styles.profileToggle, pressed && styles.pressed]}><View style={[styles.check, { borderColor: profile.selected ? colors.primary : colors.border, backgroundColor: profile.selected ? colors.primary : "transparent" }]}>{profile.selected ? <MaterialIcons name="check" size={15} color="#FFFFFF" /> : null}</View><View style={styles.profileText}><Text style={[styles.profileName, { color: colors.foreground }]}>{profile.name}</Text><Text numberOfLines={1} style={[styles.profileEndpoint, { color: colors.muted }]}>{profileEndpoint(profile)}</Text></View></Pressable><View style={styles.profileActions}><Pressable onPress={() => beginEdit(profile)} style={({ pressed }) => [styles.smallIconButton, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="edit" size={18} color={colors.primary} /></Pressable><Pressable onPress={() => confirmDelete(profile)} style={({ pressed }) => [styles.smallIconButton, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="delete-outline" size={18} color={colors.error} /></Pressable></View></View></Panel>)}</View>}
       {profileEditor()}
@@ -70,14 +67,6 @@ export default function ConfigurationScreen() {
 
 const styles = StyleSheet.create({
   content: { paddingBottom: 34, gap: 20 },
-  overviewPanel: { padding: 17 },
-  overviewTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
-  familyTitle: { fontSize: 18, fontWeight: "800" },
-  familyDescription: { marginTop: 5, fontSize: 13, lineHeight: 18 },
-  balancerRow: { marginTop: 17, paddingTop: 15, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 16 },
-  balancerCopy: { flex: 1 },
-  balancerTitle: { fontSize: 14, fontWeight: "800" },
-  balancerText: { marginTop: 4, fontSize: 12, lineHeight: 17 },
   profilesHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   emptyPanel: { alignItems: "center", paddingVertical: 28 },
   emptyTitle: { marginTop: 12, fontSize: 16, fontWeight: "800" },

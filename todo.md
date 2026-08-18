@@ -532,3 +532,4 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Valider l’interface au format mobile, TypeScript et les tests sans compilation Android locale — revue des layouts portrait, TypeScript et 11 tests réussis
 - [ ] Vérifier visuellement la refonte sur un appareil Android avant de la considérer comme validée en conditions réelles
 - [x] Compiler la refonte armeabi-v7a exclusivement avec GitHub Actions — run 32186454750 réussi, APK 44,54 Mio
+- [x] Retirer de Configuration le bloc visuel récapitulatif de famille et le contrôle de balancier, sans modifier la logique VPN
