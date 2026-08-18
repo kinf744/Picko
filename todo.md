@@ -492,3 +492,12 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Capturer les formulaires HTTP Proxy+Payload et SSH SSL/TLS
 - [x] Capturer les formulaires V2Ray+SlowDNS et Xray/V2Ray
 - [x] Présenter les vues de configuration sans divulguer de secrets réels
+
+## Taille de l’APK release armeabi-v7a
+
+- [x] Télécharger l’artefact release GitHub Actions et mesurer sa taille réelle — 50,86 Mio
+- [x] Établir la répartition par bibliothèques natives, code et ressources
+- [x] Identifier les fichiers redondants ou supprimables sans retirer de tunnel
+- [x] Appliquer les optimisations de packaging compatibles avec armeabi-v7a
+- [ ] Compiler l’APK optimisé exclusivement via GitHub Actions
+- [ ] Vérifier l’objectif de moins de 40 Mo et documenter l’écart éventuel

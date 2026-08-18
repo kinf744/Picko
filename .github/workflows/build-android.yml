@@ -135,6 +135,18 @@ jobs:
           GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
         run: ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode all
 
+      - name: Report release APK size
+        run: |
+          set -euo pipefail
+          APK=$(find android/app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -type f | head -n 1)
+          test -n "$APK"
+          BYTES=$(stat -c '%s' "$APK")
+          MIB=$(awk "BEGIN { printf \"%.2f\", $BYTES / 1048576 }")
+          echo "APK release : $BYTES octets ($MIB Mio)"
+          echo "### Taille APK release" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Fichier : \`$(basename "$APK")\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Taille : **$BYTES octets ($MIB Mio)**" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
