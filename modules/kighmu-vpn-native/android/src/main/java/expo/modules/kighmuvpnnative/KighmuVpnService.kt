@@ -127,7 +127,7 @@ class KighmuVpnService : VpnService() {
 
   private fun startCatalogTunnel(root: JSONObject, generation: Long) {
     val kind = root.optString("kind").trim()
-    require(kind in setOf("zivpn", "slowdns", "hysteria", "v2ray-slowdns", "xray-v2ray")) { "Famille de tunnel inconnue" }
+    require(kind in setOf("zivpn", "slowdns", "hysteria", "http-payload", "ssh-tls", "v2ray-slowdns", "xray-v2ray")) { "Famille de tunnel inconnue" }
     val profiles = root.optJSONArray("profiles") ?: JSONArray()
     require(profiles.length() > 0) { "Aucun profil sélectionné pour $kind" }
     activeMode = kind
@@ -178,6 +178,16 @@ class KighmuVpnService : VpnService() {
       val tunnel = HysteriaProfileTunnel(this) { level, component, message -> emitLog(level, component, message) }
       familyStopActions.add { tunnel.stop() }
       tunnel.start(profile)
+    }
+    "http-payload" -> {
+      val tunnel = HttpPayloadSshTunnel(this, this, { level, component, message -> emitLog(level, component, message) }, "http-payload-${profile.optString("id", "profile")}")
+      familyStopActions.add { tunnel.stop() }
+      tunnel.start(HttpPayloadSshTunnel.Settings.fromProfile(profile))
+    }
+    "ssh-tls" -> {
+      val tunnel = SshTlsTunnel(this, this, { level, component, message -> emitLog(level, component, message) }, "ssh-tls-${profile.optString("id", "profile")}")
+      familyStopActions.add { tunnel.stop() }
+      tunnel.start(SshTlsTunnel.Settings.fromProfile(profile))
     }
     "xray-v2ray" -> {
       val tunnel = XrayProfileTunnel(this, "libxray-v2ray.so", "xray-${profile.optString("id", "profile")}") { level, component, message -> emitLog(level, component, message) }
@@ -239,6 +249,8 @@ class KighmuVpnService : VpnService() {
     "zivpn" -> "UDP-ZIVPN"
     "slowdns" -> "SSH/SlowDNS"
     "hysteria" -> "Hysteria UDP"
+    "http-payload" -> "HTTP Proxy+Payload"
+    "ssh-tls" -> "SSH SSL/TLS"
     "v2ray-slowdns" -> "V2Ray+SlowDNS"
     else -> "Xray/V2Ray"
   }

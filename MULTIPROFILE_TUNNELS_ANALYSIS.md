@@ -31,3 +31,9 @@ Le relais TUN Android reste nécessairement unique, car Android n’autorise qu�
 Le balancier de référence ouvre un health check externe vers `1.1.1.1:443` et comporte des nettoyages globaux agressifs. L’intégration KIGHMU doit éviter les `killall`, `pkill` et les ports constants, car ils compromettraient l’indépendance des moteurs. Elle utilisera des ports éphémères et un arrêt ciblé de ses propres processus.
 
 Le dépôt de référence contient le workflow de construction de Hysteria v1.3.5 ARMv7, mais pas le fichier `libhysteria.so` dans ses bibliothèques packagées. KIGHMU devra donc le produire dans GitHub Actions avant l’assemblage APK, sans compilation locale. Les bibliothèques et fichiers de runtime des familles Xray/V2Ray seront nommés séparément pour ne pas être partagés entre les modes demandés.
+
+## Extension HTTP Proxy+Payload et SSH SSL/TLS
+
+La référence [Zamois-tun](https://github.com/kinf744/Zamois-tun) implémente HTTP Proxy+Payload comme un transport HTTP vers une session SSH : un socket vers le proxy reçoit un payload interpolé, puis une bannière SSH et un pont TCP local sont fournis à la bibliothèque SSH avant la création d’une sortie SOCKS locale. Ses champs fonctionnels sont le proxy HTTP, le payload, l’hôte et port SSH, ainsi que les identifiants SSH. KIGHMU conserve ces paramètres dans une collection dédiée et ne dirige le balancier que vers les sorties SOCKS de profils HTTP Proxy+Payload sélectionnés.
+
+La même référence ouvre SSH SSL/TLS avec une socket TLS, un SNI optionnel, un pont local vers la bibliothèque SSH et un SOCKS dynamique. KIGHMU applique une validation TLS par défaut et ne reprend pas l’option de confiance aveugle de la référence : le certificat et le nom de serveur doivent être validés avant l’authentification SSH. Chaque profil SSH SSL/TLS possède donc sa propre socket TLS, son pont local, sa connexion SSH et son port SOCKS ; le balancier ne peut agrégger que ces ports appartenant à la famille SSH SSL/TLS.

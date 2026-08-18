@@ -81,6 +81,22 @@ export function validateTunnelProfile(profile: TunnelProfile): ProfileFieldError
       if (!/^\d+$/.test(profile.uploadMbps) || Number(profile.uploadMbps) < 1) errors.uploadMbps = "Le débit montant doit être supérieur à zéro.";
       if (!/^\d+$/.test(profile.downloadMbps) || Number(profile.downloadMbps) < 1) errors.downloadMbps = "Le débit descendant doit être supérieur à zéro.";
       break;
+    case "http-payload":
+      required(errors, "proxyHost", profile.proxyHost, "L’hôte du proxy HTTP");
+      if (!isValidPort(profile.proxyPort)) errors.proxyPort = "Le port du proxy HTTP est invalide.";
+      required(errors, "payload", profile.payload, "Le payload HTTP");
+      required(errors, "sshHost", profile.sshHost, "L’hôte SSH cible");
+      if (!isValidPort(profile.sshPort)) errors.sshPort = "Le port SSH est invalide.";
+      required(errors, "sshUsername", profile.sshUsername, "L’identifiant SSH");
+      required(errors, "sshPassword", profile.sshPassword, "Le mot de passe SSH");
+      break;
+    case "ssh-tls":
+      required(errors, "tlsHost", profile.tlsHost, "L’hôte SSL/TLS");
+      if (!isValidPort(profile.tlsPort)) errors.tlsPort = "Le port SSL/TLS est invalide.";
+      if (profile.sni.trim() && !/^[A-Za-z0-9.-]+$/.test(profile.sni.trim())) errors.sni = "Le SNI est invalide.";
+      required(errors, "sshUsername", profile.sshUsername, "L’identifiant SSH");
+      required(errors, "sshPassword", profile.sshPassword, "Le mot de passe SSH");
+      break;
     case "xray-v2ray":
       if (profile.inputMode === "link") required(errors, "link", profile.link, "Le lien Xray/V2Ray");
       else if (!isJsonObject(profile.json)) errors.json = "La configuration Xray/V2Ray doit être un objet JSON valide.";

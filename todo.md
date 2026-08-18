@@ -461,3 +461,15 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Clarifier les champs et libellés de V2Ray+SlowDNS dans l’interface
 - [x] Ajouter des tests garantissant l’absence de V2Ray DNS
 - [ ] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions
+
+## HTTP Proxy+Payload et SSH SSL/TLS multi-profils
+
+- [x] Analyser en lecture seule les moteurs HTTP Proxy+Payload et SSH SSL/TLS de Zamois-tun
+- [x] Définir deux contrats de profils isolés et les paramètres nécessaires de chaque tunnel
+- [x] Ajouter le balancier multi-profils HTTP Proxy+Payload sans mélange inter-tunnels
+- [x] Ajouter le balancier multi-profils SSH SSL/TLS sans mélange inter-tunnels
+- [x] Ajouter le moteur HTTP Proxy+Payload indépendant et ses fichiers runtime propres
+- [x] Ajouter le moteur SSH SSL/TLS indépendant et ses fichiers runtime propres
+- [x] Ajouter les deux familles au sélecteur de tunnels et aux formulaires de configuration
+- [x] Ajouter tests de validation et d’isolement pour les deux nouveaux tunnels
+- [ ] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions

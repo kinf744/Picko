@@ -67,6 +67,22 @@ export default function ConfigurationScreen() {
         {field("Débit montant (Mbps)", "uploadMbps", "10", { keyboardType: "numeric" })}
         {field("Débit descendant (Mbps)", "downloadMbps", "50", { keyboardType: "numeric" })}
       </> : null}
+      {draft.kind === "http-payload" ? <>
+        {field("Hôte du proxy HTTP", "proxyHost", "proxy.exemple.com")}
+        {field("Port du proxy HTTP", "proxyPort", "8080", { keyboardType: "numeric" })}
+        {field("Payload HTTP", "payload", "CONNECT [host]:[port] HTTP/1.1[crlf]Host: [host]:[port][crlf][crlf]", { multiline: true, note: "Variables prises en charge : [host], [port], [crlf], [split] et [delay]." })}
+        {field("Hôte SSH cible", "sshHost", "ssh.exemple.com")}
+        {field("Port SSH cible", "sshPort", "22", { keyboardType: "numeric" })}
+        {field("Identifiant SSH", "sshUsername", "utilisateur SSH")}
+        {field("Mot de passe SSH", "sshPassword", "Mot de passe SSH", { secureTextEntry: true })}
+      </> : null}
+      {draft.kind === "ssh-tls" ? <>
+        {field("Hôte SSL/TLS", "tlsHost", "tls.exemple.com")}
+        {field("Port SSL/TLS", "tlsPort", "443", { keyboardType: "numeric" })}
+        {field("SNI facultatif", "sni", "tls.exemple.com", { note: "Laissez vide pour utiliser l’hôte SSL/TLS. Le certificat TLS est validé avant la connexion SSH." })}
+        {field("Identifiant SSH", "sshUsername", "utilisateur SSH")}
+        {field("Mot de passe SSH", "sshPassword", "Mot de passe SSH", { secureTextEntry: true })}
+      </> : null}
       {draft.kind === "xray-v2ray" ? <>
         <View style={styles.inputModeRow}><Pressable onPress={() => setDraft({ ...draft, inputMode: "link" })} style={[styles.inputMode, { borderColor: draft.inputMode === "link" ? colors.primary : colors.border, backgroundColor: draft.inputMode === "link" ? colors.primary : colors.background }]}><Text style={{ color: draft.inputMode === "link" ? "#fff" : colors.foreground, fontWeight: "700", fontSize: 12 }}>Lien</Text></Pressable><Pressable onPress={() => setDraft({ ...draft, inputMode: "json" })} style={[styles.inputMode, { borderColor: draft.inputMode === "json" ? colors.primary : colors.border, backgroundColor: draft.inputMode === "json" ? colors.primary : colors.background }]}><Text style={{ color: draft.inputMode === "json" ? "#fff" : colors.foreground, fontWeight: "700", fontSize: 12 }}>JSON</Text></Pressable></View>
         {draft.inputMode === "link" ? field("Lien Xray/V2Ray", "link", "vless://, vmess:// ou trojan://", { multiline: true }) : field("Configuration Xray/V2Ray", "json", "{ \"inbounds\": [], \"outbounds\": [] }", { multiline: true })}

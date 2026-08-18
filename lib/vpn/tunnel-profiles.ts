@@ -2,6 +2,8 @@ export const TUNNEL_KINDS = [
   "zivpn",
   "slowdns",
   "hysteria",
+  "http-payload",
+  "ssh-tls",
   "v2ray-slowdns",
   "xray-v2ray",
 ] as const;
@@ -12,6 +14,8 @@ export const TUNNEL_CATALOG: Record<TunnelKind, { label: string; shortLabel: str
   zivpn: { label: "UDP-ZIVPN", shortLabel: "ZIVPN", description: "UDP avec Obfs et plage de ports", accent: "#1687F8" },
   slowdns: { label: "SSH / SlowDNS", shortLabel: "SlowDNS", description: "SSH sur tunnel DNS", accent: "#7357E8" },
   hysteria: { label: "Hysteria UDP", shortLabel: "Hysteria", description: "UDP haute performance", accent: "#04A777" },
+  "http-payload": { label: "HTTP Proxy + Payload", shortLabel: "HTTP Payload", description: "Proxy HTTP puis SSH", accent: "#C66B17" },
+  "ssh-tls": { label: "SSH SSL/TLS", shortLabel: "SSH TLS", description: "SSH à travers TLS", accent: "#0D86A8" },
   "v2ray-slowdns": { label: "V2Ray + SlowDNS", shortLabel: "V2 + DNS", description: "V2Ray simple encapsulé par SlowDNS", accent: "#B14CCD" },
   "xray-v2ray": { label: "Xray / V2Ray", shortLabel: "Xray", description: "Liens ou JSON Xray/V2Ray", accent: "#D34B5C" },
 };
@@ -60,6 +64,26 @@ export type HysteriaProfile = ProfileBase & {
   downloadMbps: string;
 };
 
+export type HttpPayloadProfile = ProfileBase & {
+  kind: "http-payload";
+  proxyHost: string;
+  proxyPort: string;
+  payload: string;
+  sshHost: string;
+  sshPort: string;
+  sshUsername: string;
+  sshPassword: string;
+};
+
+export type SshTlsProfile = ProfileBase & {
+  kind: "ssh-tls";
+  tlsHost: string;
+  tlsPort: string;
+  sni: string;
+  sshUsername: string;
+  sshPassword: string;
+};
+
 export type XrayProfile = ProfileBase & {
   kind: "xray-v2ray";
   inputMode: "link" | "json";
@@ -76,7 +100,7 @@ export type V2RaySlowDnsProfile = ProfileBase & {
   json: string;
 };
 
-export type TunnelProfile = ZivpnProfile | SlowDnsProfile | HysteriaProfile | XrayProfile | V2RaySlowDnsProfile;
+export type TunnelProfile = ZivpnProfile | SlowDnsProfile | HysteriaProfile | HttpPayloadProfile | SshTlsProfile | XrayProfile | V2RaySlowDnsProfile;
 export type ProfileFieldErrors = Record<string, string>;
 
 const makeBase = <K extends TunnelKind>(kind: K): ProfileBase & { kind: K } => ({
@@ -94,6 +118,8 @@ export function createProfile(kind: TunnelKind): TunnelProfile {
     case "zivpn": return { ...base, kind, host: "", port: "", obfs: "", password: "" };
     case "slowdns": return { ...base, kind, dnsServer: "", dnsPort: "53", nameserver: "", publicKey: "", sshHost: "", sshUsername: "", sshPassword: "" };
     case "hysteria": return { ...base, kind, host: "", port: "", auth: "", obfs: "", uploadMbps: "10", downloadMbps: "50" };
+    case "http-payload": return { ...base, kind, proxyHost: "", proxyPort: "8080", payload: "CONNECT [host]:[port] HTTP/1.1[crlf]Host: [host]:[port][crlf]Proxy-Connection: Keep-Alive[crlf][crlf]", sshHost: "", sshPort: "22", sshUsername: "", sshPassword: "" };
+    case "ssh-tls": return { ...base, kind, tlsHost: "", tlsPort: "443", sni: "", sshUsername: "", sshPassword: "" };
     case "v2ray-slowdns": return { ...base, kind, dnsServer: "", dnsPort: "53", nameserver: "", publicKey: "", json: "" };
     case "xray-v2ray": return { ...base, kind, inputMode: "link", link: "", json: "" };
   }
@@ -108,6 +134,8 @@ export function profileEndpoint(profile: TunnelProfile): string {
     case "zivpn": return profile.host ? `${profile.host}:${profile.port || "—"}` : "Non configuré";
     case "slowdns": return profile.dnsServer ? `${profile.dnsServer}:${profile.dnsPort || "53"}` : "Non configuré";
     case "hysteria": return profile.host ? `${profile.host}:${profile.port || "—"}` : "Non configuré";
+    case "http-payload": return profile.proxyHost ? `${profile.proxyHost}:${profile.proxyPort || "8080"}` : "Non configuré";
+    case "ssh-tls": return profile.tlsHost ? `${profile.tlsHost}:${profile.tlsPort || "443"}` : "Non configuré";
     case "v2ray-slowdns": return profile.dnsServer ? `${profile.dnsServer}:${profile.dnsPort || "53"}` : "Non configuré";
     case "xray-v2ray": return profile.inputMode === "link" ? (profile.link ? "Lien Xray/V2Ray" : "Lien non configuré") : (profile.json ? "JSON Xray/V2Ray" : "JSON non configuré");
   }
@@ -118,6 +146,8 @@ export function secretFields(profile: TunnelProfile): string[] {
     case "zivpn": return ["obfs", "password"];
     case "slowdns": return ["sshPassword"];
     case "hysteria": return ["auth", "obfs"];
+    case "http-payload": return ["payload", "sshPassword"];
+    case "ssh-tls": return ["sshPassword"];
     case "v2ray-slowdns": return ["json"];
     case "xray-v2ray": return ["link", "json"];
   }

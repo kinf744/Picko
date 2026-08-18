@@ -22,3 +22,7 @@ La sélection de la carte SlowDNS ouvre une collection indépendante : le profil
 Le formulaire illustré présente dans l’ordre : le nom du profil, le serveur et le port DNS/UDP, le nameserver, la clé publique dnstt, le libellé SSH, l’identifiant SSH et un mot de passe rendu visuellement masqué. Les hôtes et les valeurs de clé sont réservés à la démonstration et ne correspondent pas à une infrastructure utilisateur.
 
 Sur l’onglet Tunnel, les cinq cartes restent visibles simultanément. La sélection SlowDNS affiche son profil isolé ; en touchant Hysteria, la carte passe au vert et l’écran bascule vers la collection Hysteria vide sans modifier la collection SlowDNS. Ce comportement illustre l’absence de mélange entre familles et le balancier désactivé tant qu’une collection n’a pas deux profils sélectionnés.
+
+## Extension HTTP Proxy+Payload et SSH SSL/TLS
+
+Le catalogue mobile présente désormais sept cartes visibles à une main : UDP-ZIVPN, SSH/SlowDNS, Hysteria UDP, HTTP Proxy+Payload, SSH SSL/TLS, V2Ray+SlowDNS et Xray/V2Ray. Les deux nouveaux tunnels s’insèrent dans la même grille, mais possèdent chacun leur collection de profils et leur réglage de balancier isolés.
