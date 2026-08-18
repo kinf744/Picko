@@ -543,4 +543,4 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Ajouter une politique de confidentialité détaillée et obligatoire au premier lancement
 - [x] Bloquer les fonctions VPN tant que la politique n’est pas acceptée et fermer l’accès après refus
 - [x] Tester les données importées/exportées, le consentement et l’absence de régression des profils — 14 tests réussis
-- [ ] Compiler l’APK armeabi-v7a exclusivement dans GitHub Actions
+- [x] Compiler l’APK armeabi-v7a exclusivement dans GitHub Actions — run 32194474757 réussi, APK 44,57 Mio
