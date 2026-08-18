@@ -8,11 +8,13 @@ KIGHMU VPN est une application Android de tunnel réseau destinée à piloter le
 
 ### 1. Accueil — « Tunnel »
 
-L’écran principal affiche l’état du tunnel sous forme d’un grand indicateur central : Déconnecté, Connexion en cours, Connecté ou Erreur. Il présente le profil actif sous forme de carte compacte avec l’adresse Host/IP, le port ou la plage, l’obfuscation activée sous forme masquée et le mot de passe non affiché. Le bouton principal est un contrôle large « Se connecter » ou « Déconnecter ». Une seconde action « Tester la configuration » vérifie les champs localement sans démarrer le tunnel. Un résumé du dernier événement de diagnostic apparaît sous le bouton, avec l’heure et un niveau de gravité.
+L’écran principal affiche l’état du tunnel sous forme d’un grand indicateur central : Déconnecté, Connexion en cours, Connecté ou Erreur. En tête, un sélecteur ouvre un catalogue compact des six familles : UDP-ZIVPN, SSH/SlowDNS, Hysteria UDP, V2Ray DNS, V2Ray+SlowDNS et Xray/V2Ray. La famille choisie affiche seulement ses propres profils, son réglage de balancier et son résumé non sensible. Le bouton principal est un contrôle large « Se connecter » ou « Déconnecter ». Une seconde action « Gérer les profils » mène directement à la collection de la famille active. Un résumé du dernier événement de diagnostic apparaît sous le bouton, avec l’heure et un niveau de gravité.
 
-### 2. Configuration — « Profil serveur »
+### 2. Configuration — « Profils de tunnel »
 
-La configuration contient quatre champs obligatoires ou conditionnels : Host/IP, Port ou plage de ports, Obfs et Mot de passe. Le champ Host/IP accepte une adresse IPv4, IPv6 ou un nom DNS. Le champ Port accepte un port numérique ou une plage au format `6000-19999`, avec validation des bornes 1–65535. Le champ Obfs utilise une saisie masquée et offre une action afficher/masquer. Le mot de passe est conservé dans le stockage sécurisé Android et n’est jamais écrit dans les logs. Un bouton « Enregistrer le profil » valide puis persiste les données locales. Une action « Réinitialiser » demande confirmation avant d’effacer le profil.
+La configuration commence par la même grille de familles de tunnel que l’accueil. Chaque famille possède une collection indépendante, un éditeur de profil propre et un stockage de secrets séparé ; aucune configuration, clé ou session n’est partagée entre deux familles. Une liste affiche le nom, l’hôte non secret, l’état de sélection et une action de duplication/suppression. L’utilisateur peut sélectionner un profil unique ou plusieurs profils de la même famille. Dans ce dernier cas, un panneau « Balancier » active une répartition round-robin avec contrôles de santé ciblés uniquement sur les sorties SOCKS de cette famille. Le nombre de profils actifs est explicitement affiché.
+
+Les champs restent spécifiques au protocole : UDP-ZIVPN utilise Host/IP, port/plage, Obfs et mot de passe ; SSH/SlowDNS utilise DNS/UDP, nameserver, clé publique dnstt et accès SSH ; Hysteria utilise serveur, plage UDP, authentification, Obfs et débits ; Xray/V2Ray utilise une configuration JSON ou un lien ; V2Ray DNS et V2Ray+SlowDNS ajoutent le contrat DNS requis. Les mots de passe, identifiants et clés privées sont conservés dans le stockage sécurisé Android et n’apparaissent jamais dans les logs.
 
 ### 3. Journaux — « Diagnostic »
 
@@ -30,7 +32,11 @@ L’utilisateur ouvre l’accueil, consulte le profil actif, appuie sur « Se co
 
 ### Configuration d’un nouveau serveur
 
-L’utilisateur ouvre Configuration, saisit Host/IP, port ou plage, Obfs et mot de passe, puis appuie sur Enregistrer. Les valeurs sont validées côté interface. En cas d’erreur, le champ concerné reçoit un message local. En cas de succès, le profil est sauvegardé et l’utilisateur revient à l’accueil avec un résumé non sensible.
+L’utilisateur ouvre Configuration, choisit une famille de tunnel, puis crée ou modifie un profil. Les valeurs sont validées côté interface. En cas d’erreur, le champ concerné reçoit un message local. En cas de succès, le profil est sauvegardé dans l’espace de la famille choisie et l’utilisateur revient à l’accueil avec un résumé non sensible.
+
+### Connexion avec balancier
+
+L’utilisateur choisit une famille, sélectionne deux profils ou plus de cette même famille, active le balancier puis appuie sur « Se connecter ». L’application prépare chaque session dans un répertoire runtime indépendant, collecte uniquement les sorties SOCKS prêtes, puis fournit au relais TUN un unique port de balancier. Le balancier n’accepte jamais de profil issu d’une autre famille de tunnel. En cas de profil indisponible, la connexion continue avec les sorties saines restantes et le Diagnostic le signale.
 
 ### Diagnostic d’une panne
 
@@ -47,3 +53,7 @@ Tous les contrôles principaux mesurent au moins 48 dp de hauteur. Les champs af
 ## Limite technique assumée
 
 Une application Expo/React Native peut construire l’interface, le stockage local et le modèle de diagnostic, mais le lancement réel d’un binaire Go et l’implémentation d’un `VpnService` Android nécessitent une couche native Android et un build de développement ou de production personnalisé. Cette intégration sera isolée derrière un adaptateur natif afin que l’interface reste testable dans Expo sans simuler un tunnel connecté en production.
+
+## Règle d’isolation multi-tunnels
+
+Une seule famille de tunnel est active à la fois, conformément au modèle `VpnService` Android. Le relais TUN commun pointe vers l’unique SOCKS local de la famille active ; il ne porte ni configuration de protocole ni secret. Chaque famille dispose de ses propres profils, clés de stockage sécurisé, fichiers de configuration runtime, noms de processus et binaires packagés. Le balancier reste local à la famille active et ne mélange jamais les profils de deux protocoles différents.

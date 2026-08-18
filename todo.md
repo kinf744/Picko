@@ -429,3 +429,17 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 ## Validation réelle rapportée — SSH/SlowDNS
 
 - [x] Enregistrer la confirmation utilisateur du fonctionnement réel du tunnel SSH/SlowDNS mono-session
+
+## Extension multi-profils et tunnels indépendants
+
+- [x] Analyser les moteurs Hysteria, V2Ray DNS, V2Ray SlowDNS et Xray/V2Ray du dépôt Zamois-tun en lecture seule
+- [x] Définir un modèle de tunnel indépendant, sans partage de fichiers binaires, de processus ou de paramètres secrets
+- [x] Définir une collection de profils séparée par tunnel et un balancier optionnel limité au tunnel choisi
+- [x] Ajouter le balancier multi-profils pour UDP-ZIVPN
+- [x] Ajouter le balancier multi-profils pour SSH/SlowDNS
+- [x] Intégrer Hysteria UDP comme tunnel indépendant
+- [x] Intégrer V2Ray DNS et V2Ray+SlowDNS comme tunnels indépendants
+- [x] Intégrer Xray/V2Ray comme tunnel indépendant
+- [x] Repenser l’onglet Tunnel pour choisir explicitement le moteur avant connexion
+- [x] Ajouter tests unitaires de l’isolation des profils et de la sélection du balancier
+- [ ] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions

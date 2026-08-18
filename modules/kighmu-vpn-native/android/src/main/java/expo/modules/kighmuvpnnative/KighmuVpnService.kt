@@ -10,6 +10,7 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.InetAddress
@@ -23,6 +24,8 @@ class KighmuVpnService : VpnService() {
   private var tunFd = -1
   private var zivpnProcess: Process? = null
   private var slowDnsTunnel: SlowDnsSshTunnel? = null
+  private var familyBalancer: SocksProfileBalancer? = null
+  private val familyStopActions = mutableListOf<() -> Unit>()
   private var activeMode = "zivpn"
   private var attemptGeneration = 0L
 
@@ -52,7 +55,8 @@ class KighmuVpnService : VpnService() {
   private fun startTunnel(intent: Intent, generation: Long) {
     try {
       val root = JSONObject(intent.getStringExtra(EXTRA_CONFIG_JSON).orEmpty())
-      when (root.optString("mode", "zivpn")) {
+      if (root.optInt("version", 0) >= 3) startCatalogTunnel(root, generation)
+      else when (root.optString("mode", "zivpn")) {
         "slowdns" -> startSlowDns(root, generation)
         else -> startZivpn(root, generation)
       }
@@ -121,6 +125,126 @@ class KighmuVpnService : VpnService() {
     markConnected(generation, "SSH/SlowDNS connecté")
   }
 
+  private fun startCatalogTunnel(root: JSONObject, generation: Long) {
+    val kind = root.optString("kind").trim()
+    require(kind in setOf("zivpn", "slowdns", "hysteria", "v2ray-dns", "v2ray-slowdns", "xray-v2ray")) { "Famille de tunnel inconnue" }
+    val profiles = root.optJSONArray("profiles") ?: JSONArray()
+    require(profiles.length() > 0) { "Aucun profil sélectionné pour $kind" }
+    activeMode = kind
+    createNotificationChannel()
+    startForeground(NOTIFICATION_ID, notification("Préparation ${familyLabel(kind)}"))
+    val physicalNetwork = physicalNetwork()
+    val fd = establishVpn(familyLabel(kind), physicalNetwork)
+    bindToPhysicalNetwork(physicalNetwork, kind.uppercase())
+    emitLog("info", "CATALOG", "${familyLabel(kind)} : ${profiles.length()} profil(s) sélectionné(s), runtime indépendant")
+
+    val ports = mutableListOf<Int>()
+    try {
+      for (index in 0 until profiles.length()) {
+        val profile = profiles.optJSONObject(index) ?: continue
+        try {
+          val port = startCatalogProfile(kind, profile)
+          ports.add(port)
+          emitLog("info", kind.uppercase(), "Profil ${index + 1}/${profiles.length()} prêt sur SOCKS local $port")
+        } catch (error: Throwable) {
+          emitLog("warning", kind.uppercase(), "Profil ${index + 1}/${profiles.length()} indisponible : ${error.message ?: "erreur"}")
+        }
+      }
+      require(ports.isNotEmpty()) { "Aucun profil $kind n’a démarré" }
+      val shouldBalance = root.optJSONObject("balancer")?.optBoolean("enabled", false) == true && ports.size > 1
+      val targetPort = if (shouldBalance) {
+        SocksProfileBalancer(ports) { level, component, message -> emitLog(level, component, message) }.also { balancer ->
+          familyBalancer = balancer
+        }.start()
+      } else ports.first()
+      if (!ZivpnTun2Socks.init()) error("hev_jni indisponible pour le relais ${familyLabel(kind)}")
+      ZivpnTun2Socks.start(this, fd, targetPort, 1400)
+      emitLog("info", "CATALOG", "TUN→SOCKS5 actif sur $targetPort ; balancier=${if (shouldBalance) "actif" else "inactif"}")
+      markConnected(generation, "${familyLabel(kind)} connecté")
+    } catch (error: Throwable) {
+      releaseFamilyResources()
+      throw error
+    }
+  }
+
+  private fun startCatalogProfile(kind: String, profile: JSONObject): Int = when (kind) {
+    "zivpn" -> startZivpnProfile(profile)
+    "slowdns" -> {
+      val tunnel = SlowDnsSshTunnel(this, this, { level, component, message -> emitLog(level, component, message) }, "libdnstt-slowdns.so", "slowdns-${profile.optString("id", "profile")}")
+      familyStopActions.add { tunnel.stop() }
+      tunnel.start(SlowDnsSshTunnel.Settings.fromProfile(profile))
+    }
+    "hysteria" -> {
+      val tunnel = HysteriaProfileTunnel(this) { level, component, message -> emitLog(level, component, message) }
+      familyStopActions.add { tunnel.stop() }
+      tunnel.start(profile)
+    }
+    "xray-v2ray" -> {
+      val tunnel = XrayProfileTunnel(this, "libxray-v2ray.so", "xray-${profile.optString("id", "profile")}") { level, component, message -> emitLog(level, component, message) }
+      familyStopActions.add { tunnel.stop() }
+      tunnel.start(profile)
+    }
+    "v2ray-dns" -> startDnsXrayProfile(profile, "libdnstt-v2raydns.so", "libxray-v2raydns.so", "v2raydns")
+    "v2ray-slowdns" -> startDnsXrayProfile(profile, "libdnstt-v2rayslowdns.so", "libxray-v2rayslowdns.so", "v2rayslowdns")
+    else -> error("Famille de tunnel inconnue")
+  }
+
+  private fun startZivpnProfile(profile: JSONObject): Int {
+    val host = profile.optString("host").trim()
+    val port = profile.optString("port").trim().replace(Regex("\\s+"), "")
+    val obfs = profile.optString("obfs").trim()
+    val password = profile.optString("password").trim()
+    require(host.isNotBlank() && port.isNotBlank() && obfs.isNotBlank() && password.isNotBlank()) { "Profil UDP-ZIVPN incomplet" }
+    val binary = File(applicationInfo.nativeLibraryDir, "libuz_core.so")
+    require(binary.exists() && binary.length() > 0L && binary.canExecute()) { "libuz_core.so absent ou non exécutable" }
+    val socksPort = freeLocalPort()
+    val resolvedHost = try { InetAddress.getByName(host).hostAddress ?: host } catch (_: Throwable) { host }
+    val safeId = profile.optString("id", "profile").replace(Regex("[^A-Za-z0-9_-]"), "_").take(64)
+    val config = File(cacheDir, "zivpn_${safeId}.json")
+    config.writeText(buildUzConfig(resolvedHost, port, password, obfs, socksPort))
+    val process = ProcessBuilder(binary.absolutePath, "-s", obfs, "--config", config.readText()).directory(filesDir).apply {
+      environment()["LD_LIBRARY_PATH"] = applicationInfo.nativeLibraryDir
+      environment()["HOME"] = cacheDir.absolutePath
+      environment()["TMPDIR"] = cacheDir.absolutePath
+      redirectErrorStream(true)
+    }.start()
+    familyStopActions.add {
+      try { process.destroy() } catch (_: Throwable) {}
+      try { process.waitFor(700, TimeUnit.MILLISECONDS) } catch (_: Throwable) {}
+      if (process.isAlive) try { process.destroyForcibly() } catch (_: Throwable) {}
+      try { config.delete() } catch (_: Throwable) {}
+    }
+    thread(isDaemon = true, name = "zivpn-$safeId-log") { readNativeLogs(process, "ZIVPN") }
+    if (!waitForLocalPort(process, socksPort, 4_500L)) error("Le SOCKS5 UDP-ZIVPN n’est pas apparu pour le profil $safeId")
+    return socksPort
+  }
+
+  private fun startDnsXrayProfile(profile: JSONObject, dnsttBinary: String, xrayBinary: String, label: String): Int {
+    val dnstt = DnsttLocalClient(this, dnsttBinary, "$label-${profile.optString("id", "profile")}") { level, component, message -> emitLog(level, component, message) }
+    val dnsttPort = dnstt.start(profile.optString("dnsServer").trim(), profile.optString("dnsPort", "53").toIntOrNull() ?: 53, profile.optString("nameserver").trim(), profile.optString("publicKey").trim())
+    val xray = XrayProfileTunnel(this, xrayBinary, "$label-${profile.optString("id", "profile")}") { level, component, message -> emitLog(level, component, message) }
+    familyStopActions.add { xray.stop(); dnstt.stop() }
+    return xray.start(profile, "127.0.0.1", dnsttPort)
+  }
+
+  private fun releaseFamilyResources() {
+    try { familyBalancer?.close() } catch (_: Throwable) {}
+    familyBalancer = null
+    val actions = familyStopActions.toList()
+    familyStopActions.clear()
+    actions.asReversed().forEach { action -> try { action() } catch (_: Throwable) {} }
+  }
+
+  private fun freeLocalPort(): Int = java.net.ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+  private fun familyLabel(kind: String): String = when (kind) {
+    "zivpn" -> "UDP-ZIVPN"
+    "slowdns" -> "SSH/SlowDNS"
+    "hysteria" -> "Hysteria UDP"
+    "v2ray-dns" -> "V2Ray DNS"
+    "v2ray-slowdns" -> "V2Ray+SlowDNS"
+    else -> "Xray/V2Ray"
+  }
+
   private fun physicalNetwork() = (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).activeNetwork
     ?: error("Aucun réseau physique disponible")
 
@@ -153,8 +277,8 @@ class KighmuVpnService : VpnService() {
     startForeground(NOTIFICATION_ID, notification(text))
   }
 
-  private fun buildUzConfig(host: String, port: String, password: String, obfs: String): String =
-    """{"server":"${json(host + ":" + port)}","obfs":"${json(obfs)}","auth":"${json(password)}","socks5":{"listen":"127.0.0.1:7778"},"insecure":true,"recvwindowconn":65536,"recvwindow":262144,"disable_mtu_discovery":true,"down_mbps":50,"up_mbps":10}"""
+  private fun buildUzConfig(host: String, port: String, password: String, obfs: String, socksPort: Int = 7778): String =
+    """{"server":"${json(host + ":" + port)}","obfs":"${json(obfs)}","auth":"${json(password)}","socks5":{"listen":"127.0.0.1:$socksPort"},"insecure":true,"recvwindowconn":65536,"recvwindow":262144,"disable_mtu_discovery":true,"down_mbps":50,"up_mbps":10}"""
 
   private fun json(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
 
@@ -173,7 +297,7 @@ class KighmuVpnService : VpnService() {
 
   private fun fail(generation: Long, message: String) {
     if (!isActive(generation)) return
-    emitLog("error", if (activeMode == "slowdns") "SLOWDNS" else "ZIVPN", "Échec du tunnel : $message")
+    emitLog("error", activeMode.uppercase(), "Échec du tunnel : $message")
     stopVpn(STATUS_ERROR)
   }
 
@@ -196,11 +320,12 @@ class KighmuVpnService : VpnService() {
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
     thread(isDaemon = true, name = "vpn-stop") {
       try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
+      try { releaseFamilyResources() } catch (_: Throwable) {}
       try { slowDns?.stop() } catch (_: Throwable) {}
       try { zivpn?.waitFor(700, TimeUnit.MILLISECONDS) } catch (_: Throwable) {}
       try { if (zivpn?.isAlive == true) zivpn.destroyForcibly() } catch (_: Throwable) {}
       File(cacheDir, "zivpn-client.json").delete()
-      emitLog("info", if (activeMode == "slowdns") "SLOWDNS" else "ZIVPN", "Arrêt complet du tunnel")
+      emitLog("info", activeMode.uppercase(), "Arrêt complet du tunnel")
     }
     stopSelf()
   }

@@ -1,55 +1,99 @@
-import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
-import { useVpn, type VpnConfig } from "@/lib/vpn/vpn-context";
+import { TUNNEL_CATALOG, TUNNEL_KINDS, profileEndpoint, type ProfileFieldErrors, type TunnelKind, type TunnelProfile } from "@/lib/vpn/tunnel-profiles";
+import { useVpn } from "@/lib/vpn/vpn-context";
 
-function Field({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType, error, note }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; secureTextEntry?: boolean; keyboardType?: "default" | "numeric"; error?: string; note?: string }) {
+function Field({ label, value, onChangeText, placeholder, secureTextEntry, keyboardType, error, multiline, note }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; secureTextEntry?: boolean; keyboardType?: "default" | "numeric"; error?: string; multiline?: boolean; note?: string }) {
   const colors = useColors();
   return <View style={styles.fieldGroup}>
     <Text className="mb-2 text-sm font-semibold text-foreground">{label}</Text>
     {note ? <Text className="mb-2 text-xs leading-4 text-muted">{note}</Text> : null}
-    <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} secureTextEntry={secureTextEntry} keyboardType={keyboardType} autoCapitalize="none" multiline={label.includes("publique")} style={[styles.input, label.includes("publique") && styles.multilineInput, { color: colors.foreground, backgroundColor: colors.surface, borderColor: error ? colors.error : colors.border }]} />
+    <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} secureTextEntry={secureTextEntry} keyboardType={keyboardType} autoCapitalize="none" multiline={multiline} style={[styles.input, multiline && styles.multilineInput, { color: colors.foreground, backgroundColor: colors.surface, borderColor: error ? colors.error : colors.border }]} />
     {error ? <Text className="mt-1 text-xs text-error">{error}</Text> : null}
   </View>;
 }
 
 export default function ConfigurationScreen() {
   const colors = useColors();
-  const { config, updateConfig, saveConfig, resetConfig, validate } = useVpn();
-  const [errors, setErrors] = useState<Partial<Record<keyof VpnConfig, string>>>({});
+  const { activeKind, selectTunnel, profilesByKind, balancersByKind, createProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, resetAllProfiles } = useVpn();
+  const [draft, setDraft] = useState<TunnelProfile | null>(null);
+  const [errors, setErrors] = useState<ProfileFieldErrors>({});
   const [saved, setSaved] = useState(false);
-  const patch = (next: Partial<VpnConfig>) => { updateConfig(next); setSaved(false); };
-  const handleSave = async () => { const nextErrors = validate(); setErrors(nextErrors); if (Object.keys(nextErrors).length > 0) return; const ok = await saveConfig(); setSaved(ok); if (ok) setTimeout(() => setSaved(false), 2200); };
-  const handleReset = () => Alert.alert("Réinitialiser les profils ?", "Les mots de passe et la clé Obfs seront supprimés de l’appareil.", [{ text: "Annuler", style: "cancel" }, { text: "Réinitialiser", style: "destructive", onPress: () => resetConfig() }]);
-  const slowDns = config.mode === "slowdns";
+  const profiles = profilesByKind[activeKind];
+  const selectedCount = useMemo(() => profiles.filter((profile) => profile.selected).length, [profiles]);
+  const balancer = balancersByKind[activeKind];
+
+  useEffect(() => { setDraft(null); setErrors({}); setSaved(false); }, [activeKind]);
+  const patch = (field: string, value: string) => setDraft((current) => current ? ({ ...current, [field]: value } as TunnelProfile) : current);
+  const beginNew = () => { setDraft(createProfile(activeKind)); setErrors({}); setSaved(false); };
+  const beginEdit = (profile: TunnelProfile) => { setDraft({ ...profile }); setErrors({}); setSaved(false); };
+  const handleSave = async () => {
+    if (!draft) return;
+    const outcome = await saveProfile(draft);
+    setErrors(outcome.errors);
+    if (outcome.ok) { setSaved(true); setDraft(null); setTimeout(() => setSaved(false), 2000); }
+  };
+  const confirmDelete = (profile: TunnelProfile) => Alert.alert("Supprimer ce profil ?", `Le profil « ${profile.name} » et ses secrets locaux seront supprimés.`, [{ text: "Annuler", style: "cancel" }, { text: "Supprimer", style: "destructive", onPress: () => deleteProfile(profile.kind, profile.id) }]);
+  const handleReset = () => Alert.alert("Réinitialiser toutes les collections ?", "Tous les profils, secrets et réglages de balancier seront supprimés de l’appareil.", [{ text: "Annuler", style: "cancel" }, { text: "Réinitialiser", style: "destructive", onPress: () => resetAllProfiles() }]);
+
+  const profileEditor = () => {
+    if (!draft) return null;
+    const field = (label: string, key: string, placeholder: string, options?: Omit<React.ComponentProps<typeof Field>, "label" | "value" | "onChangeText" | "placeholder">) => <Field label={label} value={String((draft as Record<string, unknown>)[key] ?? "")} onChangeText={(value) => patch(key, value)} placeholder={placeholder} error={errors[key]} {...options} />;
+    return <View style={[styles.editorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={styles.editorHeader}><View><Text className="text-base font-bold text-foreground">{profiles.some((profile) => profile.id === draft.id) ? "Modifier le profil" : "Nouveau profil"}</Text><Text className="mt-1 text-xs text-muted">{TUNNEL_CATALOG[draft.kind].label}</Text></View><Pressable onPress={() => setDraft(null)} style={({ pressed }) => [styles.closeButton, { borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-sm font-bold text-muted">Fermer</Text></Pressable></View>
+      {field("Nom du profil", "name", "Ex. Serveur principal")}
+      {draft.kind === "zivpn" ? <>
+        {field("Host ou adresse IP", "host", "vpn.exemple.com ou 203.0.113.10")}
+        {field("Port ou plage de ports", "port", "6000-19999", { keyboardType: "numeric" })}
+        {field("Obfs", "obfs", "Clé Obfs", { secureTextEntry: true })}
+        {field("Mot de passe", "password", "Mot de passe du serveur", { secureTextEntry: true })}
+      </> : null}
+      {draft.kind === "slowdns" ? <>
+        {field("Serveur DNS/UDP", "dnsServer", "203.0.113.10")}
+        {field("Port DNS UDP", "dnsPort", "53", { keyboardType: "numeric" })}
+        {field("Nameserver SlowDNS", "nameserver", "t.exemple.com")}
+        {field("Clé publique dnstt", "publicKey", "Clé publique du serveur dnstt", { multiline: true })}
+        {field("Hôte SSH attendu", "sshHost", "ssh.exemple.com", { note: "Libellé de contrôle : la cible SSH réelle est définie par le serveur SlowDNS." })}
+        {field("Identifiant SSH", "sshUsername", "utilisateur SSH")}
+        {field("Mot de passe SSH", "sshPassword", "Mot de passe SSH", { secureTextEntry: true })}
+      </> : null}
+      {draft.kind === "hysteria" ? <>
+        {field("Host ou adresse IP", "host", "hysteria.exemple.com")}
+        {field("Port ou plage UDP", "port", "443 ou 20000-50000", { keyboardType: "numeric" })}
+        {field("Authentification Hysteria", "auth", "Mot de passe d’authentification", { secureTextEntry: true })}
+        {field("Obfs facultatif", "obfs", "Clé Obfs", { secureTextEntry: true })}
+        {field("Débit montant (Mbps)", "uploadMbps", "10", { keyboardType: "numeric" })}
+        {field("Débit descendant (Mbps)", "downloadMbps", "50", { keyboardType: "numeric" })}
+      </> : null}
+      {draft.kind === "xray-v2ray" ? <>
+        <View style={styles.inputModeRow}><Pressable onPress={() => setDraft({ ...draft, inputMode: "link" })} style={[styles.inputMode, { borderColor: draft.inputMode === "link" ? colors.primary : colors.border, backgroundColor: draft.inputMode === "link" ? colors.primary : colors.background }]}><Text style={{ color: draft.inputMode === "link" ? "#fff" : colors.foreground, fontWeight: "700", fontSize: 12 }}>Lien</Text></Pressable><Pressable onPress={() => setDraft({ ...draft, inputMode: "json" })} style={[styles.inputMode, { borderColor: draft.inputMode === "json" ? colors.primary : colors.border, backgroundColor: draft.inputMode === "json" ? colors.primary : colors.background }]}><Text style={{ color: draft.inputMode === "json" ? "#fff" : colors.foreground, fontWeight: "700", fontSize: 12 }}>JSON</Text></Pressable></View>
+        {draft.inputMode === "link" ? field("Lien Xray/V2Ray", "link", "vless://, vmess:// ou trojan://", { multiline: true }) : field("Configuration Xray/V2Ray", "json", "{ \"inbounds\": [], \"outbounds\": [] }", { multiline: true })}
+      </> : null}
+      {draft.kind === "v2ray-dns" || draft.kind === "v2ray-slowdns" ? <>
+        {field("Serveur DNS/UDP", "dnsServer", "203.0.113.10")}
+        {field("Port DNS UDP", "dnsPort", "53", { keyboardType: "numeric" })}
+        {field("Nameserver DNS", "nameserver", "t.exemple.com")}
+        {field("Clé publique dnstt", "publicKey", "Clé publique du serveur dnstt", { multiline: true })}
+        {field(draft.kind === "v2ray-dns" ? "Configuration V2Ray DNS" : "Configuration V2Ray+SlowDNS", "json", "{ \"inbounds\": [], \"outbounds\": [] }", { multiline: true })}
+      </> : null}
+      <Pressable onPress={handleSave} style={({ pressed }) => [styles.saveButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><Text style={styles.saveText}>{saved ? "Profil enregistré" : "Enregistrer le profil"}</Text></Pressable>
+    </View>;
+  };
+
   return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-      <Text className="text-3xl font-bold text-foreground">Configuration</Text>
-      <Text className="mt-2 text-sm leading-5 text-muted">Choisissez un tunnel. SlowDNS utilise une seule session SSH ; aucun balancier ni tunnel parallèle n’est activé.</Text>
-      <View style={styles.modeRow}>
-        <Pressable onPress={() => patch({ mode: "zivpn" })} style={({ pressed }) => [styles.modeButton, { borderColor: config.mode === "zivpn" ? colors.primary : colors.border, backgroundColor: config.mode === "zivpn" ? colors.primary : colors.surface }, pressed && styles.pressed]}><Text style={[styles.modeText, { color: config.mode === "zivpn" ? "#fff" : colors.foreground }]}>UDP-ZIVPN</Text></Pressable>
-        <Pressable onPress={() => patch({ mode: "slowdns" })} style={({ pressed }) => [styles.modeButton, { borderColor: slowDns ? colors.primary : colors.border, backgroundColor: slowDns ? colors.primary : colors.surface }, pressed && styles.pressed]}><Text style={[styles.modeText, { color: slowDns ? "#fff" : colors.foreground }]}>SSH / SlowDNS</Text></Pressable>
-      </View>
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {slowDns ? <>
-          <Field label="Serveur DNS/UDP" value={config.slowDnsServer} onChangeText={(slowDnsServer) => patch({ slowDnsServer })} placeholder="203.0.113.10" error={errors.slowDnsServer} />
-          <Field label="Port DNS UDP" value={config.slowDnsPort} onChangeText={(slowDnsPort) => patch({ slowDnsPort })} placeholder="53" keyboardType="numeric" error={errors.slowDnsPort} />
-          <Field label="Nameserver SlowDNS" value={config.slowDnsNameserver} onChangeText={(slowDnsNameserver) => patch({ slowDnsNameserver })} placeholder="t.exemple.com" error={errors.slowDnsNameserver} />
-          <Field label="Clé publique dnstt" value={config.slowDnsPublicKey} onChangeText={(slowDnsPublicKey) => patch({ slowDnsPublicKey })} placeholder="Clé publique du serveur dnstt" error={errors.slowDnsPublicKey} />
-          <Field label="Hôte SSH attendu" value={config.slowDnsSshHost} onChangeText={(slowDnsSshHost) => patch({ slowDnsSshHost })} placeholder="ssh.exemple.com" note="Libellé de contrôle : la cible SSH réelle est définie par le serveur SlowDNS." error={errors.slowDnsSshHost} />
-          <Field label="Identifiant SSH" value={config.slowDnsUsername} onChangeText={(slowDnsUsername) => patch({ slowDnsUsername })} placeholder="utilisateur SSH" error={errors.slowDnsUsername} />
-          <Field label="Mot de passe SSH" value={config.slowDnsPassword} onChangeText={(slowDnsPassword) => patch({ slowDnsPassword })} placeholder="Mot de passe SSH" secureTextEntry error={errors.slowDnsPassword} />
-        </> : <>
-          <Field label="Host ou adresse IP" value={config.host} onChangeText={(host) => patch({ host })} placeholder="vpn.exemple.com ou 203.0.113.10" error={errors.host} />
-          <Field label="Port ou plage de ports" value={config.port} onChangeText={(port) => patch({ port })} placeholder="443 ou 6000-19999" keyboardType="numeric" error={errors.port} />
-          <Field label="Obfs" value={config.obfs} onChangeText={(obfs) => patch({ obfs })} placeholder="Clé Salamander" secureTextEntry error={errors.obfs} />
-          <Field label="Mot de passe" value={config.password} onChangeText={(password) => patch({ password })} placeholder="Mot de passe du serveur" secureTextEntry error={errors.password} />
-        </>}
-      </View>
-      <Pressable onPress={handleSave} style={({ pressed }) => [styles.saveButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><Text style={styles.saveText}>{saved ? "Profil enregistré" : "Enregistrer le profil"}</Text></Pressable>
-      <Pressable onPress={handleReset} style={({ pressed }) => [styles.resetButton, pressed && styles.pressed]}><Text className="text-sm font-semibold text-error">Réinitialiser les profils</Text></Pressable>
+      <Text className="text-3xl font-bold text-foreground">Profils de tunnel</Text>
+      <Text className="mt-2 text-sm leading-5 text-muted">Chaque famille conserve ses profils, secrets et fichiers runtime séparément. Le balancier ne distribue que les profils sélectionnés du tunnel choisi.</Text>
+      <View style={styles.catalog}>{TUNNEL_KINDS.map((kind) => <Pressable key={kind} onPress={() => selectTunnel(kind)} style={({ pressed }) => [styles.catalogCard, { backgroundColor: activeKind === kind ? TUNNEL_CATALOG[kind].accent : colors.surface, borderColor: activeKind === kind ? TUNNEL_CATALOG[kind].accent : colors.border }, pressed && styles.pressed]}><Text style={{ color: activeKind === kind ? "#fff" : colors.foreground, fontSize: 13, fontWeight: "800" }}>{TUNNEL_CATALOG[kind].shortLabel}</Text><Text numberOfLines={2} style={{ color: activeKind === kind ? "#fff" : colors.muted, fontSize: 10, marginTop: 4, lineHeight: 13 }}>{TUNNEL_CATALOG[kind].description}</Text></Pressable>)}</View>
+      <View style={[styles.familyHeader, { borderColor: colors.border }]}><View style={{ flex: 1 }}><Text className="text-lg font-bold text-foreground">{TUNNEL_CATALOG[activeKind].label}</Text><Text className="mt-1 text-xs text-muted">{profiles.length} profil{profiles.length > 1 ? "s" : ""} enregistré{profiles.length > 1 ? "s" : ""} · {selectedCount} sélectionné{selectedCount > 1 ? "s" : ""}</Text></View><Pressable onPress={beginNew} style={({ pressed }) => [styles.addButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><Text style={styles.addText}>+ Profil</Text></Pressable></View>
+      <View style={[styles.balancerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><View style={{ flex: 1 }}><Text className="text-sm font-bold text-foreground">Balancier multi-profils</Text><Text className="mt-1 text-xs leading-4 text-muted">Round-robin local entre les sorties SOCKS saines de {TUNNEL_CATALOG[activeKind].shortLabel}. Minimum : deux profils sélectionnés.</Text></View><Switch value={balancer.enabled} onValueChange={(enabled) => setBalancer(activeKind, { enabled })} trackColor={{ false: colors.border, true: TUNNEL_CATALOG[activeKind].accent }} /></View>
+      {profiles.length === 0 ? <View style={[styles.empty, { borderColor: colors.border }]}><Text className="text-sm font-bold text-foreground">Aucun profil pour ce tunnel</Text><Text className="mt-1 text-xs text-center leading-4 text-muted">Ajoutez un profil. Ses paramètres ne seront jamais partagés avec une autre famille.</Text></View> : <View style={styles.profileList}>{profiles.map((profile) => <View key={profile.id} style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: profile.selected ? TUNNEL_CATALOG[activeKind].accent : colors.border }]}><Pressable onPress={() => toggleProfileSelection(activeKind, profile.id)} style={styles.profileSelect}><View style={[styles.check, { borderColor: profile.selected ? TUNNEL_CATALOG[activeKind].accent : colors.border, backgroundColor: profile.selected ? TUNNEL_CATALOG[activeKind].accent : "transparent" }]}>{profile.selected ? <Text style={styles.checkText}>✓</Text> : null}</View><View style={styles.profileInfo}><Text className="text-sm font-bold text-foreground">{profile.name}</Text><Text numberOfLines={1} className="mt-1 text-xs text-muted">{profileEndpoint(profile)}</Text></View></Pressable><View style={styles.profileActions}><Pressable onPress={() => beginEdit(profile)} style={({ pressed }) => [styles.actionButton, { borderColor: colors.border }, pressed && styles.pressed]}><Text style={{ color: colors.primary, fontSize: 12, fontWeight: "800" }}>Modifier</Text></Pressable><Pressable onPress={() => confirmDelete(profile)} style={({ pressed }) => [styles.actionButton, { borderColor: colors.border }, pressed && styles.pressed]}><Text style={{ color: colors.error, fontSize: 12, fontWeight: "800" }}>Supprimer</Text></Pressable></View></View>)}</View>}
+      {profileEditor()}
+      <Pressable onPress={handleReset} style={({ pressed }) => [styles.resetButton, pressed && styles.pressed]}><Text className="text-sm font-semibold text-error">Réinitialiser toutes les collections</Text></Pressable>
     </ScrollView>
   </ScreenContainer>;
 }
-const styles = StyleSheet.create({ content: { paddingBottom: 28 }, modeRow: { flexDirection: "row", gap: 10, marginTop: 20 }, modeButton: { flex: 1, minHeight: 46, borderRadius: 14, borderWidth: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 }, modeText: { fontSize: 13, fontWeight: "700" }, card: { borderWidth: 1, borderRadius: 24, padding: 18, marginTop: 16, gap: 18 }, fieldGroup: { width: "100%" }, input: { minHeight: 50, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, fontSize: 15 }, multilineInput: { minHeight: 86, paddingTop: 12, textAlignVertical: "top" }, saveButton: { minHeight: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", marginTop: 18 }, saveText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" }, resetButton: { minHeight: 48, alignItems: "center", justifyContent: "center" }, pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] } });
+
+const styles = StyleSheet.create({ content: { paddingBottom: 32 }, catalog: { flexDirection: "row", flexWrap: "wrap", gap: 9, paddingVertical: 18 }, catalogCard: { width: "31.9%", minHeight: 86, borderWidth: 1, borderRadius: 18, padding: 11, justifyContent: "center" }, familyHeader: { borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", paddingBottom: 15, marginBottom: 15 }, addButton: { minHeight: 42, borderRadius: 13, paddingHorizontal: 15, alignItems: "center", justifyContent: "center" }, addText: { color: "#fff", fontSize: 13, fontWeight: "800" }, balancerCard: { borderWidth: 1, borderRadius: 18, padding: 15, flexDirection: "row", alignItems: "center", gap: 12 }, empty: { borderWidth: 1, borderRadius: 18, marginTop: 16, padding: 24, alignItems: "center" }, profileList: { marginTop: 16, gap: 10 }, profileCard: { borderWidth: 1, borderRadius: 18, padding: 14 }, profileSelect: { flexDirection: "row", alignItems: "center" }, check: { width: 24, height: 24, borderRadius: 8, borderWidth: 1.5, alignItems: "center", justifyContent: "center", marginRight: 11 }, checkText: { color: "#fff", fontSize: 14, fontWeight: "900" }, profileInfo: { flex: 1 }, profileActions: { flexDirection: "row", gap: 8, marginTop: 12, marginLeft: 35 }, actionButton: { borderWidth: 1, minHeight: 34, paddingHorizontal: 11, borderRadius: 10, alignItems: "center", justifyContent: "center" }, editorCard: { borderWidth: 1, borderRadius: 22, padding: 17, marginTop: 18, gap: 16 }, editorHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, closeButton: { minHeight: 34, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, alignItems: "center", justifyContent: "center" }, fieldGroup: { width: "100%" }, input: { minHeight: 50, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, fontSize: 15 }, multilineInput: { minHeight: 104, paddingTop: 12, textAlignVertical: "top" }, inputModeRow: { flexDirection: "row", gap: 9 }, inputMode: { flex: 1, minHeight: 40, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" }, saveButton: { minHeight: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", marginTop: 2 }, saveText: { color: "#fff", fontSize: 16, fontWeight: "700" }, resetButton: { minHeight: 52, alignItems: "center", justifyContent: "center", marginTop: 18 }, pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] } });

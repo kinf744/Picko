@@ -3,82 +3,145 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
-import { validateVpnConfig, type TunnelMode } from "./validation";
+import {
+  TUNNEL_CATALOG,
+  TUNNEL_KINDS,
+  createProfile as makeProfile,
+  defaultBalancer,
+  omitSecrets,
+  secretFields,
+  withSecrets,
+  type ProfileFieldErrors,
+  type TunnelBalancer,
+  type TunnelKind,
+  type TunnelProfile,
+} from "./tunnel-profiles";
+import { validateTunnelProfile } from "./validation";
 
 export type TunnelStatus = "disconnected" | "connecting" | "connected" | "error";
 export type LogLevel = "info" | "connection" | "warning" | "error";
-
-export type VpnConfig = {
-  mode: TunnelMode;
-  host: string;
-  port: string;
-  obfs: string;
-  password: string;
-  slowDnsSshHost: string;
-  slowDnsUsername: string;
-  slowDnsPassword: string;
-  slowDnsServer: string;
-  slowDnsPort: string;
-  slowDnsNameserver: string;
-  slowDnsPublicKey: string;
-};
-
 export type DiagnosticLog = { id: string; timestamp: string; level: LogLevel; component: string; message: string };
+export type ProfilesByKind = Record<TunnelKind, TunnelProfile[]>;
+export type BalancersByKind = Record<TunnelKind, TunnelBalancer>;
 
-const CONFIG_KEY = "kighmu.vpn.config.v2";
-const LEGACY_CONFIG_KEY = "kighmu.vpn.config.v1";
-const ZIVPN_PASSWORD_KEY = "kighmu.vpn.zivpn.password.v1";
-const ZIVPN_OBFS_KEY = "kighmu.vpn.zivpn.obfs.v1";
-const SLOWDNS_PASSWORD_KEY = "kighmu.vpn.slowdns.ssh-password.v1";
-const LEGACY_PASSWORD_KEY = "kighmu.vpn.password.v1";
-const LEGACY_OBFS_KEY = "kighmu.vpn.obfs.v1";
+const LEGACY_CONFIG_KEY = "kighmu.vpn.config.v2";
+const LEGACY_PASSWORD_KEY = "kighmu.vpn.zivpn.password.v1";
+const LEGACY_OBFS_KEY = "kighmu.vpn.zivpn.obfs.v1";
+const LEGACY_SLOWDNS_PASSWORD_KEY = "kighmu.vpn.slowdns.ssh-password.v1";
+const ACTIVE_TUNNEL_KEY = "kighmu.vpn.catalog.active.v1";
+const profileStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.profiles.v1`;
+const secretStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.secrets.v1`;
+const balancerStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.balancer.v1`;
 
-const EMPTY_CONFIG: VpnConfig = {
-  mode: "zivpn", host: "", port: "", obfs: "", password: "",
-  slowDnsSshHost: "", slowDnsUsername: "", slowDnsPassword: "", slowDnsServer: "", slowDnsPort: "53", slowDnsNameserver: "", slowDnsPublicKey: "",
-};
-
+const emptyProfiles = (): ProfilesByKind => ({
+  zivpn: [], slowdns: [], hysteria: [], "v2ray-dns": [], "v2ray-slowdns": [], "xray-v2ray": [],
+});
+const emptyBalancers = (): BalancersByKind => ({
+  zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "v2ray-dns": defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(),
+});
 const redact = (value: string) => value ? "••••••" : "non défini";
 const makeLog = (level: LogLevel, component: string, message: string): DiagnosticLog => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), level, component, message });
-const storageGet = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.getItem(key)) : SecureStore.getItemAsync(key);
-const storageSet = (key: string, value: string) => Platform.OS === "web" ? Promise.resolve(localStorage.setItem(key, value)) : SecureStore.setItemAsync(key, value);
-const storageDelete = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.removeItem(key)) : SecureStore.deleteItemAsync(key);
+const secretGet = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.getItem(key)) : SecureStore.getItemAsync(key);
+const secretSet = (key: string, value: string) => Platform.OS === "web" ? Promise.resolve(localStorage.setItem(key, value)) : SecureStore.setItemAsync(key, value);
+const secretDelete = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.removeItem(key)) : SecureStore.deleteItemAsync(key);
 
-export const validateConfig = validateVpnConfig;
+function extractSecrets(profile: TunnelProfile) {
+  return Object.fromEntries(secretFields(profile).map((field) => [field, String((profile as Record<string, unknown>)[field] ?? "")]));
+}
+
+function normalizeProfiles(kind: TunnelKind, publicValue: string | null, secretValue: string | null): TunnelProfile[] {
+  try {
+    const publicProfiles = JSON.parse(publicValue ?? "[]") as TunnelProfile[];
+    const secretMap = JSON.parse(secretValue ?? "{}") as Record<string, Record<string, string>>;
+    return publicProfiles.filter((profile) => profile.kind === kind).map((profile) => withSecrets(profile, secretMap[profile.id] ?? {}));
+  } catch { return []; }
+}
 
 type VpnContextValue = {
-  config: VpnConfig; status: TunnelStatus; logs: DiagnosticLog[]; lastError: string | null; hydrated: boolean;
-  updateConfig: (patch: Partial<VpnConfig>) => void; saveConfig: () => Promise<boolean>; validate: () => Partial<Record<keyof VpnConfig, string>>;
-  connect: () => Promise<void>; disconnect: () => Promise<void>; clearLogs: () => void; resetConfig: () => Promise<void>;
+  activeKind: TunnelKind;
+  profilesByKind: ProfilesByKind;
+  balancersByKind: BalancersByKind;
+  status: TunnelStatus;
+  logs: DiagnosticLog[];
+  lastError: string | null;
+  hydrated: boolean;
+  activeProfiles: TunnelProfile[];
+  selectTunnel: (kind: TunnelKind) => void;
+  createProfile: (kind?: TunnelKind) => TunnelProfile;
+  saveProfile: (profile: TunnelProfile) => Promise<{ ok: boolean; errors: ProfileFieldErrors }>;
+  deleteProfile: (kind: TunnelKind, id: string) => Promise<void>;
+  toggleProfileSelection: (kind: TunnelKind, id: string) => Promise<void>;
+  setBalancer: (kind: TunnelKind, patch: Partial<TunnelBalancer>) => Promise<void>;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+  clearLogs: () => void;
+  resetAllProfiles: () => Promise<void>;
 };
 const VpnContext = createContext<VpnContextValue | null>(null);
 
 export function VpnProvider({ children }: { children: React.ReactNode }) {
-  const [config, setConfig] = useState<VpnConfig>(EMPTY_CONFIG);
+  const [activeKind, setActiveKind] = useState<TunnelKind>("zivpn");
+  const [profilesByKind, setProfilesByKind] = useState<ProfilesByKind>(emptyProfiles);
+  const [balancersByKind, setBalancersByKind] = useState<BalancersByKind>(emptyBalancers);
   const [status, setStatus] = useState<TunnelStatus>("disconnected");
   const [logs, setLogs] = useState<DiagnosticLog[]>([]);
   const [lastError, setLastError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const addLog = useCallback((level: LogLevel, component: string, message: string) => setLogs((current) => [makeLog(level, component, message), ...current].slice(0, 300)), []);
 
+  const persistKind = useCallback(async (kind: TunnelKind, profiles: TunnelProfile[], balancer: TunnelBalancer) => {
+    const secretMap = Object.fromEntries(profiles.map((profile) => [profile.id, extractSecrets(profile)]));
+    await Promise.all([
+      AsyncStorage.setItem(profileStoreKey(kind), JSON.stringify(profiles.map(omitSecrets))),
+      secretSet(secretStoreKey(kind), JSON.stringify(secretMap)),
+      AsyncStorage.setItem(balancerStoreKey(kind), JSON.stringify(balancer)),
+    ]);
+  }, []);
+
+  const migrateLegacyProfile = useCallback(async () => {
+    const [legacyConfig, password, obfs, sshPassword] = await Promise.all([
+      AsyncStorage.getItem(LEGACY_CONFIG_KEY), secretGet(LEGACY_PASSWORD_KEY), secretGet(LEGACY_OBFS_KEY), secretGet(LEGACY_SLOWDNS_PASSWORD_KEY),
+    ]);
+    if (!legacyConfig) return null;
+    try {
+      const config = JSON.parse(legacyConfig) as Record<string, string>;
+      if (config.mode === "slowdns") {
+        return { ...makeProfile("slowdns"), name: "Profil SSH/SlowDNS migré", selected: true, dnsServer: config.slowDnsServer ?? "", dnsPort: config.slowDnsPort ?? "53", nameserver: config.slowDnsNameserver ?? "", publicKey: config.slowDnsPublicKey ?? "", sshHost: config.slowDnsSshHost ?? "", sshUsername: config.slowDnsUsername ?? "", sshPassword: sshPassword ?? "" } as TunnelProfile;
+      }
+      return { ...makeProfile("zivpn"), name: "Profil UDP-ZIVPN migré", selected: true, host: config.host ?? "", port: config.port ?? "", obfs: obfs ?? config.obfs ?? "", password: password ?? "" } as TunnelProfile;
+    } catch { return null; }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const stored = await AsyncStorage.getItem(CONFIG_KEY) ?? await AsyncStorage.getItem(LEGACY_CONFIG_KEY);
-        const [savedPassword, savedObfs, legacyPassword, legacyObfs, sshPassword] = await Promise.all([storageGet(ZIVPN_PASSWORD_KEY), storageGet(ZIVPN_OBFS_KEY), storageGet(LEGACY_PASSWORD_KEY), storageGet(LEGACY_OBFS_KEY), storageGet(SLOWDNS_PASSWORD_KEY)]);
-        const password = savedPassword ?? legacyPassword;
-        const obfs = savedObfs ?? legacyObfs;
-        if (mounted && stored) {
-          const parsed = JSON.parse(stored) as Partial<VpnConfig>;
-          setConfig({ ...EMPTY_CONFIG, ...parsed, password: password ?? "", obfs: obfs ?? parsed.obfs ?? "", slowDnsPassword: sshPassword ?? "" });
+        const activeStored = await AsyncStorage.getItem(ACTIVE_TUNNEL_KEY);
+        const loaded = emptyProfiles();
+        const loadedBalancers = emptyBalancers();
+        await Promise.all(TUNNEL_KINDS.map(async (kind) => {
+          const [publicProfiles, secretProfiles, savedBalancer] = await Promise.all([AsyncStorage.getItem(profileStoreKey(kind)), secretGet(secretStoreKey(kind)), AsyncStorage.getItem(balancerStoreKey(kind))]);
+          loaded[kind] = normalizeProfiles(kind, publicProfiles, secretProfiles);
+          try { if (savedBalancer) loadedBalancers[kind] = { ...defaultBalancer(), ...JSON.parse(savedBalancer) }; } catch { /* garde les valeurs sûres */ }
+        }));
+        if (loaded.zivpn.length === 0 && loaded.slowdns.length === 0) {
+          const migrated = await migrateLegacyProfile();
+          if (migrated) {
+            loaded[migrated.kind] = [migrated];
+            await persistKind(migrated.kind, [migrated], loadedBalancers[migrated.kind]);
+          }
         }
-        if (mounted) addLog("info", "STORAGE", "Profil local chargé ; les secrets restent masqués.");
-      } catch { if (mounted) addLog("warning", "STORAGE", "Le profil local n’a pas pu être chargé."); }
-      finally { if (mounted) setHydrated(true); }
+        if (!mounted) return;
+        setProfilesByKind(loaded);
+        setBalancersByKind(loadedBalancers);
+        if (activeStored && TUNNEL_KINDS.includes(activeStored as TunnelKind)) setActiveKind(activeStored as TunnelKind);
+        addLog("info", "STORAGE", "Collections de profils isolées chargées ; les secrets restent masqués.");
+      } catch {
+        if (mounted) addLog("warning", "STORAGE", "Une collection de profils n’a pas pu être chargée.");
+      } finally { if (mounted) setHydrated(true); }
     })();
     return () => { mounted = false; };
-  }, [addLog]);
+  }, [addLog, migrateLegacyProfile, persistKind]);
 
   useEffect(() => subscribeNativeVpn(
     (payload) => {
@@ -88,47 +151,119 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     (payload) => { if (["connected", "connecting", "disconnected", "error"].includes(payload.status)) setStatus(payload.status as TunnelStatus); },
   ), []);
 
-  const updateConfig = useCallback((patch: Partial<VpnConfig>) => setConfig((current) => ({ ...current, ...patch })), []);
-  const validate = useCallback(() => validateConfig(config), [config]);
-  const saveConfig = useCallback(async () => {
-    if (Object.keys(validateConfig(config)).length > 0) { addLog("warning", "VALIDATION", "Enregistrement refusé : certains champs sont invalides."); return false; }
-    try {
-      const { password, obfs, slowDnsPassword, ...publicConfig } = config;
-      await AsyncStorage.setItem(CONFIG_KEY, JSON.stringify(publicConfig));
-      await Promise.all([storageSet(ZIVPN_PASSWORD_KEY, password), storageSet(ZIVPN_OBFS_KEY, obfs), storageSet(SLOWDNS_PASSWORD_KEY, slowDnsPassword)]);
-      addLog("info", "STORAGE", config.mode === "slowdns" ? `Profil SSH/SlowDNS enregistré ; SSH=${redact(slowDnsPassword)}.` : `Profil UDP-ZIVPN enregistré ; password=${redact(password)}; obfs=${redact(obfs)}.`);
-      return true;
-    } catch { addLog("error", "STORAGE", "Échec d’enregistrement du profil sécurisé."); return false; }
-  }, [addLog, config]);
+  const selectTunnel = useCallback((kind: TunnelKind) => {
+    setActiveKind(kind);
+    AsyncStorage.setItem(ACTIVE_TUNNEL_KEY, kind).catch(() => undefined);
+    addLog("info", "CATALOG", `Tunnel actif sélectionné : ${TUNNEL_CATALOG[kind].label}.`);
+  }, [addLog]);
 
-  const connect = useCallback(async () => {
-    const errors = validateConfig(config);
-    if (Object.keys(errors).length > 0) { setLastError("Corrigez la configuration avant de vous connecter."); setStatus("error"); addLog("error", "VALIDATION", "Connexion refusée : configuration invalide."); return; }
-    setLastError(null); setStatus("connecting");
-    if (config.mode === "slowdns") {
-      addLog("connection", "SLOWDNS", `Préparation SSH/SlowDNS via ${config.slowDnsServer}:${config.slowDnsPort}; nameserver=${config.slowDnsNameserver}.`);
-      addLog("connection", "AUTH", `Identifiant SSH chargé ; mot de passe=${redact(config.slowDnsPassword)}.`);
-    } else {
-      addLog("connection", "TUNNEL", `Préparation UDP-ZIVPN vers ${config.host}:${config.port}.`);
-      addLog("connection", "AUTH", `Paramètres chargés; password=${redact(config.password)}; obfs=${redact(config.obfs)}.`);
+  const createProfile = useCallback((kind = activeKind) => makeProfile(kind), [activeKind]);
+
+  const saveProfile = useCallback(async (profile: TunnelProfile) => {
+    const errors = validateTunnelProfile(profile);
+    if (Object.keys(errors).length > 0) {
+      addLog("warning", "VALIDATION", `Profil ${TUNNEL_CATALOG[profile.kind].shortLabel} non enregistré : champs invalides.`);
+      return { ok: false, errors };
     }
-    const native = getNativeVpn();
-    if (!native) { setLastError("Le moteur natif Android n’est pas disponible dans ce preview."); setStatus("error"); addLog("warning", "NATIVE", "La connexion réelle nécessite un build natif personnalisé."); return; }
+    const nextProfile = { ...profile, updatedAt: Date.now() } as TunnelProfile;
+    const next = profilesByKind[nextProfile.kind].some((item) => item.id === nextProfile.id)
+      ? profilesByKind[nextProfile.kind].map((item) => item.id === nextProfile.id ? nextProfile : item)
+      : [...profilesByKind[nextProfile.kind], nextProfile];
     try {
-      addLog("connection", "ANDROID", "Demande d’autorisation VPN au système Android.");
-      if (!await native.prepareVpn()) { setStatus("disconnected"); setLastError("Autorisation VPN en attente ou refusée par Android."); addLog("warning", "ANDROID", "L’autorisation VPN doit être confirmée dans la fenêtre système."); return; }
-      await native.startVpn(JSON.stringify({
-        mode: config.mode, host: config.host, port: config.port, obfs: config.obfs, password: config.password,
-        slowDns: { sshHost: config.slowDnsSshHost, sshUsername: config.slowDnsUsername, sshPassword: config.slowDnsPassword, dnsServer: config.slowDnsServer, dnsPort: Number(config.slowDnsPort), nameserver: config.slowDnsNameserver, publicKey: config.slowDnsPublicKey },
-      }));
-      addLog("connection", "NATIVE", config.mode === "slowdns" ? "Service VpnService démarré ; authentification SSH/SlowDNS en attente." : "Service VpnService démarré ; test UDP-ZIVPN en attente.");
-    } catch (error) { setLastError("Le service VPN Android n’a pas pu démarrer."); setStatus("error"); addLog("error", "NATIVE", `Échec du démarrage natif : ${String(error).slice(0, 180)}`); }
-  }, [addLog, config]);
+      await persistKind(nextProfile.kind, next, balancersByKind[nextProfile.kind]);
+      setProfilesByKind((current) => ({ ...current, [nextProfile.kind]: next }));
+      addLog("info", "STORAGE", `Profil ${TUNNEL_CATALOG[nextProfile.kind].shortLabel} enregistré ; secrets=${redact(Object.values(extractSecrets(nextProfile)).filter(Boolean).join(""))}.`);
+      return { ok: true, errors: {} };
+    } catch {
+      addLog("error", "STORAGE", "Échec d’enregistrement du profil sécurisé.");
+      return { ok: false, errors: { storage: "Le profil n’a pas pu être enregistré." } };
+    }
+  }, [addLog, balancersByKind, persistKind, profilesByKind]);
 
-  const disconnect = useCallback(async () => { try { await getNativeVpn()?.stopVpn(); } catch (error) { addLog("warning", "NATIVE", `Arrêt natif signalé avec une erreur : ${String(error).slice(0, 160)}`); } setStatus("disconnected"); setLastError(null); addLog("connection", "TUNNEL", "Déconnexion demandée."); }, [addLog]);
-  const clearLogs = useCallback(() => setLogs([]), []);
-  const resetConfig = useCallback(async () => { await AsyncStorage.multiRemove([CONFIG_KEY, LEGACY_CONFIG_KEY]); await Promise.all([storageDelete(ZIVPN_PASSWORD_KEY), storageDelete(ZIVPN_OBFS_KEY), storageDelete(LEGACY_PASSWORD_KEY), storageDelete(LEGACY_OBFS_KEY), storageDelete(SLOWDNS_PASSWORD_KEY)]); setConfig(EMPTY_CONFIG); addLog("info", "STORAGE", "Les profils locaux ont été réinitialisés."); }, [addLog]);
-  const value = useMemo(() => ({ config, status, logs, lastError, hydrated, updateConfig, saveConfig, validate, connect, disconnect, clearLogs, resetConfig }), [config, status, logs, lastError, hydrated, updateConfig, saveConfig, validate, connect, disconnect, clearLogs, resetConfig]);
+  const deleteProfile = useCallback(async (kind: TunnelKind, id: string) => {
+    const next = profilesByKind[kind].filter((profile) => profile.id !== id);
+    await persistKind(kind, next, balancersByKind[kind]);
+    setProfilesByKind((current) => ({ ...current, [kind]: next }));
+    addLog("info", "STORAGE", `Profil ${TUNNEL_CATALOG[kind].shortLabel} supprimé.`);
+  }, [addLog, balancersByKind, persistKind, profilesByKind]);
+
+  const toggleProfileSelection = useCallback(async (kind: TunnelKind, id: string) => {
+    const next = profilesByKind[kind].map((profile) => profile.id === id ? { ...profile, selected: !profile.selected, updatedAt: Date.now() } as TunnelProfile : profile);
+    await persistKind(kind, next, balancersByKind[kind]);
+    setProfilesByKind((current) => ({ ...current, [kind]: next }));
+  }, [balancersByKind, persistKind, profilesByKind]);
+
+  const setBalancer = useCallback(async (kind: TunnelKind, patch: Partial<TunnelBalancer>) => {
+    const next = { ...balancersByKind[kind], ...patch };
+    await persistKind(kind, profilesByKind[kind], next);
+    setBalancersByKind((current) => ({ ...current, [kind]: next }));
+    addLog("info", "BALANCER", `${TUNNEL_CATALOG[kind].shortLabel} : balancier ${next.enabled ? "activé" : "désactivé"}.`);
+  }, [addLog, balancersByKind, persistKind, profilesByKind]);
+
+  const activeProfiles = profilesByKind[activeKind].filter((profile) => profile.selected);
+  const connect = useCallback(async () => {
+    const selected = profilesByKind[activeKind].filter((profile) => profile.selected);
+    if (selected.length === 0) {
+      setLastError("Sélectionnez au moins un profil pour le tunnel choisi.");
+      setStatus("error");
+      addLog("error", "VALIDATION", "Connexion refusée : aucun profil sélectionné.");
+      return;
+    }
+    const invalid = selected.map((profile) => ({ profile, errors: validateTunnelProfile(profile) })).find((item) => Object.keys(item.errors).length > 0);
+    if (invalid) {
+      setLastError(`Le profil « ${invalid.profile.name} » est incomplet.`);
+      setStatus("error");
+      addLog("error", "VALIDATION", `Connexion refusée : profil invalide pour ${TUNNEL_CATALOG[activeKind].shortLabel}.`);
+      return;
+    }
+    const balancer = balancersByKind[activeKind];
+    const shouldBalance = balancer.enabled && selected.length > 1;
+    setLastError(null);
+    setStatus("connecting");
+    addLog("connection", "CATALOG", `${TUNNEL_CATALOG[activeKind].label} : ${selected.length} profil(s) sélectionné(s), balancier=${shouldBalance ? "actif" : "inactif"}.`);
+    const native = getNativeVpn();
+    if (!native) {
+      setLastError("Le moteur natif Android n’est pas disponible dans ce preview.");
+      setStatus("error");
+      addLog("warning", "NATIVE", "La connexion réelle nécessite un build Android personnalisé.");
+      return;
+    }
+    try {
+      if (!await native.prepareVpn()) {
+        setStatus("disconnected");
+        setLastError("Autorisation VPN en attente ou refusée par Android.");
+        addLog("warning", "ANDROID", "L’autorisation VPN doit être confirmée dans la fenêtre système.");
+        return;
+      }
+      await native.startVpn(JSON.stringify({ version: 3, kind: activeKind, balancer: { ...balancer, enabled: shouldBalance }, profiles: selected }));
+      addLog("connection", "NATIVE", `Service Android démarré pour ${TUNNEL_CATALOG[activeKind].label}.`);
+    } catch (error) {
+      setLastError("Le service VPN Android n’a pas pu démarrer.");
+      setStatus("error");
+      addLog("error", "NATIVE", `Échec du démarrage natif : ${String(error).slice(0, 180)}`);
+    }
+  }, [activeKind, addLog, balancersByKind, profilesByKind]);
+
+  const disconnect = useCallback(async () => {
+    try { await getNativeVpn()?.stopVpn(); } catch (error) { addLog("warning", "NATIVE", `Arrêt natif signalé avec une erreur : ${String(error).slice(0, 160)}`); }
+    setStatus("disconnected");
+    setLastError(null);
+    addLog("connection", "TUNNEL", "Déconnexion demandée.");
+  }, [addLog]);
+
+  const resetAllProfiles = useCallback(async () => {
+    await Promise.all(TUNNEL_KINDS.flatMap((kind) => [AsyncStorage.removeItem(profileStoreKey(kind)), AsyncStorage.removeItem(balancerStoreKey(kind)), secretDelete(secretStoreKey(kind))]));
+    setProfilesByKind(emptyProfiles());
+    setBalancersByKind(emptyBalancers());
+    addLog("info", "STORAGE", "Toutes les collections de profils et leurs secrets ont été réinitialisés.");
+  }, [addLog]);
+
+  const value = useMemo(() => ({ activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, clearLogs: () => setLogs([]), resetAllProfiles }), [activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, resetAllProfiles]);
   return <VpnContext.Provider value={value}>{children}</VpnContext.Provider>;
 }
-export function useVpn() { const value = useContext(VpnContext); if (!value) throw new Error("useVpn doit être utilisé dans VpnProvider"); return value; }
+
+export function useVpn() {
+  const value = useContext(VpnContext);
+  if (!value) throw new Error("useVpn doit être utilisé dans VpnProvider");
+  return value;
+}

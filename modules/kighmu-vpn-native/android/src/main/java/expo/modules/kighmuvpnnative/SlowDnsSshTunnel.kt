@@ -20,6 +20,8 @@ class SlowDnsSshTunnel(
   private val context: Context,
   private val vpnService: VpnService,
   private val emit: (level: String, component: String, message: String) -> Unit,
+  private val dnsttBinaryName: String = "libdnstt-slowdns.so",
+  private val runtimeLabel: String = "slowdns",
 ) {
   data class Settings(
     val dnsServer: String,
@@ -43,6 +45,16 @@ class SlowDnsSshTunnel(
           sshLabel = slowDns.optString("sshHost").trim(),
         )
       }
+
+      fun fromProfile(profile: JSONObject): Settings = Settings(
+        dnsServer = profile.optString("dnsServer").trim(),
+        dnsPort = profile.optString("dnsPort", "53").toIntOrNull() ?: 53,
+        nameserver = profile.optString("nameserver").trim().trimEnd('.'),
+        publicKey = profile.optString("publicKey").trim().replace(Regex("\\s+"), ""),
+        sshUsername = profile.optString("sshUsername").trim(),
+        sshPassword = profile.optString("sshPassword").trim(),
+        sshLabel = profile.optString("sshHost").trim(),
+      )
     }
 
     fun validate() {
@@ -109,9 +121,9 @@ class SlowDnsSshTunnel(
   }
 
   private fun startDnstt(settings: Settings) {
-    val binary = File(context.applicationInfo.nativeLibraryDir, "libdnstt.so")
+    val binary = File(context.applicationInfo.nativeLibraryDir, dnsttBinaryName)
     require(binary.exists() && binary.length() > 0L && binary.canExecute()) {
-      "libdnstt.so ARMv7 est absent ou non exécutable"
+      "$dnsttBinaryName ARMv7 est absent ou non exécutable"
     }
     val command = listOf(
       binary.absolutePath,
@@ -130,8 +142,8 @@ class SlowDnsSshTunnel(
       }
       .start()
     dnsttProcess = process
-    emit("info", "SLOWDNS", "Client dnstt ARMv7 démarré ; canal local 127.0.0.1:$dnsttPort")
-    thread(isDaemon = true, name = "slowdns-native-log") {
+    emit("info", "SLOWDNS", "[$runtimeLabel] client dnstt ARMv7 démarré ; canal local 127.0.0.1:$dnsttPort")
+    thread(isDaemon = true, name = "$runtimeLabel-native-log") {
       try {
         process.inputStream.bufferedReader().useLines { lines ->
           lines.forEach { line ->
