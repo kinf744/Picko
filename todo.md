@@ -413,3 +413,15 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [ ] Tester la connexion ZIVPN réelle sur Android
 - [ ] Comparer le résultat avec le diagnostic KIGHMU
 - [ ] Restaurer ou conserver explicitement le mode choisi après comparaison
+
+## Contrainte confirmée — intégration applicative SSH/SlowDNS uniquement
+
+- [ ] Ne réaliser aucune modification sur le VPS, ses services, ses règles réseau ou l’accès SSH
+- [ ] Limiter la validation à l’intégration applicative, à l’APK armeabi-v7a et au workflow GitHub Actions
+
+## Aperçu visuel des tunnels
+
+- [x] Préparer des profils de démonstration locaux, sans identifiants ni secrets réels
+- [x] Capturer l’écran Tunnel avec le profil UDP-ZIVPN
+- [x] Capturer la configuration SSH/SlowDNS mono-session
+- [x] Capturer l’écran Diagnostic et présenter l’ensemble des tunnels
