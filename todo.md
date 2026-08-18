@@ -123,6 +123,26 @@ Le diagnostic a confirmé que les ressources natives splash Android versionnées
 - Obfs et mot de passe : utiliser uniquement les valeurs déjà configurées côté utilisateur, sans les inscrire dans les logs
 - Architecture APK attendue : `armeabi-v7a` uniquement
 
+## Analyse SSH/SlowDNS de Zamois-tun
+
+- [x] Inventorier les modules, scripts et bibliothèques associés à SSH/SlowDNS
+- [x] Identifier le format de configuration et les paramètres requis
+- [x] Décrire le cycle Android : démarrage, TUN, relais et arrêt
+- [x] Comparer l’architecture à la branche restaurée KIGHMU/ZIVPN
+- [x] Proposer une intégration SlowDNS isolée avant toute modification de l’application
+
+## Intégration SSH/SlowDNS mono-session
+
+- [x] Vérifier la disponibilité et la provenance de `libdnstt.so` armeabi-v7a : compilation officielle ARMv7 ajoutée au workflow GitHub
+- [x] Définir un profil SlowDNS indépendant sans balancer ni session parallèle
+- [x] Ajouter les champs SSH, serveur DNS, nameserver et clé publique
+- [x] Ajouter le moteur `dnstt → SSH → SOCKS5` dans le module Android natif
+- [x] Réutiliser le relais HEV existant pour `TUN → SOCKS5`
+- [x] Ajouter les diagnostics et l’arrêt ciblé des processus SlowDNS
+- [x] Valider TypeScript et tests sans compilation Android locale
+- [ ] Compiler uniquement par GitHub Actions
+- [ ] Tester le tunnel réel sur Android avec un endpoint SlowDNS valide
+
 ## Dernière action attendue
 
 Corriger le blocage de démarrage, publier via GitHub Actions, puis demander à l’utilisateur de désinstaller l’ancienne version avant d’installer le nouvel APK.
@@ -388,110 +408,7 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Remplacer temporairement le moteur KIGHMU par ZIVPN dans l’APK de test
 - [x] Retirer entièrement le binaire KIGHMU de l’APK de test
 - [x] Valider TypeScript/tests sans compilation Android locale
-- [x] Compiler uniquement via GitHub Actions
-- [x] Tester la connexion ZIVPN réelle sur Android
-- [x] Comparer le résultat avec le diagnostic KIGHMU
+- [ ] Compiler uniquement via GitHub Actions
+- [ ] Tester la connexion ZIVPN réelle sur Android
+- [ ] Comparer le résultat avec le diagnostic KIGHMU
 - [ ] Restaurer ou conserver explicitement le mode choisi après comparaison
-
-## Analyse locale libuz_core — nouveau chantier
-
-- [x] Analyser localement libuz_core.so avec les outils ELF, désassemblage et inspection JNI
-- [x] Comparer les dépendances, symboles, chaînes, ABI et points d’entrée libuz avec KIGHMU
-- [x] Comparer le wrapper hev_jni, le relais TUN→SOCKS5 et le cycle de vie VpnService
-- [ ] Réaliser une observation dynamique locale contrôlée sans modifier le VPS ni ZIVPN
-- [x] Rédiger les écarts techniques et les correctifs applicables à KIGHMU
-
-## Analyse approfondie avec Ghidra
-
-- [x] Installer Ghidra et ses dépendances dans l’environnement local
-- [x] Créer un projet Ghidra en lecture seule pour libuz_core.so
-- [ ] Analyser les fonctions de démarrage, configuration, obfs, QUIC et réseau de libuz_core
-- [ ] Importer KIGHMU dans Ghidra pour comparer les fonctions critiques
-- [ ] Documenter les écarts confirmés et les hypothèses restant à valider dynamiquement
-
-## Analyse Ghidra détaillée — périmètre confirmé
-
-- [ ] Travailler uniquement sur des copies SHA-256 vérifiées de libuz_core.so et KIGHMU
-- [x] Documenter architecture CPU, ELF, endianness, sections, segments, dépendances et symboles
-- [x] Cartographier les fonctions, références croisées, globals, tables, callbacks et threads
-- [x] Identifier _init, _fini, constructeurs ELF, JNI_OnLoad et les appels d’initialisation réseau
-- [x] Analyser les paramètres de ports, adresses, timeouts, buffers, QUIC, UDP et variables d’environnement
-- [x] Examiner les indices d’obfuscation, résolution dynamique et chargement de bibliothèques
-- [x] Produire une reconstruction prudente du chemin chargement→configuration→réseau→arrêt
-- [x] Comparer séparément architecture, réseau, QUIC, UDP, mémoire, threads et configuration KIGHMU
-- [x] Attribuer un niveau de confiance à chaque conclusion et distinguer faits, hypothèses et inconnues
-
-## Décompilation ciblée et instrumentation dynamique
-
-- [x] Décompiler les fonctions référencées par `HandshakeTLSConfig`, `auth.type` et `udpEnabled`
-- [x] Extraire et comparer automatiquement les call graphs de libuz_core et KIGHMU
-- [x] Préparer les scripts et prérequis Frida/LLDB pour un appareil Android réel
-- [x] Documenter les résultats dynamiques et les limites de preuve
-
-## Analyse entièrement locale sans appareil Android
-
-- [x] Étendre la cartographie Ghidra aux fonctions réseau, QUIC, UDP, obfs et initialisation
-- [x] Analyser statiquement les wrappers JNI et les bibliothèques HEV locales
-- [x] Simuler localement le lancement, l’environnement, les descripteurs et les erreurs Android pertinentes
-- [x] Comparer les résultats simulés avec les logs et captures déjà collectés
-- [x] Mettre à jour le rapport en séparant les preuves locales des limites d’exécution Android
-
-## Recentrage libuz → code source KIGHMU
-
-- [x] Cartographier le contrat réel de lancement et de configuration de libuz_core
-- [x] Comparer chaque exigence libuz avec le code source et le lancement KIGHMU
-- [x] Reproduire localement les deux configurations et la séquence TUN/réseau
-- [x] Identifier la cause probable de l’échec KIGHMU sans décompiler davantage KIGHMU
-- [x] Documenter les correctifs minimaux à appliquer uniquement à KIGHMU
-
-## Vérification provenance, port range et patch TUN
-
-- [x] Comparer les hashes et Go BuildID de toutes les copies KIGHMU locales
-- [x] Relier le binaire KIGHMU analysé au commit ou patch source disponible
-- [x] Valider le parsing structurel de `20000-50000` et des ports unitaires dans le code local
-- [ ] Vérifier que le patch `fileDescriptor` est présent dans la révision de build
-- [ ] Préparer une reconstruction KIGHMU isolée uniquement si les preuves sont cohérentes
-
-## Cartographie complète libuz → spécification KIGHMU
-
-- [x] Inventorier toutes les fonctions et interfaces observables de libuz_core
-- [x] Cartographier les dépendances, l’initialisation, les constructeurs et les threads
-- [x] Décrire la gestion réseau : résolution, sockets UDP, QUIC, buffers, fenêtres et timeouts
-- [x] Extraire le contrat de configuration, obfs, auth, port range et logs
-- [x] Reconstruire l’architecture générale et la séquence moteur→SOCKS→HEV→TUN
-- [x] Traduire les constats en exigences légitimes pour le code source KIGHMU
-- [x] Documenter les niveaux de confiance et les éléments impossibles à prouver statiquement
-
-## Modification KIGHMU basée sur la référence libuz
-
-- [x] Auditer le service KIGHMU et le wrapper natif avant modification
-- [x] Séparer le moteur KIGHMU du relais SOCKS5 et du TUN comme dans l’architecture validée
-- [x] Préserver exactement le host, le port range, l’Obfs et l’authentification
-- [x] Appliquer le binding réseau physique avant le handshake
-- [x] Ajouter une détection fiable du handshake avant l’état connecté
-- [x] Renforcer l’arrêt du moteur, du relais et du descripteur TUN
-- [x] Ajouter tests déterministes et logs sans secrets
-- [x] Préparer exclusivement le build Android GitHub Actions après validation
-
-## Build GitHub Actions KIGHMU après modification
-
-- [ ] Vérifier le workflow release, l’ABI armeabi-v7a et la présence de libkighmu.so
-- [ ] Lancer le workflow GitHub Actions depuis le dépôt Picko
-- [ ] Vérifier la réussite du build et l’artefact APK release unique
-- [ ] Vérifier le contenu de l’APK sans compiler localement
-- [ ] Installer l’APK release et recueillir le Diagnostic après test réel
-
-## Réauthentification GitHub temporaire et workflow
-
-- [ ] Réauthentifier GitHub CLI avec le jeton temporaire sans l’écrire dans le projet
-- [ ] Pousser le commit KIGHMU vers `kinf744/Picko`
-- [ ] Lancer le workflow `build-android.yml`
-- [ ] Surveiller le résultat et vérifier l’artefact release armeabi-v7a
-- [ ] Révoquer le jeton temporaire après utilisation si nécessaire
-
-## Échec workflow 31820187145 — correctif Kotlin
-
-- [x] Identifier `Unresolved reference: fail` dans KighmuVpnService.kt:66
-- [x] Ajouter le helper `fail(generation, message)` et conserver le nettoyage existant
-- [ ] Republier le correctif et relancer le workflow GitHub Actions
-- [ ] Vérifier l’APK release et son contenu armeabi-v7a

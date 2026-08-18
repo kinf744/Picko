@@ -1,8 +1,0 @@
-===== /home/ubuntu/ghidra-analysis-inputs/kighmu-native-armeabi-v7a =====
-c0290fb4bf18eca19f3aee157a5125d6231b5f9d9cb6a74bfc8ace19aa0ae000  /home/ubuntu/ghidra-analysis-inputs/kighmu-native-armeabi-v7a
-/home/ubuntu/ghidra-analysis-inputs/kighmu-native-armeabi-v7a: ELF 32-bit LSB pie executable, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /system/bin/linker, Go BuildID=8ly-gpm9r8dBoW6veI6j/W0Pr1CW2T8sXu7jTmjpW/FNZNPCb8rWiDbaiUjsPz/9AM7OvjyLJlANAtcyymE, BuildID[sha1]=e8e8c122c0c3f4e7a11bcc5732895a66e8a0bfcf, stripped
-    Build ID: e8e8c122c0c3f4e7a11bcc5732895a66e8a0bfcf
-===== /home/ubuntu/kighmu-vpn-android/assets/bin/kighmu-native-armeabi-v7a =====
-c0290fb4bf18eca19f3aee157a5125d6231b5f9d9cb6a74bfc8ace19aa0ae000  /home/ubuntu/kighmu-vpn-android/assets/bin/kighmu-native-armeabi-v7a
-/home/ubuntu/kighmu-vpn-android/assets/bin/kighmu-native-armeabi-v7a: ELF 32-bit LSB pie executable, ARM, EABI5 version 1 (SYSV), dynamically linked, interpreter /system/bin/linker, Go BuildID=8ly-gpm9r8dBoW6veI6j/W0Pr1CW2T8sXu7jTmjpW/FNZNPCb8rWiDbaiUjsPz/9AM7OvjyLJlANAtcyymE, BuildID[sha1]=e8e8c122c0c3f4e7a11bcc5732895a66e8a0bfcf, stripped
-    Build ID: e8e8c122c0c3f4e7a11bcc5732895a66e8a0bfcf

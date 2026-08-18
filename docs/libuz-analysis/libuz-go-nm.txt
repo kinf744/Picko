@@ -1,2 +1,0 @@
-reading /home/ubuntu/ghidra-analysis-inputs/libuz_core.so: no symbol section
-reading /home/ubuntu/ghidra-analysis-inputs/libuz_core.so: no symbols

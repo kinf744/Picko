@@ -14,6 +14,8 @@ env:
   JAVA_VERSION: '17'
   NODE_VERSION: '20'
   PNPM_VERSION: '9.12.0'
+  GO_VERSION: '1.23.x'
+  DNSTT_REVISION: '0c5c52a57d899c05428c116898941761a2ed83c2'
 
 jobs:
   build-android:
@@ -42,6 +44,30 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Go for dnstt ARMv7
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build official dnstt client for Android armeabi-v7a
+        run: |
+          set -euo pipefail
+          SOURCE_DIR="$RUNNER_TEMP/dnstt"
+          OUTPUT="${GITHUB_WORKSPACE}/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libdnstt.so"
+          rm -rf "$SOURCE_DIR"
+          git clone https://www.bamsoftware.com/git/dnstt.git "$SOURCE_DIR"
+          git -C "$SOURCE_DIR" checkout --detach "$DNSTT_REVISION"
+          mkdir -p "$(dirname "$OUTPUT")"
+          (
+            cd "$SOURCE_DIR"
+            CGO_ENABLED=0 GOOS=android GOARCH=arm GOARM=7 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o "$OUTPUT" ./dnstt-client
+          )
+          chmod 755 "$OUTPUT"
+          test -s "$OUTPUT"
+          file "$OUTPUT"
 
       - name: Install JavaScript dependencies
         env:

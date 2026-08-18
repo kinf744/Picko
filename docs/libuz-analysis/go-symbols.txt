@@ -1,4 +1,0 @@
-== go tool nm libuz ==
-reading modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libuz_core.so: no symbol section
-reading modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libuz_core.so: no symbols
-== go tool nm kighmu ==

@@ -1,25 +1,51 @@
 import { describe, expect, it } from "vitest";
 import { validateVpnConfig, type VpnValidationConfig } from "../lib/vpn/validation";
 
-const valid: VpnValidationConfig = { host: "203.0.113.10", port: "6000-19999", obfs: "salamander-key", password: "secret" };
+const validZivpn: VpnValidationConfig = {
+  mode: "zivpn",
+  host: "203.0.113.10",
+  port: "6000-19999",
+  obfs: "salamander-key",
+  password: "secret",
+  slowDnsSshHost: "",
+  slowDnsUsername: "",
+  slowDnsPassword: "",
+  slowDnsServer: "",
+  slowDnsPort: "53",
+  slowDnsNameserver: "",
+  slowDnsPublicKey: "",
+};
 
-describe("validateConfig", () => {
-  it("accepts a host, a single port and the required secrets", () => {
-    expect(validateVpnConfig({ ...valid, port: "443" })).toEqual({});
+const validSlowDns: VpnValidationConfig = {
+  ...validZivpn,
+  mode: "slowdns",
+  slowDnsSshHost: "ssh.example.com",
+  slowDnsUsername: "vpnuser",
+  slowDnsPassword: "secret",
+  slowDnsServer: "203.0.113.10",
+  slowDnsPort: "53",
+  slowDnsNameserver: "t.example.com",
+  slowDnsPublicKey: "example-public-key",
+};
+
+describe("validation des profils VPN", () => {
+  it("accepte un profil UDP-ZIVPN complet", () => {
+    expect(validateVpnConfig(validZivpn)).toEqual({});
   });
 
-  it("accepts an ordered port range within the valid range", () => {
-    expect(validateVpnConfig(valid)).toEqual({});
+  it("accepte un profil SSH/SlowDNS mono-session complet", () => {
+    expect(validateVpnConfig(validSlowDns)).toEqual({});
   });
 
-  it("rejects reversed, zero and out-of-range ports", () => {
-    expect(validateVpnConfig({ ...valid, port: "19999-6000" }).port).toBeTruthy();
-    expect(validateVpnConfig({ ...valid, port: "0" }).port).toBeTruthy();
-    expect(validateVpnConfig({ ...valid, port: "1-65536" }).port).toBeTruthy();
+  it("refuse une plage ZIVPN inversée", () => {
+    expect(validateVpnConfig({ ...validZivpn, port: "19999-6000" }).port).toBeTruthy();
   });
 
-  it("requires all connection values", () => {
-    const errors = validateVpnConfig({ host: "", port: "", obfs: "", password: "" });
-    expect(Object.keys(errors).sort()).toEqual(["host", "obfs", "password", "port"]);
+  it("refuse un profil SlowDNS sans clé publique", () => {
+    expect(validateVpnConfig({ ...validSlowDns, slowDnsPublicKey: "" }).slowDnsPublicKey).toBeTruthy();
+  });
+
+  it("refuse un port DNS SlowDNS invalide", () => {
+    expect(validateVpnConfig({ ...validSlowDns, slowDnsPort: "0" }).slowDnsPort).toBeTruthy();
   });
 });

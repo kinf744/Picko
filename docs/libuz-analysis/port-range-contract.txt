@@ -1,4 +1,0 @@
-OK 20000-50000: libuz=203.0.113.10:20000-50000 kighmu=server: '203.0.113.10:20000-50000'
-OK 6000-19999: libuz=203.0.113.10:6000-19999 kighmu=server: '203.0.113.10:6000-19999'
-OK 25000: libuz=203.0.113.10:25000 kighmu=server: '203.0.113.10:25000'
-STRUCTURAL_ONLY: le parser Go KIGHMU exact nécessite ses sources ou un test runtime Android.

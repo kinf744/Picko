@@ -44,14 +44,11 @@ class KighmuVpnNativeModule : Module() {
       }
     }
 
-    AsyncFunction("startVpn") { host: String, port: String, obfs: String, password: String ->
+    AsyncFunction("startVpn") { configJson: String ->
       val context = appContext.reactContext ?: throw IllegalStateException("Contexte Android indisponible")
       val intent = Intent(context, KighmuVpnService::class.java).apply {
         action = KighmuVpnService.ACTION_START
-        putExtra(KighmuVpnService.EXTRA_HOST, host)
-        putExtra(KighmuVpnService.EXTRA_PORT, port)
-        putExtra(KighmuVpnService.EXTRA_OBFS, obfs)
-        putExtra(KighmuVpnService.EXTRA_PASSWORD, password)
+        putExtra(KighmuVpnService.EXTRA_CONFIG_JSON, configJson)
       }
       context.startForegroundService(intent)
       sendEvent("onStateChanged", mapOf("status" to KighmuVpnService.STATUS_CONNECTING))
