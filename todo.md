@@ -442,4 +442,5 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Intégrer Xray/V2Ray comme tunnel indépendant
 - [x] Repenser l’onglet Tunnel pour choisir explicitement le moteur avant connexion
 - [x] Ajouter tests unitaires de l’isolation des profils et de la sélection du balancier
+- [x] Corriger le workflow Hysteria v1 : utiliser Go 1.20 séparément du compilateur dnstt
 - [ ] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions
