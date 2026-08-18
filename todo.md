@@ -444,4 +444,4 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Ajouter tests unitaires de l’isolation des profils et de la sélection du balancier
 - [x] Corriger le workflow Hysteria v1 : utiliser Go 1.20 séparément du compilateur dnstt
 - [x] Corriger les erreurs Kotlin relevées lors du premier assemblage multi-tunnels GitHub Actions
-- [ ] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions
+- [x] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions — run 32166608757 réussi, artefact release disponible
