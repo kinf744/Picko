@@ -425,3 +425,7 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Capturer l’écran Tunnel avec le profil UDP-ZIVPN
 - [x] Capturer la configuration SSH/SlowDNS mono-session
 - [x] Capturer l’écran Diagnostic et présenter l’ensemble des tunnels
+
+## Validation réelle rapportée — SSH/SlowDNS
+
+- [x] Enregistrer la confirmation utilisateur du fonctionnement réel du tunnel SSH/SlowDNS mono-session
