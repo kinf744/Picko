@@ -483,3 +483,12 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Conserver un accès secondaire aux profils et au balancier du tunnel sélectionné
 - [x] Vérifier le rendu et les interactions sur mobile
 - [x] Compiler et vérifier l’APK armeabi-v7a exclusivement via GitHub Actions — run 32171030806 réussi
+
+## Aperçu visuel complet — sept tunnels
+
+- [x] Préparer des profils locaux fictifs pour UDP-ZIVPN, SSH/SlowDNS, Hysteria, HTTP Proxy+Payload, SSH SSL/TLS, V2Ray+SlowDNS et Xray/V2Ray
+- [x] Capturer la grille de sélection à cases à cocher
+- [x] Capturer les formulaires UDP-ZIVPN, SSH/SlowDNS et Hysteria UDP
+- [x] Capturer les formulaires HTTP Proxy+Payload et SSH SSL/TLS
+- [x] Capturer les formulaires V2Ray+SlowDNS et Xray/V2Ray
+- [x] Présenter les vues de configuration sans divulguer de secrets réels

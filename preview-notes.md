@@ -30,3 +30,27 @@ Le catalogue mobile présente désormais sept cartes visibles à une main : UDP-
 ## Sélecteur à cases à cocher
 
 L’onglet Tunnel a remplacé la grille de cartes par un panneau sombre compact. Les sept familles s’affichent avec une case à cocher carrée ; une seule case est active à la fois et désigne la famille reliée au bouton principal. Le bouton Connecter/Déconnecter se situe directement sous la grille, tandis que la carte des profils et du balancier de la famille sélectionnée reste visible plus bas.
+
+## Aperçu de configuration des sept familles
+
+Les premières vues de démonstration confirment que Hysteria UDP et UDP-ZIVPN ouvrent deux collections distinctes, chacune avec son intitulé, son compteur de profils, son interrupteur de balancier et son état vide local. Aucune donnée d’un profil, aucun secret et aucune sortie SOCKS ne passe d’une collection à l’autre.
+
+Le formulaire UDP-ZIVPN de démonstration montre un nom de profil, un hôte/adresse IP, un port ou une plage, l’Obfs et le mot de passe. Les champs sensibles sont de type mot de passe et aucun exemple réel n’a été saisi.
+
+La vue SSH/SlowDNS présente séparément le serveur DNS/UDP, le port DNS, le nameserver, la clé publique dnstt, le libellé SSH, l’identifiant et le mot de passe. Les valeurs affichées reposent sur les réseaux de documentation et le mot de passe reste masqué dans l’interface native.
+
+Hysteria UDP possède sa propre collection vide dans l’aperçu, avec son libellé de haute performance, son bouton de création de profil et son balancier local. La bascule depuis SlowDNS ne transfère ni le profil DNS sélectionné ni ses valeurs de connexion.
+
+Le formulaire Hysteria UDP affiche un hôte, un port ou une plage UDP, l’authentification, un Obfs facultatif et les débits montant/descendant. Les secrets d’authentification et d’Obfs sont rendus dans des champs masqués.
+
+Le formulaire HTTP Proxy+Payload contient le proxy HTTP, son port, un payload HTTP avec les variables documentées, puis la cible SSH, son port, l’identifiant et le mot de passe. Le payload présenté est un exemple générique `CONNECT` et le mot de passe ne s’affiche pas en clair.
+
+La collection SSH SSL/TLS possède un libellé propre, un balancier local et ne partage aucune sélection avec HTTP Proxy+Payload. Son formulaire de démonstration est préparé séparément.
+
+Le formulaire SSH SSL/TLS montre l’hôte et port TLS, un SNI facultatif, puis les identifiants SSH. L’interface précise que le certificat TLS est validé avant l’ouverture de la session SSH.
+
+Le formulaire V2Ray+SlowDNS contient uniquement le serveur DNS/UDP, le port, le nameserver, la clé publique dnstt et la configuration V2Ray. Il reste distinct de V2Ray DNS, qui n’est plus proposé dans le catalogue.
+
+La sélection Xray/V2Ray ouvre une septième collection sans profil ni balancier partagé avec V2Ray+SlowDNS. La carte Xray et son libellé « Liens ou JSON Xray/V2Ray » rendent sa configuration indépendante visible dans le même écran.
+
+Le formulaire Xray/V2Ray propose un nom de profil puis deux formats alternatifs : un lien `vless://`, `vmess://` ou `trojan://`, ou une configuration JSON. Aucun lien ni secret réel n’a été renseigné dans l’aperçu.
