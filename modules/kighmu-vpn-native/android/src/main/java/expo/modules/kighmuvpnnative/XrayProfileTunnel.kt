@@ -111,7 +111,11 @@ class XrayProfileTunnel(
       val settings = outbound.optJSONObject("settings") ?: continue
       settings.optJSONArray("vnext")?.optJSONObject(0)?.let { it.put("address", host).put("port", port) }
       settings.optJSONArray("servers")?.optJSONObject(0)?.let { it.put("address", host).put("port", port) }
-      outbound.optJSONObject("streamSettings")?.let { stream -> stream.put("security", "none").remove("tlsSettings").remove("realitySettings") }
+      outbound.optJSONObject("streamSettings")?.let { stream: JSONObject ->
+        stream.put("security", "none")
+        stream.remove("tlsSettings")
+        stream.remove("realitySettings")
+      }
     }
   }
 

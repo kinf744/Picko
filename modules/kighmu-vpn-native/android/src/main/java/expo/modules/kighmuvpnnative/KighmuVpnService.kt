@@ -115,7 +115,7 @@ class KighmuVpnService : VpnService() {
     val fd = establishVpn("SSH/SlowDNS", physicalNetwork)
     bindToPhysicalNetwork(physicalNetwork, "SLOWDNS")
     emitLog("info", "SLOWDNS", "Profil validé ; démarrage d’une session unique sans balancer")
-    val tunnel = SlowDnsSshTunnel(this, this) { level, component, message -> emitLog(level, component, message) }
+    val tunnel = SlowDnsSshTunnel(this, this, { level, component, message -> emitLog(level, component, message) })
     synchronized(lifecycleLock) { slowDnsTunnel = tunnel }
     val socksPort = tunnel.start(settings)
     if (!isActive(generation)) return
