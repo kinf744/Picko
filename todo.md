@@ -140,6 +140,7 @@ Le diagnostic a confirmé que les ressources natives splash Android versionnées
 - [x] Réutiliser le relais HEV existant pour `TUN → SOCKS5`
 - [x] Ajouter les diagnostics et l’arrêt ciblé des processus SlowDNS
 - [x] Valider TypeScript et tests sans compilation Android locale
+- [x] Corriger la chaîne GitHub Actions : dnstt Android nécessite le NDK et CGO pour l’édition de liens ARMv7
 - [ ] Compiler uniquement par GitHub Actions
 - [ ] Tester le tunnel réel sur Android avec un endpoint SlowDNS valide
 
