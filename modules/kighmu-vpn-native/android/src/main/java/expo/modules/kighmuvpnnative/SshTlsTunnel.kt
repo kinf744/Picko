@@ -51,7 +51,7 @@ class SshTlsTunnel(
     }
   }
 
-  private var running = false
+  @Volatile private var running = false
   private var tlsSocket: SSLSocket? = null
   private var bridgeServer: ServerSocket? = null
   private var sshConnection: Connection? = null
@@ -95,9 +95,8 @@ class SshTlsTunnel(
   private fun openTlsSocket(settings: Settings): SSLSocket {
     val plainSocket = Socket()
     vpnService.protect(plainSocket)
-    plainSocket.connect(InetSocketAddress(settings.tlsHost, settings.tlsPort), 20_000)
-    plainSocket.tcpNoDelay = true
-    plainSocket.keepAlive = true
+    LocalTunnelIo.configure(plainSocket, LocalTunnelIo.HANDSHAKE_TIMEOUT_MS)
+    plainSocket.connect(InetSocketAddress(settings.tlsHost, settings.tlsPort), LocalTunnelIo.HANDSHAKE_TIMEOUT_MS)
     val serverName = settings.sni.ifBlank { settings.tlsHost }
     val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
     val socket = factory.createSocket(plainSocket, serverName, settings.tlsPort, true) as SSLSocket
@@ -108,6 +107,7 @@ class SshTlsTunnel(
     socket.enabledProtocols = socket.supportedProtocols.filter { it == "TLSv1.2" || it == "TLSv1.3" }.toTypedArray()
     require(socket.enabledProtocols.isNotEmpty()) { "Aucun protocole TLS moderne disponible" }
     socket.startHandshake()
+    LocalTunnelIo.configure(socket)
     emit("info", "SSH_TLS", "[$runtimeLabel] handshake TLS validé vers $serverName")
     return socket
   }
@@ -119,6 +119,7 @@ class SshTlsTunnel(
       var client: Socket? = null
       try {
         client = server.accept()
+        LocalTunnelIo.configure(client)
         val remoteInput = remote.inputStream
         val banner = readSshBanner(remoteInput)
         client.getOutputStream().write(banner.toByteArray())
@@ -152,16 +153,5 @@ class SshTlsTunnel(
 
   private fun findFreePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
 
-  private fun pipe(input: InputStream, output: OutputStream) {
-    val buffer = ByteArray(16 * 1024)
-    try {
-      while (running) {
-        val count = input.read(buffer)
-        if (count < 0) break
-        output.write(buffer, 0, count)
-        output.flush()
-      }
-    } catch (_: Throwable) {
-    }
-  }
+  private fun pipe(input: InputStream, output: OutputStream) = LocalTunnelIo.pipe(input, output) { running }
 }

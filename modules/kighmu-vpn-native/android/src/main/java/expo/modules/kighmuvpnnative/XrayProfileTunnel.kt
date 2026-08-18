@@ -23,7 +23,7 @@ class XrayProfileTunnel(
 ) {
   private var process: Process? = null
   private var configFile: File? = null
-  private var running = false
+  @Volatile private var running = false
   var socksPort: Int = -1
     private set
 
@@ -51,7 +51,7 @@ class XrayProfileTunnel(
         try { started.inputStream.bufferedReader().useLines { lines -> lines.forEach { line -> if (running && line.isNotBlank()) emit("info", "XRAY", "[$runtimeLabel] ${line.take(300)}") } } }
         catch (_: Throwable) { if (running) emit("warning", "XRAY", "[$runtimeLabel] lecture des logs interrompue") }
       }
-      val ready = waitForSocks(started, socksPort, 6_000)
+      val ready = waitForSocks(started, socksPort, 10_000)
       if (!ready) error("Xray $runtimeLabel n’a pas ouvert son SOCKS local")
       emit("info", "XRAY", "[$runtimeLabel] prêt sur 127.0.0.1:$socksPort")
       return socksPort
@@ -91,7 +91,9 @@ class XrayProfileTunnel(
       if (inbound.optString("protocol") == "socks") {
         inbound.put("listen", "127.0.0.1")
         inbound.put("port", socksPort)
-        inbound.put("settings", inbound.optJSONObject("settings") ?: JSONObject().put("udp", true))
+        val settings = inbound.optJSONObject("settings") ?: JSONObject()
+        settings.put("udp", true)
+        inbound.put("settings", settings)
         hasSocks = true
       }
       normalisedInbounds.put(inbound)

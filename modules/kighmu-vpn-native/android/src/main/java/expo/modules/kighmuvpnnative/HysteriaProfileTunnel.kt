@@ -17,7 +17,7 @@ class HysteriaProfileTunnel(
 ) {
   private var process: Process? = null
   private var configFile: File? = null
-  private var running = false
+  @Volatile private var running = false
   var socksPort: Int = -1
     private set
 
@@ -32,7 +32,19 @@ class HysteriaProfileTunnel(
     require(binary.exists() && binary.length() > 0L && binary.canExecute()) { "libhysteria-hysteria.so ARMv7 absent ou non exécutable" }
     socksPort = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
     val safeId = profile.optString("id", "profile").replace(Regex("[^A-Za-z0-9_-]"), "_").take(64)
-    val config = JSONObject().put("server", "$host:$port").put("auth_str", auth).put("up_mbps", profile.optString("uploadMbps", "10").toIntOrNull() ?: 10).put("down_mbps", profile.optString("downloadMbps", "50").toIntOrNull() ?: 50).put("insecure", true).put("socks5", JSONObject().put("listen", "127.0.0.1:$socksPort"))
+    val config = JSONObject()
+      .put("server", "$host:$port")
+      .put("auth_str", auth)
+      .put("up_mbps", profile.optString("uploadMbps", "10").toIntOrNull() ?: 10)
+      .put("down_mbps", profile.optString("downloadMbps", "50").toIntOrNull() ?: 50)
+      .put("insecure", true)
+      .put("retry", 2)
+      .put("retry_interval", 1)
+      .put("handshake_timeout", 10)
+      .put("idle_timeout", 60)
+      .put("disable_mtu_discovery", false)
+      .put("fast_open", false)
+      .put("socks5", JSONObject().put("listen", "127.0.0.1:$socksPort").put("timeout", 300).put("disable_udp", false))
     profile.optString("obfs").trim().takeIf { it.isNotBlank() }?.let { config.put("obfs", it) }
     val file = File(context.filesDir, "hysteria_${safeId}.json")
     file.writeText(config.toString())
@@ -50,7 +62,7 @@ class HysteriaProfileTunnel(
         try { started.inputStream.bufferedReader().useLines { lines -> lines.forEach { line -> if (running && line.isNotBlank()) emit("info", "HYSTERIA", line.take(300)) } } }
         catch (_: Throwable) { if (running) emit("warning", "HYSTERIA", "Lecture des logs interrompue") }
       }
-      if (!waitForSocks(started, socksPort, 8_000)) error("Hysteria n’a pas ouvert son SOCKS local")
+      if (!waitForSocks(started, socksPort, 20_000)) error("Hysteria n’a pas ouvert son SOCKS local")
       emit("info", "HYSTERIA", "Profil prêt sur 127.0.0.1:$socksPort")
       return socksPort
     } catch (error: Throwable) {

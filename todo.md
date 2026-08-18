@@ -506,3 +506,16 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Restaurer la nouvelle architecture React Native, exigée par Reanimated dans la configuration actuelle
 - [x] Compiler l’APK après retrait des modules non utilisés exclusivement via GitHub Actions — run 32178614899, 44,54 Mio
 - [x] Vérifier l’objectif de moins de 40 Mo et documenter l’écart éventuel — 4,54 Mio au-dessus de la cible
+
+## Optimisation approfondie des tunnels
+
+- [x] Auditer les paramètres de démarrage, délais, relais et diagnostics des sept familles de tunnel
+- [x] Définir les optimisations client sûres et isolées pour UDP-ZIVPN sans modifier son binaire ni le VPS
+- [x] Définir les optimisations client sûres et isolées pour SSH/SlowDNS
+- [x] Définir les optimisations client sûres et isolées pour Hysteria UDP
+- [x] Définir les optimisations client sûres et isolées pour HTTP Proxy+Payload et SSH SSL/TLS
+- [x] Définir les optimisations client sûres et isolées pour V2Ray+SlowDNS et Xray/V2Ray
+- [x] Implémenter uniquement les améliorations compatibles avec les contrats de configuration actuels
+- [x] Valider TypeScript, les tests de profils et la propreté du diff sans compilation Android locale
+- [ ] Compiler l’APK armeabi-v7a exclusivement dans GitHub Actions et examiner les diagnostics de build
+- [ ] Documenter les gains mesurés et les validations réelles restant à effectuer sur appareil Android

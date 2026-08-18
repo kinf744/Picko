@@ -68,7 +68,7 @@ class SlowDnsSshTunnel(
     }
   }
 
-  private var running = false
+  @Volatile private var running = false
   private var dnsttProcess: Process? = null
   private var sshConnection: Connection? = null
   private var bannerServer: ServerSocket? = null
@@ -166,8 +166,8 @@ class SlowDnsSshTunnel(
         client = server.accept()
         remote = Socket()
         vpnService.protect(remote)
-        remote.connect(InetSocketAddress("127.0.0.1", dnsttPort), 20_000)
-        remote.soTimeout = 30_000
+        LocalTunnelIo.configure(remote, LocalTunnelIo.HANDSHAKE_TIMEOUT_MS)
+        remote.connect(InetSocketAddress("127.0.0.1", dnsttPort), LocalTunnelIo.HANDSHAKE_TIMEOUT_MS)
         val remoteInput = remote.getInputStream()
         val banner = StringBuilder()
         while (true) {
@@ -177,8 +177,10 @@ class SlowDnsSshTunnel(
           if (value == '\n'.code) break
           if (banner.length > 512) throw IllegalStateException("Bannière SSH invalide")
         }
+        LocalTunnelIo.configure(client)
         client.getOutputStream().write(banner.toString().toByteArray())
         client.getOutputStream().flush()
+        LocalTunnelIo.configure(remote)
         emit("info", "SSH", "Bannière SSH reçue via SlowDNS")
         val clientInput = client.getInputStream()
         val clientOutput = client.getOutputStream()
@@ -203,16 +205,6 @@ class SlowDnsSshTunnel(
 
   private fun findFreePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
 
-  private fun pipe(input: java.io.InputStream, output: java.io.OutputStream) {
-    val buffer = ByteArray(16 * 1024)
-    try {
-      while (running) {
-        val read = input.read(buffer)
-        if (read < 0) break
-        output.write(buffer, 0, read)
-        output.flush()
-      }
-    } catch (_: Throwable) {
-    }
-  }
+  private fun pipe(input: java.io.InputStream, output: java.io.OutputStream) =
+    LocalTunnelIo.pipe(input, output) { running }
 }

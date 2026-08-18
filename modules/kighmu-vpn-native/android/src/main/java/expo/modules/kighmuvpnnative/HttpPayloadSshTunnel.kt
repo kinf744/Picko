@@ -54,7 +54,7 @@ class HttpPayloadSshTunnel(
     }
   }
 
-  private var running = false
+  @Volatile private var running = false
   private var proxySocket: Socket? = null
   private var bridgeServer: ServerSocket? = null
   private var sshConnection: Connection? = null
@@ -67,15 +67,15 @@ class HttpPayloadSshTunnel(
     try {
       val proxy = Socket()
       vpnService.protect(proxy)
-      proxy.connect(InetSocketAddress(settings.proxyHost, settings.proxyPort), 20_000)
-      proxy.tcpNoDelay = true
-      proxy.keepAlive = true
+      LocalTunnelIo.configure(proxy, LocalTunnelIo.HANDSHAKE_TIMEOUT_MS)
+      proxy.connect(InetSocketAddress(settings.proxyHost, settings.proxyPort), LocalTunnelIo.HANDSHAKE_TIMEOUT_MS)
       proxySocket = proxy
       val payload = interpolatePayload(settings)
       sendPayload(proxy.getOutputStream(), payload, settings.payload)
       val response = readHttpLine(proxy.getInputStream())
       require(response.contains(" 200 ") || response.contains(" 101 ")) { "Proxy HTTP a refusé le payload : $response" }
       consumeHeaders(proxy.getInputStream())
+      LocalTunnelIo.configure(proxy)
       emit("info", "HTTP_PAYLOAD", "[$runtimeLabel] proxy accepté : ${response.take(120)}")
 
       val bridgePort = startBridge(proxy)
@@ -145,6 +145,7 @@ class HttpPayloadSshTunnel(
       var client: Socket? = null
       try {
         client = server.accept()
+        LocalTunnelIo.configure(client)
         val remoteInput = remote.getInputStream()
         val banner = readSshBanner(remoteInput)
         client.getOutputStream().write(banner.toByteArray())
@@ -199,16 +200,5 @@ class HttpPayloadSshTunnel(
 
   private fun findFreePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
 
-  private fun pipe(input: InputStream, output: OutputStream) {
-    val buffer = ByteArray(16 * 1024)
-    try {
-      while (running) {
-        val count = input.read(buffer)
-        if (count < 0) break
-        output.write(buffer, 0, count)
-        output.flush()
-      }
-    } catch (_: Throwable) {
-    }
-  }
+  private fun pipe(input: InputStream, output: OutputStream) = LocalTunnelIo.pipe(input, output) { running }
 }

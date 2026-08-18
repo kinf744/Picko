@@ -64,8 +64,8 @@ export default function ConfigurationScreen() {
         {field("Port ou plage UDP", "port", "443 ou 20000-50000", { keyboardType: "numeric" })}
         {field("Authentification Hysteria", "auth", "Mot de passe d’authentification", { secureTextEntry: true })}
         {field("Obfs facultatif", "obfs", "Clé Obfs", { secureTextEntry: true })}
-        {field("Débit montant (Mbps)", "uploadMbps", "10", { keyboardType: "numeric" })}
-        {field("Débit descendant (Mbps)", "downloadMbps", "50", { keyboardType: "numeric" })}
+        {field("Débit montant (Mbps)", "uploadMbps", "10", { keyboardType: "numeric", note: "Indiquez le débit montant réellement mesuré sur ce téléphone. Une valeur trop élevée ou trop basse peut réduire les performances." })}
+        {field("Débit descendant (Mbps)", "downloadMbps", "50", { keyboardType: "numeric", note: "Indiquez le débit descendant réellement mesuré sur ce téléphone. Ce réglage est propre à ce profil Hysteria." })}
       </> : null}
       {draft.kind === "http-payload" ? <>
         {field("Hôte du proxy HTTP", "proxyHost", "proxy.exemple.com")}

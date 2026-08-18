@@ -15,7 +15,7 @@ class DnsttLocalClient(
   private val emit: (level: String, component: String, message: String) -> Unit,
 ) {
   private var process: Process? = null
-  private var running = false
+  @Volatile private var running = false
   var port: Int = -1
     private set
 
@@ -42,7 +42,7 @@ class DnsttLocalClient(
         try { started.inputStream.bufferedReader().useLines { lines -> lines.forEach { line -> if (running && line.isNotBlank()) emit("info", "DNSTT", "[$runtimeLabel] ${line.take(300)}") } } }
         catch (_: Throwable) { if (running) emit("warning", "DNSTT", "[$runtimeLabel] lecture des logs interrompue") }
       }
-      Thread.sleep(650)
+      Thread.sleep(800)
       if (!started.isAlive) error("Le client dnstt $runtimeLabel s’est arrêté au démarrage")
       emit("info", "DNSTT", "[$runtimeLabel] prêt sur 127.0.0.1:$port")
       return port

@@ -58,17 +58,20 @@ class SocksProfileBalancer(
   private fun relay(client: Socket) {
     var upstream: Socket? = null
     try {
-      client.soTimeout = 120_000
-      client.tcpNoDelay = true
+      LocalTunnelIo.configure(client)
+      val baseIndex = cursor.getAndIncrement().and(Int.MAX_VALUE)
       for (offset in upstreamPorts.indices) {
-        val upstreamPort = upstreamPorts[(cursor.getAndIncrement().and(Int.MAX_VALUE) + offset) % upstreamPorts.size]
+        val upstreamPort = upstreamPorts[(baseIndex + offset) % upstreamPorts.size]
+        var candidate: Socket? = null
         try {
-          val candidate = Socket()
-          candidate.tcpNoDelay = true
+          candidate = Socket()
+          LocalTunnelIo.configure(candidate, 1_500)
           candidate.connect(InetSocketAddress("127.0.0.1", upstreamPort), 1_500)
+          LocalTunnelIo.configure(candidate)
           upstream = candidate
           break
         } catch (_: Throwable) {
+          try { candidate?.close() } catch (_: Throwable) {}
           emit("warning", "BALANCER", "Profil SOCKS local indisponible sur le port $upstreamPort")
         }
       }
@@ -84,17 +87,5 @@ class SocksProfileBalancer(
     }
   }
 
-  private fun pipe(input: InputStream, output: OutputStream) {
-    val buffer = ByteArray(16 * 1024)
-    try {
-      while (running.get()) {
-        val read = input.read(buffer)
-        if (read < 0) return
-        output.write(buffer, 0, read)
-        output.flush()
-      }
-    } catch (_: Throwable) {
-      // A socket close is the normal end of a proxied SOCKS stream.
-    }
-  }
+  private fun pipe(input: InputStream, output: OutputStream) = LocalTunnelIo.pipe(input, output) { running.get() }
 }
