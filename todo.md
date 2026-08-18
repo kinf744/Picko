@@ -544,3 +544,11 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Bloquer les fonctions VPN tant que la politique n’est pas acceptée et fermer l’accès après refus
 - [x] Tester les données importées/exportées, le consentement et l’absence de régression des profils — 14 tests réussis
 - [x] Compiler l’APK armeabi-v7a exclusivement dans GitHub Actions — run 32194474757 réussi, APK 44,57 Mio
+
+## Comparaison import-export avec Zamois-tun
+
+- [x] Auditer les fichiers, flux et interfaces d’import-export du dépôt Zamois-tun
+- [x] Comparer les flux de Zamois-tun avec le format JSON sélectif et sécurisé de KIGHMU VPN
+- [x] Corriger le menu KIGHMU VPN uniquement avec des améliorations compatibles avec les sept familles isolées
+- [x] Valider les flux corrigés par TypeScript et tests sans compilation Android locale — 14 tests réussis
+- [ ] Compiler les écrans import-export corrigés exclusivement dans GitHub Actions
