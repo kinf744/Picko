@@ -551,4 +551,4 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Comparer les flux de Zamois-tun avec le format JSON sélectif et sécurisé de KIGHMU VPN
 - [x] Corriger le menu KIGHMU VPN uniquement avec des améliorations compatibles avec les sept familles isolées
 - [x] Valider les flux corrigés par TypeScript et tests sans compilation Android locale — 14 tests réussis
-- [ ] Compiler les écrans import-export corrigés exclusivement dans GitHub Actions
+- [x] Compiler les écrans import-export corrigés exclusivement dans GitHub Actions — run 32195979660 réussi, APK 44,57 Mio
