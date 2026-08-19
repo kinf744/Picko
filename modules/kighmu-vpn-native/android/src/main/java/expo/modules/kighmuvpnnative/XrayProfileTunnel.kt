@@ -9,6 +9,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URLDecoder
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
@@ -114,11 +115,6 @@ class XrayProfileTunnel(
       val settings = outbound.optJSONObject("settings") ?: continue
       settings.optJSONArray("vnext")?.optJSONObject(0)?.let { it.put("address", host).put("port", port) }
       settings.optJSONArray("servers")?.optJSONObject(0)?.let { it.put("address", host).put("port", port) }
-      outbound.optJSONObject("streamSettings")?.let { stream: JSONObject ->
-        stream.put("security", "none")
-        stream.remove("tlsSettings")
-        stream.remove("realitySettings")
-      }
     }
   }
 
@@ -133,20 +129,65 @@ class XrayProfileTunnel(
       val port = source.optString("port", "443").toIntOrNull() ?: 443
       val id = source.optString("id").trim()
       require(host.isNotBlank() && id.isNotBlank()) { "Lien VMess incomplet" }
-      val security = source.optString("scy", "auto").ifBlank { "auto" }
-      val user = JSONObject().put("id", id).put("security", security)
-      val vnext = JSONObject().put("address", host).put("port", port).put("users", JSONArray().put(user))
-      val outbound = JSONObject().put("protocol", "vmess").put("settings", JSONObject().put("vnext", JSONArray().put(vnext)))
-      return JSONObject().put("log", JSONObject().put("loglevel", "warning")).put("inbounds", JSONArray()).put("outbounds", JSONArray().put(outbound).put(JSONObject().put("protocol", "freedom").put("tag", "direct"))).toString()
+      val user = JSONObject().put("id", id).put("security", source.optString("scy", "auto").ifBlank { "auto" })
+      if (source.optString("flow").isNotBlank()) user.put("flow", source.optString("flow"))
+      val outbound = JSONObject().put("protocol", "vmess").put("settings", JSONObject().put("vnext", JSONArray().put(JSONObject().put("address", host).put("port", port).put("users", JSONArray().put(user)))))
+      applyLinkTransport(outbound, host, mapOf("type" to source.optString("net"), "path" to source.optString("path"), "host" to source.optString("host"), "sni" to source.optString("sni"), "alpn" to source.optString("alpn"), "allowinsecure" to source.optString("allowInsecure")))
+      return baseConfig(outbound)
     }
-    val remainder = link.substringAfter("://")
-    val credentials = remainder.substringBefore("@").substringBefore("?")
-    val destination = remainder.substringAfter("@", "").substringBefore("?")
-    val host = destination.substringBefore(":")
-    val port = destination.substringAfter(":", "443").toIntOrNull() ?: 443
+    val withoutFragment = link.substringAfter("://").substringBefore("#")
+    val queryText = withoutFragment.substringAfter("?", "")
+    val query = parseQuery(queryText)
+    val remainder = withoutFragment.substringBefore("?")
+    val credentials = URLDecoder.decode(remainder.substringBefore("@").trim(), "UTF-8")
+    val destination = remainder.substringAfter("@", "")
+    val host = destination.substringBeforeLast(":").ifBlank { destination.substringBefore(":") }
+    val port = destination.substringAfterLast(":", "443").toIntOrNull() ?: 443
     require(host.isNotBlank()) { "Lien $scheme incomplet" }
-    val outbound = if (scheme == "trojan") JSONObject().put("protocol", "trojan").put("settings", JSONObject().put("servers", JSONArray().put(JSONObject().put("address", host).put("port", port).put("password", credentials)))) else JSONObject().put("protocol", "vless").put("settings", JSONObject().put("vnext", JSONArray().put(JSONObject().put("address", host).put("port", port).put("users", JSONArray().put(JSONObject().put("id", credentials).put("encryption", "none"))))))
-    return JSONObject().put("log", JSONObject().put("loglevel", "warning")).put("inbounds", JSONArray()).put("outbounds", JSONArray().put(outbound).put(JSONObject().put("protocol", "freedom").put("tag", "direct"))).toString()
+    val outbound = if (scheme == "trojan") {
+      JSONObject().put("protocol", "trojan").put("settings", JSONObject().put("servers", JSONArray().put(JSONObject().put("address", host).put("port", port).put("password", credentials))))
+    } else {
+      val user = JSONObject().put("id", credentials).put("encryption", query["encryption"] ?: "none")
+      query["flow"]?.takeIf { it.isNotBlank() }?.let { user.put("flow", it) }
+      JSONObject().put("protocol", "vless").put("settings", JSONObject().put("vnext", JSONArray().put(JSONObject().put("address", host).put("port", port).put("users", JSONArray().put(user)))))
+    }
+    applyLinkTransport(outbound, host, query)
+    return baseConfig(outbound)
+  }
+
+  private fun baseConfig(outbound: JSONObject): String = JSONObject().put("log", JSONObject().put("loglevel", "warning")).put("inbounds", JSONArray()).put("outbounds", JSONArray().put(outbound).put(JSONObject().put("protocol", "freedom").put("tag", "direct"))).toString()
+
+  private fun parseQuery(raw: String): Map<String, String> = raw.split("&").mapNotNull { part ->
+    if (part.isBlank()) null else {
+      val key = URLDecoder.decode(part.substringBefore("="), "UTF-8").lowercase()
+      val value = URLDecoder.decode(part.substringAfter("=", ""), "UTF-8")
+      key to value
+    }
+  }.toMap()
+
+  private fun applyLinkTransport(outbound: JSONObject, host: String, query: Map<String, String>) {
+    val stream = outbound.optJSONObject("streamSettings") ?: JSONObject()
+    val network = (query["type"] ?: query["net"]).orEmpty().ifBlank { "tcp" }.lowercase()
+    stream.put("network", network)
+    val security = query["security"] ?: if (query["tls"] == "1" || query["tls"].equals("true", true)) "tls" else "none"
+    stream.put("security", security)
+    if (security == "tls") {
+      val tls = stream.optJSONObject("tlsSettings") ?: JSONObject()
+      tls.put("serverName", query["sni"] ?: query["host"] ?: host)
+      if (query["alpn"].orEmpty().isNotBlank()) tls.put("alpn", JSONArray(query["alpn"]!!.split(",")))
+      if (query["allowinsecure"] == "1" || query["allowinsecure"].equals("true", true)) tls.put("allowInsecure", true)
+      stream.put("tlsSettings", tls)
+    }
+    when (network) {
+      "ws", "websocket" -> {
+        val ws = JSONObject().put("path", query["path"] ?: "/")
+        (query["host"] ?: query["hostheader"])?.takeIf { it.isNotBlank() }?.let { ws.put("headers", JSONObject().put("Host", it)) }
+        stream.put("wsSettings", ws)
+      }
+      "grpc" -> stream.put("grpcSettings", JSONObject().put("serviceName", query["servicename"] ?: ""))
+      "http", "h2" -> stream.put("httpSettings", JSONObject().put("path", query["path"] ?: "/").put("host", JSONArray().put(query["host"] ?: host)))
+    }
+    outbound.put("streamSettings", stream)
   }
 
   private fun waitForSocks(active: Process, port: Int, timeoutMs: Long): Boolean {

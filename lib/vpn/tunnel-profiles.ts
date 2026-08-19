@@ -41,6 +41,8 @@ export type ZivpnProfile = ProfileBase & {
   host: string;
   port: string;
   password: string;
+  uploadMbps: string;
+  downloadMbps: string;
 };
 
 export type SlowDnsProfile = ProfileBase & {
@@ -115,7 +117,7 @@ const makeBase = <K extends TunnelKind>(kind: K): ProfileBase & { kind: K } => (
 export function createProfile(kind: TunnelKind): TunnelProfile {
   const base = makeBase(kind);
   switch (kind) {
-    case "zivpn": return { ...base, kind, host: "", port: "", password: "" };
+    case "zivpn": return { ...base, kind, host: "", port: "", password: "", uploadMbps: "10", downloadMbps: "50" };
     case "slowdns": return { ...base, kind, dnsServer: "", dnsPort: "53", nameserver: "", publicKey: "", sshUsername: "", sshPassword: "" };
     case "hysteria": return { ...base, kind, host: "", port: "", auth: "", obfs: "", uploadMbps: "10", downloadMbps: "50" };
     case "http-payload": return { ...base, kind, proxyHost: "", proxyPort: "8080", payload: "CONNECT [host]:[port] HTTP/1.1[crlf]Host: [host]:[port][crlf]Proxy-Connection: Keep-Alive[crlf][crlf]", sshHost: "", sshPort: "22", sshUsername: "", sshPassword: "" };

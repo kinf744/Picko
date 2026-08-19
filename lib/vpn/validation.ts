@@ -62,6 +62,8 @@ export function validateTunnelProfile(profile: TunnelProfile): ProfileFieldError
       required(errors, "host", profile.host, "Le Host ou l’adresse IP");
       if (!isValidPort(profile.port)) errors.port = "Utilisez un port ou une plage valide.";
       required(errors, "password", profile.password, "Le mot de passe");
+      if (!/^\d+$/.test(profile.uploadMbps) || Number(profile.uploadMbps) < 1) errors.uploadMbps = "Le débit montant doit être supérieur à zéro.";
+      if (!/^\d+$/.test(profile.downloadMbps) || Number(profile.downloadMbps) < 1) errors.downloadMbps = "Le débit descendant doit être supérieur à zéro.";
       break;
     case "slowdns":
       required(errors, "dnsServer", profile.dnsServer, "Le serveur DNS/UDP");

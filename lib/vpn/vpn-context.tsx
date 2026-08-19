@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
-import { sanitizeDiagnosticText } from "./diagnostic-format";
+import { isNavigationDiagnostic, sanitizeDiagnosticText } from "./diagnostic-format";
 import { buildConfigExport, parseConfigImport, type ConfigExport, type ImportResult } from "./config-transfer";
 import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, type ExportRestrictions } from "./export-restrictions";
 import {
@@ -181,8 +181,10 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => subscribeNativeVpn(
     (payload) => {
+      const component = payload.component || "NATIVE";
+      if (isNavigationDiagnostic(component)) return;
       const level = payload.level === "error" || payload.level === "warning" || payload.level === "connection" ? payload.level : "info";
-      setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component: payload.component || "NATIVE", message: sanitizeDiagnosticText(payload.message) } as DiagnosticLog, ...current].slice(0, 300));
+      setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component, message: sanitizeDiagnosticText(payload.message) } as DiagnosticLog, ...current].slice(0, 300));
     },
     (payload) => { if (["connected", "connecting", "disconnected", "error"].includes(payload.status)) setStatus(payload.status as TunnelStatus); },
   ), []);

@@ -722,6 +722,51 @@ La structure directe est émise lorsqu’un unique profil Xray/V2Ray en lien VLE
 - [x] Vérifier la couverture des sept familles de tunnels à l’import/export
 - [x] Vérifier le comportement des confirmations et avertissements lors de l’import
 - [x] Corriger les écarts éventuels et ajouter les tests de régression
-- [ ] Recompiler via GitHub Actions si une correction est nécessaire
+- [x] Recompiler via GitHub Actions si une correction est nécessaire — run 32252031486 réussi, commit 53a0b958, APK 45,63 Mio
 
 L’audit a trouvé puis corrigé une exception : les restrictions étaient perdues uniquement pour le payload VLESS direct. Elles sont maintenant conservées dans `kighmuRestrictions`; les sept familles et l’enveloppe multi-profils restent inchangées. TypeScript, diff et 26 tests sont validés localement.
+
+## Configuration, journaux et tunnels non fonctionnels
+
+- [ ] Ajouter les champs débit montant et débit descendant au profil UDP-ZIVPN
+- [ ] Rendre le champ Obfs Hysteria toujours visible avant et après saisie
+- [ ] Retirer le préfixe `[KIGHMU]` des journaux affichés
+- [ ] Séparer le journal de connexion du journal de navigation
+- [ ] Masquer systématiquement les mots de passe, Obfs, UUID, clés, liens et payloads
+- [ ] Adapter le format et les étapes de diagnostic à chaque famille de tunnel
+- [ ] Comparer SSH/SlowDNS, Hysteria, HTTP Payload, SSH TLS, V2Ray SlowDNS et Xray/V2Ray avec Zamois-tun
+- [ ] Identifier les écarts de démarrage, relais TUN, binaires, ports et arrêt
+- [ ] Corriger les tunnels non fonctionnels sans modifier UDP-ZIVPN ni le VPS
+- [ ] Ajouter les tests de configuration, journal et démarrage par famille
+- [ ] Compiler exclusivement via GitHub Actions armeabi-v7a
+- [ ] Faire tester chaque tunnel sur Android avant toute déclaration de disponibilité
+
+
+## Correctifs tunnels secondaires et journalisation — 19 août 2026
+
+- [x] Auditer les écarts entre les moteurs KIGHMU et la référence Zamois-tun
+- [x] Ajouter les champs de débit montant et descendant au profil UDP-ZIVPN
+- [x] Transmettre les débits UDP-ZIVPN au JSON natif avec valeurs positives sûres
+- [x] Rendre l’Obfs Hysteria toujours visible dans le formulaire
+- [x] Aligner la configuration native Hysteria sur le binaire Hysteria v1.3.5 embarqué
+- [x] Conserver les plages de ports Hysteria et les paramètres auth, TLS, Obfs et bande passante
+- [x] Préserver wsPath, Host, TLS, SNI, gRPC et autres transports des liens Xray/V2Ray
+- [x] Empêcher la réécriture SlowDNS d’écraser les paramètres TLS et transport Xray
+- [x] Retirer le préfixe [KIGHMU] de l’interface Diagnostic
+- [x] Exclure les composants de navigation et de stockage du journal de connexion
+- [x] Renforcer le masquage des liens, UUID, payloads et champs secrets
+- [x] Valider TypeScript et 29 tests unitaires (26 initiaux + 3 tests ciblés)
+- [ ] Compiler et tester l’APK uniquement via GitHub Actions
+- [ ] Tester chaque tunnel secondaire sur Android avec une configuration réelle
+- [ ] Ne pas déclarer l’application prête avant validation du trafic réel
+
+Dernière mise à jour : les corrections locales sont validées côté TypeScript/tests. La compilation Android reste exclusivement réservée à GitHub Actions et les essais sur téléphone restent nécessaires.
+
+
+## Publication GitHub demandée — 19 août 2026
+
+- [ ] Vérifier le dépôt distant `kinf744/Picko` et sa branche principale
+- [ ] Vérifier le diff local validé avant publication
+- [ ] Pousser les modifications vers GitHub sans inclure de secrets
+- [ ] Vérifier le commit distant et le workflow Android déclenché
+- [ ] Confirmer que la compilation reste exclusivement gérée par GitHub Actions

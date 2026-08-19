@@ -276,7 +276,7 @@ class KighmuVpnService : VpnService() {
     val resolvedHost = try { InetAddress.getByName(host).hostAddress ?: host } catch (_: Throwable) { host }
     val safeId = profile.optString("id", "profile").replace(Regex("[^A-Za-z0-9_-]"), "_").take(64)
     val config = File(cacheDir, "zivpn_${safeId}.json")
-    config.writeText(buildUzConfig(resolvedHost, port, password, ZIVPN_FIXED_OBFS, socksPort))
+    config.writeText(buildUzConfig(resolvedHost, port, password, ZIVPN_FIXED_OBFS, profile.optString("uploadMbps", "10"), profile.optString("downloadMbps", "50"), socksPort))
     val process = ProcessBuilder(binary.absolutePath, "-s", ZIVPN_FIXED_OBFS, "--config", config.readText()).directory(filesDir).apply {
       environment()["LD_LIBRARY_PATH"] = applicationInfo.nativeLibraryDir
       environment()["HOME"] = cacheDir.absolutePath
@@ -361,8 +361,11 @@ class KighmuVpnService : VpnService() {
     startForeground(NOTIFICATION_ID, notification(text))
   }
 
-  private fun buildUzConfig(host: String, port: String, password: String, obfs: String, socksPort: Int = 7778): String =
-    """{"server":"${json(host + ":" + port)}","obfs":"${json(obfs)}","auth":"${json(password)}","socks5":{"listen":"127.0.0.1:$socksPort"},"insecure":true,"recvwindowconn":65536,"recvwindow":262144,"disable_mtu_discovery":true,"down_mbps":50,"up_mbps":10}"""
+  private fun buildUzConfig(host: String, port: String, password: String, obfs: String, uploadMbps: String = "10", downloadMbps: String = "50", socksPort: Int = 7778): String {
+    val safeUpload = uploadMbps.toIntOrNull()?.coerceAtLeast(1) ?: 10
+    val safeDownload = downloadMbps.toIntOrNull()?.coerceAtLeast(1) ?: 50
+    return """{"server":"${json(host + ":" + port)}","obfs":"${json(obfs)}","auth":"${json(password)}","socks5":{"listen":"127.0.0.1:$socksPort"},"insecure":true,"recvwindowconn":65536,"recvwindow":262144,"disable_mtu_discovery":true,"down_mbps":$safeDownload,"up_mbps":$safeUpload}"""
+  }
 
   private fun json(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
 

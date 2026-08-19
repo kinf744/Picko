@@ -27,6 +27,15 @@ describe("modèle de profils multi-tunnels", () => {
     });
   });
 
+  it("initialise et valide les débits UDP-ZIVPN", () => {
+    const profile = createProfile("zivpn");
+    if (profile.kind !== "zivpn") throw new Error("Profil ZIVPN attendu");
+    expect(profile.uploadMbps).toBe("10");
+    expect(profile.downloadMbps).toBe("50");
+    expect(validateTunnelProfile({ ...profile, host: "198.51.100.10", port: "6000-19999", password: "secret", name: "ZIVPN" })).toEqual({});
+    expect(validateTunnelProfile({ ...profile, host: "198.51.100.10", port: "6000-19999", password: "secret", uploadMbps: "0", name: "ZIVPN" }).uploadMbps).toBeTruthy();
+  });
+
   it("valide une configuration complète pour chaque famille", () => {
     TUNNEL_KINDS.forEach((kind) => expect(validateTunnelProfile(configured(kind))).toEqual({}));
   });
