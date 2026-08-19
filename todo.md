@@ -874,3 +874,18 @@ Dernière mise à jour : les corrections locales sont validées côté TypeScrip
 - [x] Absence confirmée de `libbridge.so` et `libtun2socks.so` dans l’APK
 - [ ] Supprimer les anciens `libxray-v2ray.so` et `libxray-v2rayslowdns.so` restés dans le dépôt distant
 - [ ] Ajouter leur absence au contrôle CI et relancer le build
+
+
+## Ajustement typographique Diagnostic demandé
+
+- [x] Auditer les tailles actuelles du contenu Diagnostic
+- [x] Réduire les textes de contenu sans réduire la lisibilité des titres et états
+- [x] Vérifier le rendu sur desktop et petit écran
+- [x] Valider les tests et sauvegarder la modification
+
+
+## Publication de l’ajustement Diagnostic
+
+- [ ] Vérifier le diff typographique du checkpoint `1e22edc1`
+- [ ] Pousser la modification vers `kinf744/Picko`
+- [ ] Vérifier le commit distant et le workflow déclenché
