@@ -857,3 +857,10 @@ Dernière mise à jour : les corrections locales sont validées côté TypeScrip
 - [x] Identifier l’échec du run 32263838591 sur `test -x libuz_core.so`
 - [x] Corriger le mode Git de `libuz_core.so` en 755, requis par `ProcessBuilder` et `canExecute()`
 - [ ] Republier et relancer GitHub Actions
+
+
+### Normalisation CI des permissions
+
+- [x] Identifier que le contrôle d’exécutabilité reste dépendant des modes du checkout GitHub
+- [x] Ajouter `chmod 755` pour les quatre binaires autonomes avant le contrôle et Gradle
+- [ ] Republier et relancer GitHub Actions

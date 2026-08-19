@@ -121,6 +121,7 @@ jobs:
             test -s "$OUTPUT_DIR/$artifact"
             file "$OUTPUT_DIR/$artifact" | grep -E 'ARM|shared object|executable'
           done
+          chmod 755 "$OUTPUT_DIR/libuz_core.so" "$OUTPUT_DIR/libxray.so" "$OUTPUT_DIR/libdnstt.so" "$OUTPUT_DIR/libhysteria.so"
           for executable in libuz_core.so libxray.so libdnstt.so libhysteria.so; do
             test -x "$OUTPUT_DIR/$executable"
           done
