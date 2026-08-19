@@ -552,3 +552,10 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Corriger le menu KIGHMU VPN uniquement avec des améliorations compatibles avec les sept familles isolées
 - [x] Valider les flux corrigés par TypeScript et tests sans compilation Android locale — 14 tests réussis
 - [x] Compiler les écrans import-export corrigés exclusivement dans GitHub Actions — run 32195979660 réussi, APK 44,57 Mio
+
+## Correction erreur Paramètres et aperçu
+
+- [ ] Supprimer toute demande de secret ou variable distante liée aux Paramètres locaux
+- [ ] Vérifier que l’icône Paramètres et l’écran Paramètres sont présents sans configuration sensible
+- [ ] Capturer un aperçu de l’en-tête et de l’écran Paramètres
+- [ ] Confirmer à l’utilisateur que la demande de secret est corrigée

@@ -1,4 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { router } from "expo-router";
 import { type ComponentProps, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
@@ -22,7 +23,7 @@ const familyIcons: Record<TunnelKind, MaterialIconName> = {
 export function AppHeader() {
   const colors = useColors();
   return (
-    <View style={styles.header}><View style={styles.headerSpacer} /><Text style={[styles.headerTitle, { color: colors.foreground }]}>KIGHMU VPN</Text><ConfigMenu /></View>
+    <View style={styles.header}><View style={styles.headerSpacer} /><Text style={[styles.headerTitle, { color: colors.foreground }]}>KIGHMU VPN</Text><View style={styles.headerActions}><Pressable accessibilityRole="button" accessibilityLabel="Paramètres" onPress={() => router.push("/settings")} style={({ pressed }) => [styles.headerButton, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="settings" size={19} color={colors.foreground} /></Pressable><ConfigMenu /></View></View>
   );
 }
 
@@ -65,6 +66,8 @@ export function IconAction({ label, icon, onPress, destructive = false }: { labe
 const styles = StyleSheet.create({
   header: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   headerSpacer: { width: 40, height: 40 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 7 },
+  headerButton: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   headerTitle: { position: "absolute", left: 54, right: 54, textAlign: "center", fontSize: 17, fontWeight: "900", letterSpacing: 0.2 },
   panel: { borderWidth: 1, borderRadius: 20, padding: 16 },
   sectionLabel: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
