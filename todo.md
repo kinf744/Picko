@@ -850,3 +850,10 @@ Dernière mise à jour : les corrections locales sont validées côté TypeScrip
 - [x] Corriger le contrôle : HEV doit être non exécutable comme bibliothèque chargée ; les binaires autonomes restent exécutables
 - [x] Revalider TypeScript, 29 tests et le diff local
 - [ ] Republier la correction et relancer GitHub Actions
+
+
+### Correction des permissions natives
+
+- [x] Identifier l’échec du run 32263838591 sur `test -x libuz_core.so`
+- [x] Corriger le mode Git de `libuz_core.so` en 755, requis par `ProcessBuilder` et `canExecute()`
+- [ ] Republier et relancer GitHub Actions
