@@ -4,17 +4,23 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.provider.Settings
+import android.telephony.TelephonyManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.InetAddress
 import java.net.Socket
+import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
@@ -129,6 +135,7 @@ class KighmuVpnService : VpnService() {
     require(kind in setOf("zivpn", "slowdns", "hysteria", "http-payload", "ssh-tls", "v2ray-slowdns", "xray-v2ray")) { "Famille de tunnel inconnue" }
     val profiles = root.optJSONArray("profiles") ?: JSONArray()
     require(profiles.length() > 0) { "Aucun profil sélectionné pour $kind" }
+    enforceRestrictions(root)
     activeMode = kind
     createNotificationChannel()
     startForeground(NOTIFICATION_ID, notification("Préparation ${familyLabel(kind)}"))
@@ -164,6 +171,41 @@ class KighmuVpnService : VpnService() {
       releaseFamilyResources()
       throw error
     }
+  }
+
+  private fun enforceRestrictions(root: JSONObject) {
+    val restrictions = root.optJSONObject("restrictions") ?: return
+    val expiry = restrictions.optString("expiresAt").trim()
+    if (expiry.isNotBlank()) {
+      val format = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
+      val expiryDate = try { format.parse(expiry) } catch (_: Throwable) { null }
+      require(expiryDate != null && !java.util.Date().after(expiryDate)) { "Configuration expirée le $expiry" }
+    }
+    if (restrictions.optBoolean("blockRootedDevice", false)) require(!isDeviceRooted()) { "Appareil rooté bloqué par cette configuration" }
+    if (restrictions.optBoolean("bindDeviceId", false)) {
+      val allowed = jsonStringSet(restrictions.optJSONArray("allowedHardwareIds"))
+      require(allowed.isNotEmpty()) { "Aucun Hardware ID autorisé dans cette configuration" }
+      require(deviceHardwareId(this) in allowed) { "Hardware ID non autorisé pour cette configuration" }
+    }
+    if (restrictions.optBoolean("lockMobileOperator", false)) {
+      val allowed = jsonStringSet(restrictions.optJSONArray("allowedMobileOperators"))
+      require(allowed.isNotEmpty()) { "Aucun opérateur autorisé dans cette configuration" }
+      val current = mobileOperator(this)
+      require(current.isNotBlank()) { "Opérateur mobile indisponible" }
+      require(current in allowed) { "Opérateur mobile $current non autorisé" }
+    }
+    if (restrictions.optBoolean("mobileDataOnly", false)) {
+      val manager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+      val capabilities = manager.activeNetwork?.let { manager.getNetworkCapabilities(it) }
+      require(capabilities?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) == true) { "Cette configuration exige les données mobiles" }
+    }
+    if (restrictions.optBoolean("requireDeviceAttestation", false)) emitLog("warning", "POLITIQUE", "Attestation déclarée : un service compatible reste nécessaire pour une vérification distante.")
+    if (restrictions.optBoolean("blockTorrent", false)) emitLog("warning", "POLITIQUE", "Règle anti-torrent déclarée : le filtrage complet dépend du moteur ou du serveur compatible.")
+  }
+
+  private fun jsonStringSet(values: JSONArray?): Set<String> = buildSet {
+    if (values == null) return@buildSet
+    for (index in 0 until values.length()) values.optString(index).trim().uppercase(Locale.US).takeIf { it.isNotBlank() }?.let { add(it) }
   }
 
   private fun startCatalogProfile(kind: String, profile: JSONObject): Int = when (kind) {
@@ -375,6 +417,25 @@ class KighmuVpnService : VpnService() {
     const val CHANNEL_ID = "kighmu-vpn"
     const val NOTIFICATION_ID = 4008
     const val ZIVPN_FIXED_OBFS = "hu``hqb`c"
+
+    fun deviceSecurityInfo(context: Context): Map<String, Any> = mapOf(
+      "hardwareId" to deviceHardwareId(context),
+      "mobileOperator" to mobileOperator(context),
+      "rooted" to isDeviceRooted(),
+    )
+
+    private fun deviceHardwareId(context: Context): String {
+      val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID).orEmpty().ifBlank { "${Build.FINGERPRINT}:${context.packageName}" }
+      val digest = MessageDigest.getInstance("MD5").digest(androidId.toByteArray(Charsets.UTF_8))
+      return digest.joinToString("") { "%02X".format(Locale.US, it) }
+    }
+
+    private fun mobileOperator(context: Context): String {
+      val manager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+      return try { manager?.simOperator.orEmpty().trim().uppercase(Locale.US) } catch (_: SecurityException) { "" }
+    }
+
+    private fun isDeviceRooted(): Boolean = Build.TAGS?.contains("test-keys") == true || listOf("/system/bin/su", "/system/xbin/su", "/sbin/su", "/system/app/Superuser.apk").any { File(it).exists() }
     @Volatile var currentStatus = STATUS_DISCONNECTED
     @Volatile var logSink: ((String, String, String) -> Unit)? = null
     @Volatile var stateSink: ((String) -> Unit)? = null

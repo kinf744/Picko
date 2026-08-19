@@ -48,6 +48,15 @@ describe("transfert de configurations KIGHMU VPN", () => {
     expect(imported.restrictions).toMatchObject({ lockConfiguration: true, mobileDataOnly: true, blockRootedDevice: true, expiresAt: "2027-12-31", userNote: "Configuration réservée aux utilisateurs autorisés." });
   });
 
+  it("normalise et conserve les listes Hardware ID et opérateurs autorisés", () => {
+    const profiles = emptyProfiles();
+    profiles.zivpn = [makeZivpn({ host: "203.0.113.10", port: "5667", password: "secret-password" })];
+    const restrictions = { ...DEFAULT_EXPORT_RESTRICTIONS, bindDeviceId: true, lockMobileOperator: true, allowedHardwareIds: ["b1cd cfa8 3952 5e38 b3b8 b6db cd28 da5f", "INVALIDE"], allowedMobileOperators: ["20801", " 310260 "] };
+    const imported = parseConfigImport(JSON.stringify(buildConfigExport(profiles, emptyBalancers(), ["zivpn"], false, restrictions)));
+
+    expect(imported.restrictions).toMatchObject({ bindDeviceId: true, lockMobileOperator: true, allowedHardwareIds: ["B1CDCFA839525E38B3B8B6DBCD28DA5F"], allowedMobileOperators: ["20801", "310260"] });
+  });
+
   it("refuse un fichier qui ne suit pas le schéma KIGHMU VPN", () => {
     expect(() => parseConfigImport(JSON.stringify({ schemaVersion: 1, application: "Autre application", tunnels: [] }))).toThrow("configuration KIGHMU VPN compatible");
   });

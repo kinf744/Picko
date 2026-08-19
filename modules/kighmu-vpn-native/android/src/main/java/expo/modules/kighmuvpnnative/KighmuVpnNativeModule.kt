@@ -33,6 +33,11 @@ class KighmuVpnNativeModule : Module() {
       KighmuVpnService.currentStatus
     }
 
+    AsyncFunction("getDeviceSecurityInfo") {
+      val context = appContext.reactContext ?: throw IllegalStateException("Contexte Android indisponible")
+      KighmuVpnService.deviceSecurityInfo(context)
+    }
+
     AsyncFunction("prepareVpn") {
       val activity = appContext.currentActivity ?: return@AsyncFunction false
       val intent = VpnService.prepare(activity)

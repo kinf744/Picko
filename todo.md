@@ -591,3 +591,12 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Ajouter une note utilisateur facultative et la sélection de familles de tunnel
 - [x] Rendre l’interface d’export cohérente avec le design Signal Control
 - [x] Valider l’import, les tests et la compilation GitHub Actions — run 32206904075 réussi, 45,61 Mio
+
+## Restrictions Hardware ID, opérateur et root
+
+- [ ] Exposer un Hardware ID local copiable dans les Paramètres
+- [ ] Ajouter une liste d’Hardware ID autorisés au format d’export
+- [ ] Ajouter l’option d’autoriser seulement certains opérateurs mobiles
+- [ ] Ajouter l’option de bloquer les appareils rootés
+- [ ] Appliquer les contrôles locaux lors de l’utilisation d’une configuration restreinte
+- [ ] Valider les tests et compiler exclusivement avec GitHub Actions

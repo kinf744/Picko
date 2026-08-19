@@ -4,7 +4,7 @@ import { Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
 import { buildConfigExport, parseConfigImport, type ConfigExport, type ImportResult } from "./config-transfer";
-import type { ExportRestrictions } from "./export-restrictions";
+import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, type ExportRestrictions } from "./export-restrictions";
 import {
   TUNNEL_CATALOG,
   TUNNEL_KINDS,
@@ -33,6 +33,7 @@ const ACTIVE_TUNNEL_KEY = "kighmu.vpn.catalog.active.v1";
 const REMOVED_V2RAY_DNS_PROFILE_KEY = "kighmu.vpn.v2ray-dns.profiles.v1";
 const REMOVED_V2RAY_DNS_SECRET_KEY = "kighmu.vpn.v2ray-dns.secrets.v1";
 const REMOVED_V2RAY_DNS_BALANCER_KEY = "kighmu.vpn.v2ray-dns.balancer.v1";
+const ACTIVE_RESTRICTIONS_KEY = "kighmu.vpn.imported-restrictions.v1";
 const profileStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.profiles.v1`;
 const secretStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.secrets.v1`;
 const balancerStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.balancer.v1`;
@@ -104,6 +105,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   const [activeKind, setActiveKind] = useState<TunnelKind>("zivpn");
   const [profilesByKind, setProfilesByKind] = useState<ProfilesByKind>(emptyProfiles);
   const [balancersByKind, setBalancersByKind] = useState<BalancersByKind>(emptyBalancers);
+  const [activeRestrictions, setActiveRestrictions] = useState<ExportRestrictions>(DEFAULT_EXPORT_RESTRICTIONS);
   const [status, setStatus] = useState<TunnelStatus>("disconnected");
   const [logs, setLogs] = useState<DiagnosticLog[]>([]);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -137,7 +139,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
     (async () => {
       try {
-        const activeStored = await AsyncStorage.getItem(ACTIVE_TUNNEL_KEY);
+        const [activeStored, storedRestrictions] = await Promise.all([AsyncStorage.getItem(ACTIVE_TUNNEL_KEY), AsyncStorage.getItem(ACTIVE_RESTRICTIONS_KEY)]);
         if (activeStored === "v2ray-dns") {
           await AsyncStorage.setItem(ACTIVE_TUNNEL_KEY, "zivpn");
         }
@@ -163,6 +165,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
         if (!mounted) return;
         setProfilesByKind(loaded);
         setBalancersByKind(loadedBalancers);
+        setActiveRestrictions(normalizeExportRestrictions(storedRestrictions ? JSON.parse(storedRestrictions) : null));
         if (activeStored && TUNNEL_KINDS.includes(activeStored as TunnelKind)) setActiveKind(activeStored as TunnelKind);
         addLog("info", "STORAGE", "Collections de profils isolées chargées ; les secrets restent masqués.");
       } catch {
@@ -189,6 +192,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   const createProfile = useCallback((kind = activeKind) => makeProfile(kind), [activeKind]);
 
   const saveProfile = useCallback(async (profile: TunnelProfile) => {
+    if (activeRestrictions.lockConfiguration) return { ok: false, errors: { storage: "Cette configuration importée est verrouillée." } };
     const errors = validateTunnelProfile(profile);
     if (Object.keys(errors).length > 0) {
       addLog("warning", "VALIDATION", `Profil ${TUNNEL_CATALOG[profile.kind].shortLabel} non enregistré : champs invalides.`);
@@ -207,20 +211,22 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
       addLog("error", "STORAGE", "Échec d’enregistrement du profil sécurisé.");
       return { ok: false, errors: { storage: "Le profil n’a pas pu être enregistré." } };
     }
-  }, [addLog, balancersByKind, persistKind, profilesByKind]);
+  }, [activeRestrictions.lockConfiguration, addLog, balancersByKind, persistKind, profilesByKind]);
 
   const deleteProfile = useCallback(async (kind: TunnelKind, id: string) => {
+    if (activeRestrictions.lockConfiguration) { addLog("warning", "POLITIQUE", "Suppression refusée : configuration verrouillée."); return; }
     const next = profilesByKind[kind].filter((profile) => profile.id !== id);
     await persistKind(kind, next, balancersByKind[kind]);
     setProfilesByKind((current) => ({ ...current, [kind]: next }));
     addLog("info", "STORAGE", `Profil ${TUNNEL_CATALOG[kind].shortLabel} supprimé.`);
-  }, [addLog, balancersByKind, persistKind, profilesByKind]);
+  }, [activeRestrictions.lockConfiguration, addLog, balancersByKind, persistKind, profilesByKind]);
 
   const toggleProfileSelection = useCallback(async (kind: TunnelKind, id: string) => {
+    if (activeRestrictions.lockConfiguration) { addLog("warning", "POLITIQUE", "Modification refusée : configuration verrouillée."); return; }
     const next = profilesByKind[kind].map((profile) => profile.id === id ? { ...profile, selected: !profile.selected, updatedAt: Date.now() } as TunnelProfile : profile);
     await persistKind(kind, next, balancersByKind[kind]);
     setProfilesByKind((current) => ({ ...current, [kind]: next }));
-  }, [balancersByKind, persistKind, profilesByKind]);
+  }, [activeRestrictions.lockConfiguration, addLog, balancersByKind, persistKind, profilesByKind]);
 
   const setBalancer = useCallback(async (kind: TunnelKind, patch: Partial<TunnelBalancer>) => {
     const next = { ...balancersByKind[kind], ...patch };
@@ -264,14 +270,14 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
         addLog("warning", "ANDROID", "L’autorisation VPN doit être confirmée dans la fenêtre système.");
         return;
       }
-      await native.startVpn(JSON.stringify({ version: 3, kind: activeKind, balancer: { ...balancer, enabled: shouldBalance }, profiles: selected }));
+      await native.startVpn(JSON.stringify({ version: 3, kind: activeKind, balancer: { ...balancer, enabled: shouldBalance }, restrictions: activeRestrictions, profiles: selected }));
       addLog("connection", "NATIVE", `Service Android démarré pour ${TUNNEL_CATALOG[activeKind].label}.`);
     } catch (error) {
       setLastError("Le service VPN Android n’a pas pu démarrer.");
       setStatus("error");
       addLog("error", "NATIVE", `Échec du démarrage natif : ${String(error).slice(0, 180)}`);
     }
-  }, [activeKind, addLog, balancersByKind, profilesByKind]);
+  }, [activeKind, activeRestrictions, addLog, balancersByKind, profilesByKind]);
 
   const disconnect = useCallback(async () => {
     try { await getNativeVpn()?.stopVpn(); } catch (error) { addLog("warning", "NATIVE", `Arrêt natif signalé avec une erreur : ${String(error).slice(0, 160)}`); }
@@ -281,9 +287,10 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   }, [addLog]);
 
   const resetAllProfiles = useCallback(async () => {
-    await Promise.all(TUNNEL_KINDS.flatMap((kind) => [AsyncStorage.removeItem(profileStoreKey(kind)), AsyncStorage.removeItem(balancerStoreKey(kind)), secretDelete(secretStoreKey(kind))]));
+    await Promise.all([...TUNNEL_KINDS.flatMap((kind) => [AsyncStorage.removeItem(profileStoreKey(kind)), AsyncStorage.removeItem(balancerStoreKey(kind)), secretDelete(secretStoreKey(kind))]), AsyncStorage.removeItem(ACTIVE_RESTRICTIONS_KEY)]);
     setProfilesByKind(emptyProfiles());
     setBalancersByKind(emptyBalancers());
+    setActiveRestrictions(DEFAULT_EXPORT_RESTRICTIONS);
     addLog("info", "STORAGE", "Toutes les collections de profils et leurs secrets ont été réinitialisés.");
   }, [addLog]);
 
@@ -298,8 +305,10 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
       nextBalancers[tunnel.kind] = tunnel.balancer;
     });
     await Promise.all(TUNNEL_KINDS.map((kind) => persistKind(kind, nextProfiles[kind], nextBalancers[kind])));
+    await AsyncStorage.setItem(ACTIVE_RESTRICTIONS_KEY, JSON.stringify(parsed.restrictions));
     setProfilesByKind(nextProfiles);
     setBalancersByKind(nextBalancers);
+    setActiveRestrictions(parsed.restrictions);
     if (parsed.importedKinds.length > 0) setActiveKind(parsed.importedKinds[0]);
     addLog("info", "IMPORT", `Configuration importée : ${parsed.importedProfiles} profil(s), ${parsed.importedKinds.length} famille(s), secrets=${parsed.containsSecrets ? "présents" : "absents"}.`);
     return parsed;
