@@ -119,8 +119,10 @@ jobs:
           OUTPUT_DIR="${GITHUB_WORKSPACE}/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a"
           for artifact in libhev-socks5-tunnel.so libuz_core.so libxray.so libdnstt.so libhysteria.so; do
             test -s "$OUTPUT_DIR/$artifact"
-            test -x "$OUTPUT_DIR/$artifact"
             file "$OUTPUT_DIR/$artifact" | grep -E 'ARM|shared object|executable'
+          done
+          for executable in libuz_core.so libxray.so libdnstt.so libhysteria.so; do
+            test -x "$OUTPUT_DIR/$executable"
           done
           test ! -e "$OUTPUT_DIR/libtun2socks.so"
           test ! -e "$OUTPUT_DIR/libbridge.so"

@@ -842,3 +842,11 @@ Dernière mise à jour : les corrections locales sont validées côté TypeScrip
 - [ ] Installer l’APK sur Android
 - [ ] Tester UDP-ZIVPN, SlowDNS, Hysteria, HTTP Payload, SSH TLS, Xray/V2Ray et V2Ray+SlowDNS
 - [ ] Recueillir les journaux expurgés et les résultats de trafic
+
+
+### Correction du contrôle CI des artefacts
+
+- [x] Identifier l’échec du run 32263377190 sur `test -x libhev-socks5-tunnel.so`
+- [x] Corriger le contrôle : HEV doit être non exécutable comme bibliothèque chargée ; les binaires autonomes restent exécutables
+- [x] Revalider TypeScript, 29 tests et le diff local
+- [ ] Republier la correction et relancer GitHub Actions
