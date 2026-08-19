@@ -8,6 +8,7 @@ import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, type ExportRe
 import {
   TUNNEL_CATALOG,
   TUNNEL_KINDS,
+  cloneTunnelProfile,
   createProfile as makeProfile,
   defaultBalancer,
   omitSecrets,
@@ -88,6 +89,7 @@ type VpnContextValue = {
   activeProfiles: TunnelProfile[];
   selectTunnel: (kind: TunnelKind) => void;
   createProfile: (kind?: TunnelKind) => TunnelProfile;
+  cloneProfile: (profile: TunnelProfile) => Promise<void>;
   saveProfile: (profile: TunnelProfile) => Promise<{ ok: boolean; errors: ProfileFieldErrors }>;
   deleteProfile: (kind: TunnelKind, id: string) => Promise<void>;
   toggleProfileSelection: (kind: TunnelKind, id: string) => Promise<void>;
@@ -190,6 +192,15 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   }, [addLog]);
 
   const createProfile = useCallback((kind = activeKind) => makeProfile(kind), [activeKind]);
+
+  const cloneProfile = useCallback(async (profile: TunnelProfile) => {
+    if (activeRestrictions.lockConfiguration) { addLog("warning", "POLITIQUE", "Clonage refusé : configuration verrouillée."); return; }
+    const cloned = cloneTunnelProfile(profile);
+    const next = [...profilesByKind[profile.kind], cloned];
+    await persistKind(profile.kind, next, balancersByKind[profile.kind]);
+    setProfilesByKind((current) => ({ ...current, [profile.kind]: next }));
+    addLog("info", "STORAGE", `Profil ${TUNNEL_CATALOG[profile.kind].shortLabel} cloné localement.`);
+  }, [activeRestrictions.lockConfiguration, addLog, balancersByKind, persistKind, profilesByKind]);
 
   const saveProfile = useCallback(async (profile: TunnelProfile) => {
     if (activeRestrictions.lockConfiguration) return { ok: false, errors: { storage: "Cette configuration importée est verrouillée." } };
@@ -314,7 +325,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     return parsed;
   }, [addLog, balancersByKind, persistKind, profilesByKind]);
 
-  const value = useMemo(() => ({ activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, clearLogs: () => setLogs([]), resetAllProfiles, buildConfigExport: exportConfiguration, importConfig }), [activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, resetAllProfiles, exportConfiguration, importConfig]);
+  const value = useMemo(() => ({ activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, cloneProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, clearLogs: () => setLogs([]), resetAllProfiles, buildConfigExport: exportConfiguration, importConfig }), [activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, cloneProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, resetAllProfiles, exportConfiguration, importConfig]);
   return <VpnContext.Provider value={value}>{children}</VpnContext.Provider>;
 }
 

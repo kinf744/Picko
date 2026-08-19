@@ -600,3 +600,10 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [ ] Ajouter l’option de bloquer les appareils rootés
 - [ ] Appliquer les contrôles locaux lors de l’utilisation d’une configuration restreinte
 - [ ] Valider les tests et compiler exclusivement avec GitHub Actions
+
+## Clonage de profils multi-tunnels
+
+- [ ] Ajouter une action Cloner à chaque profil de tunnel
+- [ ] Créer un nouvel identifiant, un nom de copie et conserver les valeurs propres au tunnel
+- [ ] Respecter le verrouillage de configuration importée
+- [ ] Ajouter les tests de régression et compiler exclusivement avec GitHub Actions

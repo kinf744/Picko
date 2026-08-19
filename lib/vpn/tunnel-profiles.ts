@@ -125,6 +125,17 @@ export function createProfile(kind: TunnelKind): TunnelProfile {
   }
 }
 
+export function cloneTunnelProfile(profile: TunnelProfile, timestamp = Date.now()): TunnelProfile {
+  return {
+    ...profile,
+    id: `${profile.kind}-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+    name: `${profile.name} — copie`,
+    selected: false,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  } as TunnelProfile;
+}
+
 export function defaultBalancer(): TunnelBalancer {
   return { enabled: false, strategy: "round-robin", healthCheck: true };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TUNNEL_KINDS, createProfile, defaultBalancer, omitSecrets, profileEndpoint, type TunnelProfile } from "../lib/vpn/tunnel-profiles";
+import { TUNNEL_KINDS, cloneTunnelProfile, createProfile, defaultBalancer, omitSecrets, profileEndpoint, type TunnelProfile } from "../lib/vpn/tunnel-profiles";
 import { validateTunnelProfile } from "../lib/vpn/validation";
 
 const configured = (kind: TunnelProfile["kind"]): TunnelProfile => {
@@ -59,6 +59,16 @@ describe("modèle de profils multi-tunnels", () => {
         expect(publicHttp.sshPassword).toBe("");
       }
     }
+  });
+
+  it("clone un profil sans modifier sa famille ni réutiliser son identité", () => {
+    const source = { ...configured("slowdns"), selected: true };
+    const clone = cloneTunnelProfile(source, 1_700_000_000_000);
+    expect(clone.kind).toBe("slowdns");
+    expect(clone.id).not.toBe(source.id);
+    expect(clone.name).toBe("SlowDNS A — copie");
+    expect(clone.selected).toBe(false);
+    if (clone.kind === "slowdns" && source.kind === "slowdns") expect(clone.sshPassword).toBe(source.sshPassword);
   });
 
   it("prépare un balancier local désactivé et sans stratégie inter-tunnels", () => {
