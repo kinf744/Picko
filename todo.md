@@ -765,8 +765,27 @@ Dernière mise à jour : les corrections locales sont validées côté TypeScrip
 
 ## Publication GitHub demandée — 19 août 2026
 
-- [ ] Vérifier le dépôt distant `kinf744/Picko` et sa branche principale
-- [ ] Vérifier le diff local validé avant publication
-- [ ] Pousser les modifications vers GitHub sans inclure de secrets
-- [ ] Vérifier le commit distant et le workflow Android déclenché
+- [x] Vérifier le dépôt distant `kinf744/Picko` et sa branche principale
+- [x] Vérifier le diff local validé avant publication
+- [x] Pousser les modifications vers GitHub sans inclure de secrets
+- [x] Vérifier le commit distant et le workflow Android déclenché
 - [ ] Confirmer que la compilation reste exclusivement gérée par GitHub Actions
+
+
+## Alignement natif Zamois-tun demandé
+
+- [x] Comparer les bibliothèques KIGHMU et Zamois-tun par ABI
+- [x] Aligner les noms des bibliothèques compatibles avec Zamois-tun
+- [x] Utiliser un relais HEV/tun2socks commun pour les familles compatibles
+- [x] Préserver séparément `libuz_core.so` et le chemin UDP-ZIVPN existant
+- [x] Adapter les références Kotlin et le workflow GitHub Actions
+- [x] Vérifier l’APK et les tests avant publication
+
+
+## Suppression explicite des anciens binaires KIGHMU
+
+- [x] Établir la liste des anciens `.so` à supprimer après comparaison avec Zamois-tun
+- [x] Supprimer uniquement les doublons ou anciens noms remplacés
+- [x] Ne pas supprimer `libuz_core.so` ni modifier son chemin UDP-ZIVPN
+- [x] Vérifier que chaque référence Kotlin pointe vers un fichier conservé
+- [x] Vérifier que le relais HEV/tun2socks reste partagé par les familles prévues

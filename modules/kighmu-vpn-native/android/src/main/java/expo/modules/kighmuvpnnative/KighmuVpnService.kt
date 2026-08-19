@@ -237,7 +237,7 @@ class KighmuVpnService : VpnService() {
   private fun startCatalogProfile(kind: String, profile: JSONObject): Int = when (kind) {
     "zivpn" -> startZivpnProfile(profile)
     "slowdns" -> {
-      val tunnel = SlowDnsSshTunnel(this, this, { level, component, message -> emitLog(level, component, message) }, "libdnstt-slowdns.so", "slowdns-${profile.optString("id", "profile")}")
+      val tunnel = SlowDnsSshTunnel(this, this, { level, component, message -> emitLog(level, component, message) }, "libdnstt.so", "slowdns-${profile.optString("id", "profile")}")
       familyStopActions.add { tunnel.stop() }
       tunnel.start(SlowDnsSshTunnel.Settings.fromProfile(profile))
     }
@@ -257,11 +257,11 @@ class KighmuVpnService : VpnService() {
       tunnel.start(SshTlsTunnel.Settings.fromProfile(profile))
     }
     "xray-v2ray" -> {
-      val tunnel = XrayProfileTunnel(this, "libxray-v2ray.so", "xray-${profile.optString("id", "profile")}") { level, component, message -> emitLog(level, component, message) }
+      val tunnel = XrayProfileTunnel(this, "libxray.so", "xray-${profile.optString("id", "profile")}") { level, component, message -> emitLog(level, component, message) }
       familyStopActions.add { tunnel.stop() }
       tunnel.start(profile)
     }
-    "v2ray-slowdns" -> startDnsXrayProfile(profile, "libdnstt-v2rayslowdns.so", "libxray-v2rayslowdns.so", "v2rayslowdns")
+    "v2ray-slowdns" -> startDnsXrayProfile(profile, "libdnstt.so", "libxray.so", "v2rayslowdns")
     else -> error("Famille de tunnel inconnue")
   }
 

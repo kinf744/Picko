@@ -20,7 +20,7 @@ class SlowDnsSshTunnel(
   private val context: Context,
   private val vpnService: VpnService,
   private val emit: (level: String, component: String, message: String) -> Unit,
-  private val dnsttBinaryName: String = "libdnstt-slowdns.so",
+  private val dnsttBinaryName: String = "libdnstt.so",
   private val runtimeLabel: String = "slowdns",
 ) {
   data class Settings(

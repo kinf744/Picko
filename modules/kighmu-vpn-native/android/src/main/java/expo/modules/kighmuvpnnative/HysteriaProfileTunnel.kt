@@ -28,8 +28,8 @@ class HysteriaProfileTunnel(
     val port = profile.optString("port").trim().replace(Regex("\\s+"), "")
     val auth = profile.optString("auth").trim()
     require(host.isNotBlank() && port.isNotBlank() && auth.isNotBlank()) { "Profil Hysteria incomplet" }
-    val binary = File(context.applicationInfo.nativeLibraryDir, "libhysteria-hysteria.so")
-    require(binary.exists() && binary.length() > 0L && binary.canExecute()) { "libhysteria-hysteria.so ARMv7 absent ou non exécutable" }
+    val binary = File(context.applicationInfo.nativeLibraryDir, "libhysteria.so")
+    require(binary.exists() && binary.length() > 0L && binary.canExecute()) { "libhysteria.so ARMv7 absent ou non exécutable" }
     socksPort = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
     val safeId = profile.optString("id", "profile").replace(Regex("[^A-Za-z0-9_-]"), "_").take(64)
     val upload = profile.optString("uploadMbps", "10").toIntOrNull()?.coerceAtLeast(1) ?: 10
