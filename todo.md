@@ -594,36 +594,36 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 
 ## Restrictions Hardware ID, opérateur et root
 
-- [ ] Exposer un Hardware ID local copiable dans les Paramètres
-- [ ] Ajouter une liste d’Hardware ID autorisés au format d’export
-- [ ] Ajouter l’option d’autoriser seulement certains opérateurs mobiles
-- [ ] Ajouter l’option de bloquer les appareils rootés
-- [ ] Appliquer les contrôles locaux lors de l’utilisation d’une configuration restreinte
-- [ ] Valider les tests et compiler exclusivement avec GitHub Actions
+- [x] Exposer un Hardware ID local copiable dans les Paramètres
+- [x] Ajouter une liste d’Hardware ID autorisés au format d’export
+- [x] Ajouter l’option d’autoriser seulement certains opérateurs mobiles
+- [x] Ajouter l’option de bloquer les appareils rootés
+- [x] Appliquer les contrôles locaux lors de l’utilisation d’une configuration restreinte
+- [x] Valider les tests et compiler exclusivement avec GitHub Actions — run 32211022651 réussi
 
 ## Clonage de profils multi-tunnels
 
-- [ ] Ajouter une action Cloner à chaque profil de tunnel
-- [ ] Créer un nouvel identifiant, un nom de copie et conserver les valeurs propres au tunnel
-- [ ] Respecter le verrouillage de configuration importée
-- [ ] Ajouter les tests de régression et compiler exclusivement avec GitHub Actions
+- [x] Ajouter une action Cloner à chaque profil de tunnel
+- [x] Créer un nouvel identifiant, un nom de copie et conserver les valeurs propres au tunnel
+- [x] Respecter le verrouillage de configuration importée
+- [x] Ajouter les tests de régression et compiler exclusivement avec GitHub Actions — run 32211022651 réussi
 
 ## Simplification de l’onglet Tunnel
 
-- [ ] Retirer le bloc Dernier événement de l’onglet Tunnel
-- [ ] Retirer le bloc Profils sélectionnés et son raccourci Gérer
-- [ ] Préserver le choix du tunnel, le bouton de connexion et l’accès aux profils par l’onglet Configuration
-- [ ] Valider les tests et compiler exclusivement avec GitHub Actions
+- [x] Retirer le bloc Dernier événement de l’onglet Tunnel
+- [x] Retirer le bloc Profils sélectionnés et son raccourci Gérer
+- [x] Préserver le choix du tunnel, le bouton de connexion et l’accès aux profils par l’onglet Configuration
+- [x] Valider les tests et compiler exclusivement avec GitHub Actions — run 32211022651 réussi
 
 ## Simplification de l’onglet Configuration
 
-- [ ] Retirer l’action Réinitialiser les profils locaux de Configuration
-- [ ] Préserver les profils enregistrés et la réinitialisation globale confirmée du menu principal
-- [ ] Valider les tests et compiler exclusivement avec GitHub Actions
+- [x] Retirer l’action Réinitialiser les profils locaux de Configuration
+- [x] Préserver les profils enregistrés et la réinitialisation globale confirmée du menu principal
+- [x] Valider les tests et compiler exclusivement avec GitHub Actions — run 32211022651 réussi
 
 ## Partage par presse-papiers
 
-- [ ] Ajouter la création d’une configuration dans le presse-papiers depuis Exporter
-- [ ] Ajouter l’import d’une configuration depuis le presse-papiers
-- [ ] Conserver les avertissements de sécurité lorsque les secrets sont inclus
-- [ ] Valider les tests et compiler exclusivement avec GitHub Actions
+- [x] Ajouter la création d’une configuration dans le presse-papiers depuis Exporter
+- [x] Ajouter l’import d’une configuration depuis le presse-papiers
+- [x] Conserver les avertissements de sécurité lorsque les secrets sont inclus
+- [x] Valider les tests et compiler exclusivement avec GitHub Actions — run 32211022651 réussi, 45,63 Mio
