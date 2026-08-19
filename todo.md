@@ -559,3 +559,11 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Vérifier que l’icône Paramètres et l’écran Paramètres sont présents sans configuration sensible
 - [x] Capturer un aperçu de l’en-tête et de l’écran Paramètres
 - [x] Confirmer à l’utilisateur que la demande de secret est corrigée
+
+## Icône de notification VPN Android
+
+- [x] Auditer l’icône et le canal de notification utilisés par le service VPN
+- [x] Remplacer l’icône d’alerte par un symbole VPN moderne, lisible en monochrome
+- [x] Vérifier les états en connexion, actif et arrêt sans modifier la logique du tunnel
+- [x] Valider TypeScript et les tests
+- [ ] Documenter que la validation finale de l’icône doit se faire sur un APK GitHub Actions installé sur Android
