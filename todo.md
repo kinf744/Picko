@@ -607,3 +607,10 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [ ] Créer un nouvel identifiant, un nom de copie et conserver les valeurs propres au tunnel
 - [ ] Respecter le verrouillage de configuration importée
 - [ ] Ajouter les tests de régression et compiler exclusivement avec GitHub Actions
+
+## Simplification de l’onglet Tunnel
+
+- [ ] Retirer le bloc Dernier événement de l’onglet Tunnel
+- [ ] Retirer le bloc Profils sélectionnés et son raccourci Gérer
+- [ ] Préserver le choix du tunnel, le bouton de connexion et l’accès aux profils par l’onglet Configuration
+- [ ] Valider les tests et compiler exclusivement avec GitHub Actions
