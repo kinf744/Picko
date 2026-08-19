@@ -68,10 +68,9 @@ class KighmuVpnService : VpnService() {
   private fun startZivpn(root: JSONObject, generation: Long) {
     val host = root.optString("host").trim()
     val port = root.optString("port").trim().replace(Regex("\\s+"), "")
-    val obfs = root.optString("obfs").trim()
     val password = root.optString("password").trim()
-    if (host.isBlank() || port.isBlank() || obfs.isBlank() || password.isBlank()) {
-      error("Host, port, Obfs et mot de passe sont obligatoires")
+    if (host.isBlank() || port.isBlank() || password.isBlank()) {
+      error("Host, port et mot de passe sont obligatoires")
     }
     activeMode = "zivpn"
     createNotificationChannel()
@@ -86,7 +85,7 @@ class KighmuVpnService : VpnService() {
     if (!ZivpnTun2Socks.init()) error("hev_jni indisponible dans l’APK")
     val config = File(cacheDir, "zivpn-client.json")
     config.writeText(buildUzConfig(resolvedHost, port, password, obfs))
-    val process = ProcessBuilder(binary.absolutePath, "-s", obfs, "--config", config.readText())
+    val process = ProcessBuilder(binary.absolutePath, "-s", ZIVPN_FIXED_OBFS, "--config", config.readText())
       .directory(filesDir)
       .apply {
         environment()["LD_LIBRARY_PATH"] = nativeDir
@@ -201,17 +200,16 @@ class KighmuVpnService : VpnService() {
   private fun startZivpnProfile(profile: JSONObject): Int {
     val host = profile.optString("host").trim()
     val port = profile.optString("port").trim().replace(Regex("\\s+"), "")
-    val obfs = profile.optString("obfs").trim()
     val password = profile.optString("password").trim()
-    require(host.isNotBlank() && port.isNotBlank() && obfs.isNotBlank() && password.isNotBlank()) { "Profil UDP-ZIVPN incomplet" }
+    require(host.isNotBlank() && port.isNotBlank() && password.isNotBlank()) { "Profil UDP-ZIVPN incomplet" }
     val binary = File(applicationInfo.nativeLibraryDir, "libuz_core.so")
     require(binary.exists() && binary.length() > 0L && binary.canExecute()) { "libuz_core.so absent ou non exécutable" }
     val socksPort = freeLocalPort()
     val resolvedHost = try { InetAddress.getByName(host).hostAddress ?: host } catch (_: Throwable) { host }
     val safeId = profile.optString("id", "profile").replace(Regex("[^A-Za-z0-9_-]"), "_").take(64)
     val config = File(cacheDir, "zivpn_${safeId}.json")
-    config.writeText(buildUzConfig(resolvedHost, port, password, obfs, socksPort))
-    val process = ProcessBuilder(binary.absolutePath, "-s", obfs, "--config", config.readText()).directory(filesDir).apply {
+    config.writeText(buildUzConfig(resolvedHost, port, password, ZIVPN_FIXED_OBFS, socksPort))
+    val process = ProcessBuilder(binary.absolutePath, "-s", ZIVPN_FIXED_OBFS, "--config", config.readText()).directory(filesDir).apply {
       environment()["LD_LIBRARY_PATH"] = applicationInfo.nativeLibraryDir
       environment()["HOME"] = cacheDir.absolutePath
       environment()["TMPDIR"] = cacheDir.absolutePath
@@ -376,6 +374,7 @@ class KighmuVpnService : VpnService() {
     const val STATUS_ERROR = "error"
     const val CHANNEL_ID = "kighmu-vpn"
     const val NOTIFICATION_ID = 4008
+    const val ZIVPN_FIXED_OBFS = "hu``hqb`c"
     @Volatile var currentStatus = STATUS_DISCONNECTED
     @Volatile var logSink: ((String, String, String) -> Unit)? = null
     @Volatile var stateSink: ((String) -> Unit)? = null

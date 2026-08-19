@@ -30,7 +30,6 @@ class SlowDnsSshTunnel(
     val publicKey: String,
     val sshUsername: String,
     val sshPassword: String,
-    val sshLabel: String,
   ) {
     companion object {
       fun fromJson(root: JSONObject): Settings {
@@ -42,7 +41,6 @@ class SlowDnsSshTunnel(
           publicKey = slowDns.optString("publicKey").trim().replace(Regex("\\s+"), ""),
           sshUsername = slowDns.optString("sshUsername").trim(),
           sshPassword = slowDns.optString("sshPassword").trim(),
-          sshLabel = slowDns.optString("sshHost").trim(),
         )
       }
 
@@ -53,7 +51,6 @@ class SlowDnsSshTunnel(
         publicKey = profile.optString("publicKey").trim().replace(Regex("\\s+"), ""),
         sshUsername = profile.optString("sshUsername").trim(),
         sshPassword = profile.optString("sshPassword").trim(),
-        sshLabel = profile.optString("sshHost").trim(),
       )
     }
 

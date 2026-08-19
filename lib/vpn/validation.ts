@@ -4,9 +4,7 @@ export type VpnValidationConfig = {
   mode: TunnelMode;
   host: string;
   port: string;
-  obfs: string;
   password: string;
-  slowDnsSshHost: string;
   slowDnsUsername: string;
   slowDnsPassword: string;
   slowDnsServer: string;
@@ -33,7 +31,6 @@ export function validateVpnConfig(config: VpnValidationConfig) {
   if (config.mode === "zivpn") {
     if (!config.host.trim()) errors.host = "Saisissez un Host ou une adresse IP.";
     if (!isValidPort(config.port)) errors.port = "Utilisez un port ou une plage, par exemple 6000-19999.";
-    if (!config.obfs.trim()) errors.obfs = "La clé Obfs est requise pour ce profil.";
     if (!config.password.trim()) errors.password = "Le mot de passe est requis.";
     return errors;
   }
@@ -51,6 +48,7 @@ import type { ProfileFieldErrors, TunnelProfile } from "./tunnel-profiles";
 const isJsonObject = (value: string) => {
   try { return typeof JSON.parse(value) === "object" && value.trim().startsWith("{"); } catch { return false; }
 };
+const isSupportedV2RayLink = (value: string) => /^(vmess|vless|trojan):\/\//i.test(value.trim());
 
 const required = (errors: ProfileFieldErrors, field: string, value: string, label: string) => {
   if (!value.trim()) errors[field] = `${label} est requis.`;
@@ -63,7 +61,6 @@ export function validateTunnelProfile(profile: TunnelProfile): ProfileFieldError
     case "zivpn":
       required(errors, "host", profile.host, "Le Host ou l’adresse IP");
       if (!isValidPort(profile.port)) errors.port = "Utilisez un port ou une plage valide.";
-      required(errors, "obfs", profile.obfs, "La clé Obfs");
       required(errors, "password", profile.password, "Le mot de passe");
       break;
     case "slowdns":
@@ -106,7 +103,7 @@ export function validateTunnelProfile(profile: TunnelProfile): ProfileFieldError
       if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Le port DNS est invalide.";
       if (!profile.nameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(profile.nameserver.trim())) errors.nameserver = "Le nameserver DNS est invalide.";
       required(errors, "publicKey", profile.publicKey, "La clé publique dnstt");
-      if (!isJsonObject(profile.json)) errors.json = "La configuration V2Ray+SlowDNS doit être un objet JSON valide.";
+      if (!isSupportedV2RayLink(profile.link)) errors.link = "Utilisez un lien VMess, VLESS ou Trojan valide.";
       break;
   }
   return errors;

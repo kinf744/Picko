@@ -27,7 +27,6 @@ export type BalancersByKind = Record<TunnelKind, TunnelBalancer>;
 
 const LEGACY_CONFIG_KEY = "kighmu.vpn.config.v2";
 const LEGACY_PASSWORD_KEY = "kighmu.vpn.zivpn.password.v1";
-const LEGACY_OBFS_KEY = "kighmu.vpn.zivpn.obfs.v1";
 const LEGACY_SLOWDNS_PASSWORD_KEY = "kighmu.vpn.slowdns.ssh-password.v1";
 const ACTIVE_TUNNEL_KEY = "kighmu.vpn.catalog.active.v1";
 const REMOVED_V2RAY_DNS_PROFILE_KEY = "kighmu.vpn.v2ray-dns.profiles.v1";
@@ -57,7 +56,22 @@ function normalizeProfiles(kind: TunnelKind, publicValue: string | null, secretV
   try {
     const publicProfiles = JSON.parse(publicValue ?? "[]") as TunnelProfile[];
     const secretMap = JSON.parse(secretValue ?? "{}") as Record<string, Record<string, string>>;
-    return publicProfiles.filter((profile) => profile.kind === kind).map((profile) => withSecrets(profile, secretMap[profile.id] ?? {}));
+    return publicProfiles.filter((profile) => profile.kind === kind).map((profile) => {
+      const hydrated = withSecrets(profile, secretMap[profile.id] ?? {}) as TunnelProfile & { obfs?: string; sshHost?: string; json?: string };
+      if (hydrated.kind === "zivpn") {
+        const { obfs: _legacyObfs, ...normalized } = hydrated;
+        return normalized as TunnelProfile;
+      }
+      if (hydrated.kind === "slowdns") {
+        const { sshHost: _legacySshHost, ...normalized } = hydrated;
+        return normalized as TunnelProfile;
+      }
+      if (hydrated.kind === "v2ray-slowdns") {
+        const { json: _legacyJson, ...normalized } = hydrated;
+        return { ...normalized, inputMode: "link", link: hydrated.link ?? "" } as TunnelProfile;
+      }
+      return hydrated;
+    });
   } catch { return []; }
 }
 
@@ -105,16 +119,16 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const migrateLegacyProfile = useCallback(async () => {
-    const [legacyConfig, password, obfs, sshPassword] = await Promise.all([
-      AsyncStorage.getItem(LEGACY_CONFIG_KEY), secretGet(LEGACY_PASSWORD_KEY), secretGet(LEGACY_OBFS_KEY), secretGet(LEGACY_SLOWDNS_PASSWORD_KEY),
+    const [legacyConfig, password, sshPassword] = await Promise.all([
+      AsyncStorage.getItem(LEGACY_CONFIG_KEY), secretGet(LEGACY_PASSWORD_KEY), secretGet(LEGACY_SLOWDNS_PASSWORD_KEY),
     ]);
     if (!legacyConfig) return null;
     try {
       const config = JSON.parse(legacyConfig) as Record<string, string>;
       if (config.mode === "slowdns") {
-        return { ...makeProfile("slowdns"), name: "Profil SSH/SlowDNS migré", selected: true, dnsServer: config.slowDnsServer ?? "", dnsPort: config.slowDnsPort ?? "53", nameserver: config.slowDnsNameserver ?? "", publicKey: config.slowDnsPublicKey ?? "", sshHost: config.slowDnsSshHost ?? "", sshUsername: config.slowDnsUsername ?? "", sshPassword: sshPassword ?? "" } as TunnelProfile;
+        return { ...makeProfile("slowdns"), name: "Profil SSH/SlowDNS migré", selected: true, dnsServer: config.slowDnsServer ?? "", dnsPort: config.slowDnsPort ?? "53", nameserver: config.slowDnsNameserver ?? "", publicKey: config.slowDnsPublicKey ?? "", sshUsername: config.slowDnsUsername ?? "", sshPassword: sshPassword ?? "" } as TunnelProfile;
       }
-      return { ...makeProfile("zivpn"), name: "Profil UDP-ZIVPN migré", selected: true, host: config.host ?? "", port: config.port ?? "", obfs: obfs ?? config.obfs ?? "", password: password ?? "" } as TunnelProfile;
+      return { ...makeProfile("zivpn"), name: "Profil UDP-ZIVPN migré", selected: true, host: config.host ?? "", port: config.port ?? "", password: password ?? "" } as TunnelProfile;
     } catch { return null; }
   }, []);
 

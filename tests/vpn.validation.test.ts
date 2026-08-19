@@ -5,9 +5,7 @@ const validZivpn: VpnValidationConfig = {
   mode: "zivpn",
   host: "203.0.113.10",
   port: "6000-19999",
-  obfs: "salamander-key",
   password: "secret",
-  slowDnsSshHost: "",
   slowDnsUsername: "",
   slowDnsPassword: "",
   slowDnsServer: "",
@@ -19,7 +17,6 @@ const validZivpn: VpnValidationConfig = {
 const validSlowDns: VpnValidationConfig = {
   ...validZivpn,
   mode: "slowdns",
-  slowDnsSshHost: "ssh.example.com",
   slowDnsUsername: "vpnuser",
   slowDnsPassword: "secret",
   slowDnsServer: "203.0.113.10",

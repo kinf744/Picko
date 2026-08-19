@@ -576,3 +576,10 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Déclencher et suivre le workflow GitHub Actions armeabi-v7a
 - [x] Vérifier l’artefact APK et documenter le résultat — run 32203673360 réussi, 45,61 Mio
 
+## Ajustements des formulaires de tunnel
+
+- [ ] Encoder la valeur Obfs fixe de ZIVPN et retirer son champ de configuration
+- [ ] Rendre les mots de passe visibles avant et après la saisie dans tous les tunnels
+- [ ] Accepter un lien VMess, VLESS ou Trojan pour V2Ray+DNS à la place du JSON brut
+- [ ] Retirer le champ Hôte SSH du formulaire SlowDNS et conserver une configuration compatible
+- [ ] Valider les modèles et démarrer le build GitHub Actions armeabi-v7a

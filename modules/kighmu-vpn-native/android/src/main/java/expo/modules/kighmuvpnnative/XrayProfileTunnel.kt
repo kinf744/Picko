@@ -3,6 +3,7 @@ package expo.modules.kighmuvpnnative
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import android.util.Base64
 import java.io.File
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -122,10 +123,22 @@ class XrayProfileTunnel(
   }
 
   private fun configFromLink(link: String): String {
-    // Link mode is deliberately constrained to an explicit local JSON conversion for the common
-    // vless/trojan forms. VMess remains supported through JSON import because its link is opaque.
     val scheme = link.substringBefore("://").lowercase()
-    require(scheme == "vless" || scheme == "trojan") { "Importez les liens $scheme sous forme JSON pour ce profil" }
+    require(scheme in setOf("vmess", "vless", "trojan")) { "Utilisez un lien VMess, VLESS ou Trojan" }
+    if (scheme == "vmess") {
+      val encoded = link.substringAfter("://").substringBefore("#").trim()
+      val decoded = try { String(Base64.decode(encoded, Base64.DEFAULT), Charsets.UTF_8) } catch (_: Throwable) { "" }
+      val source = try { JSONObject(decoded) } catch (_: Throwable) { throw IllegalArgumentException("Lien VMess invalide") }
+      val host = source.optString("add").trim()
+      val port = source.optString("port", "443").toIntOrNull() ?: 443
+      val id = source.optString("id").trim()
+      require(host.isNotBlank() && id.isNotBlank()) { "Lien VMess incomplet" }
+      val security = source.optString("scy", "auto").ifBlank { "auto" }
+      val user = JSONObject().put("id", id).put("security", security)
+      val vnext = JSONObject().put("address", host).put("port", port).put("users", JSONArray().put(user))
+      val outbound = JSONObject().put("protocol", "vmess").put("settings", JSONObject().put("vnext", JSONArray().put(vnext)))
+      return JSONObject().put("log", JSONObject().put("loglevel", "warning")).put("inbounds", JSONArray()).put("outbounds", JSONArray().put(outbound).put(JSONObject().put("protocol", "freedom").put("tag", "direct"))).toString()
+    }
     val remainder = link.substringAfter("://")
     val credentials = remainder.substringBefore("@").substringBefore("?")
     val destination = remainder.substringAfter("@", "").substringBefore("?")
