@@ -578,16 +578,16 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 
 ## Ajustements des formulaires de tunnel
 
-- [ ] Encoder la valeur Obfs fixe de ZIVPN et retirer son champ de configuration
-- [ ] Rendre les mots de passe visibles avant et après la saisie dans tous les tunnels
-- [ ] Accepter un lien VMess, VLESS ou Trojan pour V2Ray+DNS à la place du JSON brut
-- [ ] Retirer le champ Hôte SSH du formulaire SlowDNS et conserver une configuration compatible
-- [ ] Valider les modèles et démarrer le build GitHub Actions armeabi-v7a
+- [x] Encoder la valeur Obfs fixe de ZIVPN et retirer son champ de configuration
+- [x] Rendre les mots de passe visibles avant et après la saisie dans tous les tunnels
+- [x] Accepter un lien VMess, VLESS ou Trojan pour V2Ray+DNS à la place du JSON brut
+- [x] Retirer le champ Hôte SSH du formulaire SlowDNS et conserver une configuration compatible
+- [x] Valider les modèles et démarrer le build GitHub Actions armeabi-v7a — run 32206904075 réussi
 
 ## Restrictions configurables à l’export
 
-- [ ] Ajouter les options de verrouillage et de restrictions réseau au format exporté
-- [ ] Ajouter les options appareil, expiration, SSH lié à l’appareil et anti-torrent
-- [ ] Ajouter une note utilisateur facultative et la sélection de familles de tunnel
-- [ ] Rendre l’interface d’export cohérente avec le design Signal Control
-- [ ] Valider l’import, les tests et la compilation GitHub Actions
+- [x] Ajouter les options de verrouillage et de restrictions réseau au format exporté
+- [x] Ajouter les options appareil, expiration, SSH lié à l’appareil et anti-torrent
+- [x] Ajouter une note utilisateur facultative et la sélection de familles de tunnel
+- [x] Rendre l’interface d’export cohérente avec le design Signal Control
+- [x] Valider l’import, les tests et la compilation GitHub Actions — run 32206904075 réussi, 45,61 Mio
