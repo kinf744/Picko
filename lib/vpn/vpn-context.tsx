@@ -270,6 +270,8 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     const shouldBalance = shouldUseRoundRobin(selected.length);
     setLastError(null);
     setStatus("connecting");
+    setLogs([]);
+    addLog("connection", "SESSION", `Journal de connexion réinitialisé pour ${TUNNEL_CATALOG[activeKind].label}.`);
     addLog("connection", "CATALOG", `${TUNNEL_CATALOG[activeKind].label} : ${selected.length} profil(s) sélectionné(s), balancier=${shouldBalance ? "round robin automatique" : "sortie directe"}.`);
     const native = getNativeVpn();
     if (!native) {

@@ -65,6 +65,12 @@ class HysteriaProfileTunnel(
       thread(isDaemon = true, name = "hysteria-$safeId-log") {
         try { started.inputStream.bufferedReader().useLines { lines -> lines.forEach { line -> if (running && line.isNotBlank()) emit("info", "HYSTERIA", line.take(300)) } } }
         catch (_: Throwable) { if (running) emit("warning", "HYSTERIA", "Lecture des logs interrompue") }
+        finally {
+          if (running && !started.isAlive) {
+            val exit = try { started.exitValue() } catch (_: Throwable) { -1 }
+            emit("error", "HYSTERIA", "Processus Hysteria arrêté prématurément (code $exit)")
+          }
+        }
       }
       if (!waitForSocks(started, socksPort, 20_000)) error("Hysteria n’a pas ouvert son SOCKS local")
       emit("info", "HYSTERIA", "Hysteria v1.3.5 prêt sur le relais SOCKS local")

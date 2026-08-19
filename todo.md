@@ -915,3 +915,13 @@ Dernière mise à jour : les corrections locales sont validées côté TypeScrip
 - [x] Valider TypeScript et les tests locaux (30 tests)
 - [ ] Valider la compilation Android GitHub
 - [ ] Pousser tous les correctifs vers `kinf744/Picko`
+
+## Audit complet des tunnels et journal actif
+
+- [x] Cartographier le démarrage SOCKS de Hysteria, Xray/V2Ray, V2Ray+SlowDNS, HTTP Payload, SSH TLS et UDP-ZIVPN
+- [x] Ajouter ou vérifier la disponibilité du SOCKS local avant le relais TUN pour chaque moteur
+- [x] Identifier l’origine des libellés SSH/SlowDNS affichés sous une autre famille active
+- [x] Faire afficher uniquement la famille active dans les journaux de connexion
+- [x] Valider TypeScript et les tests locaux (30 tests)
+- [ ] Valider le build Android GitHub
+- [ ] Publier les correctifs vers `kinf744/Picko`

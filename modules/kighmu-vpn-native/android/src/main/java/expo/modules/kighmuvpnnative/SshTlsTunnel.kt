@@ -3,6 +3,7 @@ package expo.modules.kighmuvpnnative
 import android.content.Context
 import android.net.VpnService
 import com.trilead.ssh2.Connection
+import com.trilead.ssh2.DynamicPortForwarder
 import org.json.JSONObject
 import java.io.InputStream
 import java.io.OutputStream
@@ -55,6 +56,7 @@ class SshTlsTunnel(
   private var tlsSocket: SSLSocket? = null
   private var bridgeServer: ServerSocket? = null
   private var sshConnection: Connection? = null
+  private var dynamicForwarder: DynamicPortForwarder? = null
 
   @Synchronized
   fun start(settings: Settings): Int {
@@ -72,8 +74,9 @@ class SshTlsTunnel(
         error("Authentification SSH refusée")
       }
       SshServerMessage.capture(connection) { message -> emit("connection", "SSH_SERVER_MESSAGE", message) }
-      connection.createDynamicPortForwarder(InetSocketAddress("127.0.0.1", socksPort))
+      dynamicForwarder = connection.createDynamicPortForwarder(InetSocketAddress("127.0.0.1", socksPort))
       sshConnection = connection
+      waitForSocksListener(socksPort)
       emit("info", "SSH_TLS", "[$runtimeLabel] TLS validé et SSH authentifié ; SOCKS5 local 127.0.0.1:$socksPort")
       return socksPort
     } catch (error: Throwable) {
@@ -87,6 +90,8 @@ class SshTlsTunnel(
     running = false
     try { bridgeServer?.close() } catch (_: Throwable) {}
     bridgeServer = null
+    try { dynamicForwarder?.close() } catch (_: Throwable) {}
+    dynamicForwarder = null
     try { sshConnection?.close() } catch (_: Throwable) {}
     sshConnection = null
     try { tlsSocket?.close() } catch (_: Throwable) {}
@@ -153,6 +158,23 @@ class SshTlsTunnel(
   }
 
   private fun findFreePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+
+  private fun waitForSocksListener(port: Int) {
+    var lastError: Throwable? = null
+    repeat(15) {
+      try {
+        Socket().use { probe ->
+          LocalTunnelIo.configure(probe, 500)
+          probe.connect(InetSocketAddress("127.0.0.1", port), 500)
+        }
+        return
+      } catch (error: Throwable) {
+        lastError = error
+        Thread.sleep(80)
+      }
+    }
+    throw IllegalStateException("SOCKS5 SSH TLS local indisponible sur 127.0.0.1:$port", lastError)
+  }
 
   private fun pipe(input: InputStream, output: OutputStream) = LocalTunnelIo.pipe(input, output) { running }
 }
