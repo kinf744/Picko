@@ -22,7 +22,7 @@ function GroupTitle({ title, icon }: { title: string; icon: ComponentProps<typeo
 
 export default function ConfigurationScreen() {
   const colors = useColors();
-  const { activeKind, selectTunnel, profilesByKind, createProfile, cloneProfile, saveProfile, deleteProfile, toggleProfileSelection, resetAllProfiles } = useVpn();
+  const { activeKind, selectTunnel, profilesByKind, createProfile, cloneProfile, saveProfile, deleteProfile, toggleProfileSelection } = useVpn();
   const [draft, setDraft] = useState<TunnelProfile | null>(null);
   const [errors, setErrors] = useState<ProfileFieldErrors>({});
   const [saved, setSaved] = useState(false);
@@ -35,7 +35,6 @@ export default function ConfigurationScreen() {
   const handleClone = (profile: TunnelProfile) => { void cloneProfile(profile); };
   const handleSave = async () => { if (!draft) return; const outcome = await saveProfile(draft); setErrors(outcome.errors); if (outcome.ok) { setSaved(true); setDraft(null); setTimeout(() => setSaved(false), 2000); } };
   const confirmDelete = (profile: TunnelProfile) => Alert.alert("Supprimer ce profil ?", `Le profil « ${profile.name} » et ses secrets locaux seront supprimés.`, [{ text: "Annuler", style: "cancel" }, { text: "Supprimer", style: "destructive", onPress: () => deleteProfile(profile.kind, profile.id) }]);
-  const handleReset = () => Alert.alert("Réinitialiser toutes les collections ?", "Tous les profils, secrets et réglages de balancier seront supprimés de l’appareil.", [{ text: "Annuler", style: "cancel" }, { text: "Réinitialiser", style: "destructive", onPress: () => resetAllProfiles() }]);
 
   const profileEditor = () => {
     if (!draft) return null;
@@ -61,7 +60,6 @@ export default function ConfigurationScreen() {
       <View style={styles.profilesHeading}><SectionLabel>Profils enregistrés</SectionLabel><IconAction label="Ajouter" icon="add" onPress={beginNew} /></View>
       {profiles.length === 0 ? <Panel style={styles.emptyPanel}><MaterialIcons name="add-circle-outline" size={28} color={colors.primary} /><Text style={[styles.emptyTitle, { color: colors.foreground }]}>Créez votre premier profil</Text><Text style={[styles.emptyText, { color: colors.muted }]}>Les paramètres resteront isolés de toutes les autres familles de tunnel.</Text><Pressable onPress={beginNew} style={({ pressed }) => [styles.emptyAction, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><Text style={[styles.emptyActionText, { color: colors.primary }]}>Ajouter un profil</Text></Pressable></Panel> : <View style={styles.profileList}>{profiles.map((profile) => <Panel key={profile.id} style={[styles.profileCard, profile.selected && { borderColor: colors.primary }]}><View style={styles.profileTop}><Pressable onPress={() => toggleProfileSelection(activeKind, profile.id)} accessibilityRole="checkbox" accessibilityState={{ checked: profile.selected }} style={({ pressed }) => [styles.profileToggle, pressed && styles.pressed]}><View style={[styles.check, { borderColor: profile.selected ? colors.primary : colors.border, backgroundColor: profile.selected ? colors.primary : "transparent" }]}>{profile.selected ? <MaterialIcons name="check" size={15} color="#FFFFFF" /> : null}</View><View style={styles.profileText}><Text style={[styles.profileName, { color: colors.foreground }]}>{profile.name}</Text><Text numberOfLines={1} style={[styles.profileEndpoint, { color: colors.muted }]}>{profileEndpoint(profile)}</Text></View></Pressable><View style={styles.profileActions}><Pressable accessibilityLabel="Cloner le profil" onPress={() => handleClone(profile)} style={({ pressed }) => [styles.smallIconButton, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="content-copy" size={17} color={colors.primary} /></Pressable><Pressable onPress={() => beginEdit(profile)} style={({ pressed }) => [styles.smallIconButton, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="edit" size={18} color={colors.primary} /></Pressable><Pressable onPress={() => confirmDelete(profile)} style={({ pressed }) => [styles.smallIconButton, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="delete-outline" size={18} color={colors.error} /></Pressable></View></View></Panel>)}</View>}
       {profileEditor()}
-      <Pressable onPress={handleReset} style={({ pressed }) => [styles.resetButton, pressed && styles.pressed]}><MaterialIcons name="restart-alt" size={18} color={colors.error} /><Text style={[styles.resetText, { color: colors.error }]}>Réinitialiser les profils locaux</Text></Pressable>
     </ScrollView>
   </ScreenContainer>;
 }
@@ -98,7 +96,5 @@ const styles = StyleSheet.create({
   inputModeRow: { flexDirection: "row", gap: 9 },
   modeButton: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   modeText: { fontSize: 13, fontWeight: "800" },
-  resetButton: { minHeight: 50, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8, marginTop: 4 },
-  resetText: { fontSize: 13, fontWeight: "800" },
   pressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },
 });

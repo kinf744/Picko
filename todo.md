@@ -614,3 +614,9 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [ ] Retirer le bloc Profils sélectionnés et son raccourci Gérer
 - [ ] Préserver le choix du tunnel, le bouton de connexion et l’accès aux profils par l’onglet Configuration
 - [ ] Valider les tests et compiler exclusivement avec GitHub Actions
+
+## Simplification de l’onglet Configuration
+
+- [ ] Retirer l’action Réinitialiser les profils locaux de Configuration
+- [ ] Préserver les profils enregistrés et la réinitialisation globale confirmée du menu principal
+- [ ] Valider les tests et compiler exclusivement avec GitHub Actions
