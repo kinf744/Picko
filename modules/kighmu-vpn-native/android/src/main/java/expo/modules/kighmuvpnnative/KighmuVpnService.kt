@@ -35,7 +35,14 @@ class KighmuVpnService : VpnService() {
   private var activeMode = "zivpn"
   private var attemptGeneration = 0L
 
+  override fun onCreate() {
+    super.onCreate()
+    PersistentDiagnosticLog.initialize(this)
+    emitLog("info", "SERVICE", "Service VPN Android créé")
+  }
+
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    emitLog("info", "SERVICE", "Commande reçue : ${intent?.action ?: "inconnue"}")
     when (intent?.action) {
       ACTION_STOP -> stopVpn()
       ACTION_START -> {
@@ -67,6 +74,7 @@ class KighmuVpnService : VpnService() {
         else -> startZivpn(root, generation)
       }
     } catch (error: Throwable) {
+      PersistentDiagnosticLog.recordThrowable(this, "SERVICE", error)
       fail(generation, error.message ?: error::class.java.simpleName)
     }
   }
@@ -366,7 +374,10 @@ class KighmuVpnService : VpnService() {
     stopVpn(STATUS_ERROR)
   }
 
-  private fun emitLog(level: String, component: String, message: String) { logSink?.invoke(level, component, message) }
+  private fun emitLog(level: String, component: String, message: String) {
+    PersistentDiagnosticLog.record(this, level, component, message)
+    logSink?.invoke(level, component, message)
+  }
 
   private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
     val zivpn: Process?
@@ -416,8 +427,8 @@ class KighmuVpnService : VpnService() {
       .build()
   }
 
-  override fun onRevoke() { stopVpn(); super.onRevoke() }
-  override fun onDestroy() { stopVpn(); super.onDestroy() }
+  override fun onRevoke() { emitLog("warning", "SERVICE", "Autorisation VPN révoquée par Android"); stopVpn(); super.onRevoke() }
+  override fun onDestroy() { emitLog("info", "SERVICE", "Service VPN détruit"); stopVpn(); super.onDestroy() }
   override fun onBind(intent: Intent?) = super.onBind(intent)
 
   companion object {

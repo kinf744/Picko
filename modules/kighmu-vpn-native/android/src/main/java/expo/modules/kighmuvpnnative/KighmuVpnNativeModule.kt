@@ -11,6 +11,10 @@ class KighmuVpnNativeModule : Module() {
     Events("onStateChanged", "onLog")
 
     OnCreate {
+      appContext.reactContext?.let {
+        PersistentDiagnosticLog.initialize(it)
+        PersistentDiagnosticLog.record(it, "info", "MODULE", "Module natif KIGHMU VPN initialisé")
+      }
       KighmuVpnService.logSink = { level, component, message ->
         sendEvent("onLog", mapOf(
           "level" to level,
@@ -41,6 +45,7 @@ class KighmuVpnNativeModule : Module() {
     AsyncFunction("prepareVpn") {
       val activity = appContext.currentActivity ?: return@AsyncFunction false
       val intent = VpnService.prepare(activity)
+      PersistentDiagnosticLog.record(activity, "info", "MODULE", if (intent == null) "Autorisation VPN déjà accordée" else "Demande d’autorisation VPN affichée")
       if (intent == null) {
         true
       } else {
@@ -55,13 +60,20 @@ class KighmuVpnNativeModule : Module() {
         action = KighmuVpnService.ACTION_START
         putExtra(KighmuVpnService.EXTRA_CONFIG_JSON, configJson)
       }
-      context.startForegroundService(intent)
+      try {
+        PersistentDiagnosticLog.record(context, "info", "MODULE", "Demande de démarrage du service VPN")
+        context.startForegroundService(intent)
+      } catch (error: Throwable) {
+        PersistentDiagnosticLog.recordThrowable(context, "MODULE", error)
+        throw error
+      }
       sendEvent("onStateChanged", mapOf("status" to KighmuVpnService.STATUS_CONNECTING))
       true
     }
 
     AsyncFunction("stopVpn") {
       val context = appContext.reactContext ?: return@AsyncFunction false
+      PersistentDiagnosticLog.record(context, "info", "MODULE", "Demande d’arrêt du service VPN")
       context.startService(Intent(context, KighmuVpnService::class.java).apply {
         action = KighmuVpnService.ACTION_STOP
       })

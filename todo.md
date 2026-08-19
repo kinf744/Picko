@@ -661,7 +661,18 @@ Le correctif aligne le chemin UDP-ZIVPN du catalogue sur le parcours multi-profi
 - [x] Enregistrer le signalement : l’application se ferme brutalement à chaque tentative de connexion, avant l’établissement du VPN
 - [x] Examiner la régression introduite dans la création du TUN et les options Android communes à toutes les familles
 - [x] Ajouter une protection de stabilité réversible autour du démarrage du tunnel
-- [ ] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a
+- [x] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a — run 32216696172 réussi, commit 6858b100, APK 45,63 Mio
 - [ ] Faire vérifier sur Android qu’un tunnel peut démarrer sans fermeture de l’application
 
 L’unique changement récent commun aux sept familles était l’activation explicite du descripteur TUN en mode bloquant. Il a été retiré pour revenir au contrat de descripteur précédent ; un relais natif qui suppose un TUN non bloquant peut provoquer une fermeture brutale au premier trafic. Les améliorations propres à UDP-ZIVPN restent isolées et aucun élément serveur ou protocolaire n’est touché.
+
+## Journal de crash persistant dans Téléchargements
+
+- [x] Enregistrer la demande d’un fichier `kighmu.txt` consultable depuis Téléchargements après une fermeture brutale
+- [x] Définir une capture native compatible avec le stockage Android moderne, sans permission large de stockage
+- [x] Enregistrer le cycle de service VPN, les étapes de tunnel et les exceptions non fatales
+- [x] Filtrer systématiquement mots de passe, Obfs, liens et autres secrets avant toute écriture
+- [ ] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a
+- [ ] Faire récupérer `kighmu.txt` après une nouvelle tentative de connexion
+
+Le journal utilise MediaStore vers `Téléchargements/kighmu.txt` sur Android 10 et ultérieur, avec une copie interne de secours. Tout échec d’écriture est absorbé afin de ne jamais interrompre le service VPN. Chaque entrée est écrite avant l’émission vers React Native et masque les clés sensibles, les liens VMess/VLESS/Trojan ainsi que les identifiants dans les URL.
