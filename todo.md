@@ -620,3 +620,10 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [ ] Retirer l’action Réinitialiser les profils locaux de Configuration
 - [ ] Préserver les profils enregistrés et la réinitialisation globale confirmée du menu principal
 - [ ] Valider les tests et compiler exclusivement avec GitHub Actions
+
+## Partage par presse-papiers
+
+- [ ] Ajouter la création d’une configuration dans le presse-papiers depuis Exporter
+- [ ] Ajouter l’import d’une configuration depuis le presse-papiers
+- [ ] Conserver les avertissements de sécurité lorsque les secrets sont inclus
+- [ ] Valider les tests et compiler exclusivement avec GitHub Actions
