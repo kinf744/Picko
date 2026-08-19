@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildConfigExport, parseConfigImport } from "../lib/vpn/config-transfer";
-import { DEFAULT_EXPORT_RESTRICTIONS } from "../lib/vpn/export-restrictions";
+import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions } from "../lib/vpn/export-restrictions";
 import { createProfile, defaultBalancer, type TunnelKind, type TunnelProfile, type ZivpnProfile } from "../lib/vpn/tunnel-profiles";
 
 const emptyProfiles = () => ({
@@ -46,6 +46,12 @@ describe("transfert de configurations KIGHMU VPN", () => {
 
     expect(exported.schemaVersion).toBe(2);
     expect(imported.restrictions).toMatchObject({ lockConfiguration: true, mobileDataOnly: true, blockRootedDevice: true, expiresAt: "2027-12-31", userNote: "Configuration réservée aux utilisateurs autorisés." });
+  });
+
+  it("normalise une expiration absente ou littérale null sans créer de date active", () => {
+    expect(normalizeExportRestrictions({ expiresAt: null }).expiresAt).toBeNull();
+    expect(normalizeExportRestrictions({ expiresAt: "null" }).expiresAt).toBeNull();
+    expect(normalizeExportRestrictions({ expiresAt: "" }).expiresAt).toBeNull();
   });
 
   it("normalise et conserve les listes Hardware ID et opérateurs autorisés", () => {

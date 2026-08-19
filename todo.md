@@ -672,7 +672,17 @@ L’unique changement récent commun aux sept familles était l’activation exp
 - [x] Définir une capture native compatible avec le stockage Android moderne, sans permission large de stockage
 - [x] Enregistrer le cycle de service VPN, les étapes de tunnel et les exceptions non fatales
 - [x] Filtrer systématiquement mots de passe, Obfs, liens et autres secrets avant toute écriture
-- [ ] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a
+- [x] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a — run 32218959613 réussi, commit 8012f253, APK 45,63 Mio
 - [ ] Faire récupérer `kighmu.txt` après une nouvelle tentative de connexion
 
 Le journal utilise MediaStore vers `Téléchargements/kighmu.txt` sur Android 10 et ultérieur, avec une copie interne de secours. Tout échec d’écriture est absorbé afin de ne jamais interrompre le service VPN. Chaque entrée est écrite avant l’émission vers React Native et masque les clés sensibles, les liens VMess/VLESS/Trojan ainsi que les identifiants dans les URL.
+
+## Rejet erroné de configuration expirée
+
+- [x] Analyser `kighmu.txt` : le service démarre correctement, puis s’arrête avant le TUN avec `IllegalArgumentException: Configuration expirée le null`
+- [x] Corriger la validation d’expiration afin qu’une date absente, vide ou littérale `null` ne soit jamais considérée comme expirée
+- [x] Ajouter une protection de diagnostic qui distingue une expiration réelle d’une date de restriction invalide
+- [ ] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a
+- [ ] Faire réessayer le démarrage du tunnel et récupérer le nouveau journal si nécessaire
+
+La date `expiresAt: null` était convertie par Android en chaîne `null`, considérée à tort comme une date non vide, puis rejetée avant la création du TUN. Les valeurs absentes, JSON `null`, vides ou littérales `null` sont désormais sans expiration. Une date non vide mais invalide est ignorée avec une entrée `POLITIQUE` explicite ; une date valide et réellement dépassée reste bloquante.

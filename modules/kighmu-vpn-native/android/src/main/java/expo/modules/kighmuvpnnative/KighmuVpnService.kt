@@ -190,11 +190,20 @@ class KighmuVpnService : VpnService() {
 
   private fun enforceRestrictions(root: JSONObject) {
     val restrictions = root.optJSONObject("restrictions") ?: return
-    val expiry = restrictions.optString("expiresAt").trim()
+    val expiry = restrictions.opt("expiresAt")
+      ?.takeUnless { it == JSONObject.NULL }
+      ?.toString()
+      ?.trim()
+      ?.takeUnless { it.equals("null", ignoreCase = true) }
+      .orEmpty()
     if (expiry.isNotBlank()) {
       val format = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
       val expiryDate = try { format.parse(expiry) } catch (_: Throwable) { null }
-      require(expiryDate != null && !java.util.Date().after(expiryDate)) { "Configuration expirée le $expiry" }
+      if (expiryDate == null) {
+        emitLog("warning", "POLITIQUE", "Date d’expiration ignorée : format invalide")
+      } else {
+        require(!java.util.Date().after(expiryDate)) { "Configuration expirée le $expiry" }
+      }
     }
     if (restrictions.optBoolean("blockRootedDevice", false)) require(!isDeviceRooted()) { "Appareil rooté bloqué par cette configuration" }
     if (restrictions.optBoolean("bindDeviceId", false)) {
