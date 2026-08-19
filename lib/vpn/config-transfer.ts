@@ -69,6 +69,7 @@ type DirectVlessClipboard = {
   name: string;
   sshTunnelConfig: { sshConfig: { port: number } };
   vlessTunnelConfig: { v2rayConfig: { host: string; port: number; uuid: string; tls: boolean; wsPath: string; wsHeaderHost: string } };
+  kighmuRestrictions?: ExportRestrictions;
 };
 
 function normalizeProfile(kind: TunnelKind, source: unknown): TunnelProfile | null {
@@ -124,6 +125,7 @@ function directVlessClipboard(config: ConfigExport): DirectVlessClipboard | null
           wsHeaderHost: query.get("host") || query.get("sni") || host,
         },
       },
+      kighmuRestrictions: normalizeExportRestrictions(config.restrictions),
     };
   } catch { return null; }
 }
@@ -148,7 +150,7 @@ function importDirectVless(value: unknown): ImportResult | null {
     importedProfiles: 1,
     skippedProfiles: 0,
     containsSecrets: true,
-    restrictions: DEFAULT_EXPORT_RESTRICTIONS,
+    restrictions: normalizeExportRestrictions(value.kighmuRestrictions ?? value.restrictions),
   };
 }
 

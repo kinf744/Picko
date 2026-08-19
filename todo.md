@@ -710,6 +710,18 @@ Le préfixe attendu est exactement `kighmu://`, suivi d’un JSON UTF-8 encodé 
 - [x] Importer ce payload direct vers un profil `xray-v2ray` KIGHMU de type lien VLESS
 - [x] Préserver le format multi-profils KIGHMU pour les exports contenant plusieurs profils ou familles
 - [x] Ajouter les tests de conversion de l’exemple VLESS, d’encodage Base64 et de rétrocompatibilité
-- [ ] Compiler exclusivement via GitHub Actions et vérifier sur Android
+- [x] Compiler exclusivement via GitHub Actions — run 32224817583 réussi, commit 47b26e49, APK 45,63 Mio
+- [ ] Vérifier sur Android le balancier avec deux profils et l’import/export Clipboard VLESS
 
 La structure directe est émise lorsqu’un unique profil Xray/V2Ray en lien VLESS est exporté avec les secrets explicitement inclus ; dans les autres cas, le Clipboard conserve l’enveloppe multi-profils KIGHMU sous le même préfixe `kighmu://`. TypeScript, le diff et 25 tests sont validés localement.
+
+## Vérification Clipboard des cases d’export
+
+- [x] Vérifier que les familles cochées sont conservées dans le Clipboard
+- [x] Vérifier que chaque restriction cochée est conservée dans le Clipboard
+- [x] Vérifier la couverture des sept familles de tunnels à l’import/export
+- [x] Vérifier le comportement des confirmations et avertissements lors de l’import
+- [x] Corriger les écarts éventuels et ajouter les tests de régression
+- [ ] Recompiler via GitHub Actions si une correction est nécessaire
+
+L’audit a trouvé puis corrigé une exception : les restrictions étaient perdues uniquement pour le payload VLESS direct. Elles sont maintenant conservées dans `kighmuRestrictions`; les sept familles et l’enveloppe multi-profils restent inchangées. TypeScript, diff et 26 tests sont validés localement.

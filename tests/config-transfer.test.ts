@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildClipboardPayload, buildConfigExport, parseConfigImport } from "../lib/vpn/config-transfer";
 import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions } from "../lib/vpn/export-restrictions";
-import { createProfile, defaultBalancer, shouldUseRoundRobin, type TunnelKind, type TunnelProfile, type XrayProfile, type ZivpnProfile } from "../lib/vpn/tunnel-profiles";
+import { createProfile, defaultBalancer, shouldUseRoundRobin, TUNNEL_KINDS, type TunnelKind, type TunnelProfile, type XrayProfile, type ZivpnProfile } from "../lib/vpn/tunnel-profiles";
 
 const emptyProfiles = () => ({
   zivpn: [], slowdns: [], hysteria: [], "http-payload": [], "ssh-tls": [], "v2ray-slowdns": [], "xray-v2ray": [],
@@ -49,12 +49,20 @@ describe("transfert de configurations KIGHMU VPN", () => {
   it("produit et relit la structure Clipboard VLESS directe attendue", () => {
     const profiles = emptyProfiles();
     profiles["xray-v2ray"] = [{ ...createProfile("xray-v2ray"), kind: "xray-v2ray", name: "Jivo", inputMode: "link", link: "vless://1a3829ce-f01e-4899-8537-1b4d188408ef@jiovod.cdn.jio.com:443?type=ws&security=none&path=%2FTELEGRAM&host=pane2.global.ssl.fastly.net#Jivo", json: "" } as XrayProfile];
-    const clipboard = buildClipboardPayload(buildConfigExport(profiles, emptyBalancers(), ["xray-v2ray"], true));
+    const restrictions = { ...DEFAULT_EXPORT_RESTRICTIONS, lockConfiguration: true, blockRootedDevice: true, bindDeviceId: true, allowedHardwareIds: ["B1CDCFA839525E38B3B8B6DBCD28DA5F"], userNote: "VLESS autorisé" };
+    const clipboard = buildClipboardPayload(buildConfigExport(profiles, emptyBalancers(), ["xray-v2ray"], true, restrictions));
     const decoded = JSON.parse(Buffer.from(clipboard.slice("kighmu://".length), "base64").toString("utf-8"));
     const imported = parseConfigImport(clipboard);
 
     expect(decoded).toMatchObject({ type: "VLESS", name: "Jivo", sshTunnelConfig: { sshConfig: { port: 80 } }, vlessTunnelConfig: { v2rayConfig: { host: "jiovod.cdn.jio.com", uuid: "1a3829ce-f01e-4899-8537-1b4d188408ef", tls: false, wsPath: "/TELEGRAM", wsHeaderHost: "pane2.global.ssl.fastly.net" } } });
     expect(imported.tunnels[0].profiles[0]).toMatchObject({ kind: "xray-v2ray", name: "Jivo", inputMode: "link" });
+    expect(imported.restrictions).toMatchObject({ lockConfiguration: true, blockRootedDevice: true, bindDeviceId: true, allowedHardwareIds: ["B1CDCFA839525E38B3B8B6DBCD28DA5F"], userNote: "VLESS autorisé" });
+  });
+
+  it("conserve les sept familles dans l’enveloppe Clipboard multi-profils", () => {
+    const exported = buildConfigExport(emptyProfiles(), emptyBalancers(), [...TUNNEL_KINDS], false);
+    const imported = parseConfigImport(buildClipboardPayload(exported));
+    expect(imported.importedKinds).toEqual([...TUNNEL_KINDS]);
   });
 
   it("active le round robin seulement à partir de deux profils sélectionnés", () => {
