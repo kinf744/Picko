@@ -799,3 +799,46 @@ Dernière mise à jour : les corrections locales sont validées côté TypeScrip
 - [x] Valider TypeScript, tests et packaging logique après suppression
 - [ ] Pousser la suppression et lancer GitHub Actions
 - [ ] Vérifier le résultat du build avant installation Android
+
+
+## Audit d’optimisation APK demandé
+
+- [x] Mesurer la taille de chaque bibliothèque native et ressource Android
+- [x] Tracer chaque `.so` vers un tunnel ou un chargement natif
+- [x] Auditer les fichiers générés par GitHub Actions et les doublons de packaging
+- [x] Identifier les ressources et dépendances JavaScript réellement inutilisées
+- [x] Supprimer uniquement les éléments dont l’inutilité est démontrée
+- [x] Valider TypeScript, tests, références et taille estimée après nettoyage
+- [ ] Préparer un checkpoint avant toute nouvelle compilation GitHub Actions
+
+
+### Résultat intermédiaire de l’audit
+
+- [x] Audit des tailles : `libuz_core.so` 11,5 Mo, `libxray.so` 7,1 Mo, `libhev-socks5-tunnel.so` 203 Ko
+- [x] Confirmation que `libtun2socks.so` était un doublon hashé et non référencé par CMake/Kotlin
+- [x] Suppression de `libtun2socks.so`
+- [x] Suppression des quatre images React de template non référencées
+- [x] Conservation de `libhev-socks5-tunnel.so`, requis par `hev_jni`
+- [x] Conservation de `libuz_core.so` et `libxray.so`, requis par UDP-ZIVPN et Xray/V2Ray
+- [x] Conservation de `libdnstt.so` et `libhysteria.so`, générés par GitHub Actions et requis par SlowDNS/Hysteria
+
+
+## Vérification d’intégration des bibliothèques natives conservées
+
+- [x] Cartographier chaque tunnel vers son moteur natif ou relais partagé
+- [x] Vérifier les noms binaires attendus dans Kotlin et le workflow
+- [x] Vérifier la compatibilité ABI armeabi-v7a et les artefacts générés
+- [x] Détecter les références manquantes ou les bibliothèques non empaquetées
+- [x] Corriger les incohérences démontrées et valider les tests
+- [ ] Préparer un checkpoint avant le prochain build GitHub Actions
+
+
+## Build et validation Android demandés
+
+- [ ] Vérifier le checkpoint d’intégration natif à publier
+- [ ] Pousser les modifications vers `kinf744/Picko`
+- [ ] Lancer et suivre le workflow GitHub Actions
+- [ ] Inspecter l’APK release et ses bibliothèques natives
+- [ ] Installer l’APK sur Android
+- [ ] Tester UDP-ZIVPN, SlowDNS, Hysteria, HTTP Payload, SSH TLS, Xray/V2Ray et V2Ray+SlowDNS
+- [ ] Recueillir les journaux expurgés et les résultats de trafic

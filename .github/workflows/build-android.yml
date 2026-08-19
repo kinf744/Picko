@@ -113,6 +113,19 @@ jobs:
           test -s "$OUTPUT"
           file "$OUTPUT"
 
+      - name: Verify native tunnel artifacts
+        run: |
+          set -euo pipefail
+          OUTPUT_DIR="${GITHUB_WORKSPACE}/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a"
+          for artifact in libhev-socks5-tunnel.so libuz_core.so libxray.so libdnstt.so libhysteria.so; do
+            test -s "$OUTPUT_DIR/$artifact"
+            test -x "$OUTPUT_DIR/$artifact"
+            file "$OUTPUT_DIR/$artifact" | grep -E 'ARM|shared object|executable'
+          done
+          test ! -e "$OUTPUT_DIR/libtun2socks.so"
+          test ! -e "$OUTPUT_DIR/libbridge.so"
+          echo "Artefacts natifs armeabi-v7a validés"
+
       - name: Install JavaScript dependencies
         env:
           NODE_ENV: development
