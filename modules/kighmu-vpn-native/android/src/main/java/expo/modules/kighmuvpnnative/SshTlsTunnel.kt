@@ -124,7 +124,7 @@ class SshTlsTunnel(
         val banner = readSshBanner(remoteInput)
         client.getOutputStream().write(banner.toByteArray())
         client.getOutputStream().flush()
-        emit("info", "SSH_TLS", "[$runtimeLabel] bannière SSH reçue à travers TLS")
+        emit("connection", "SSH_BANNER", banner.trim().take(240))
         val returnPipe = thread(isDaemon = true) { pipe(remoteInput, client.getOutputStream()) }
         pipe(client.getInputStream(), remote.outputStream)
         returnPipe.join(300)

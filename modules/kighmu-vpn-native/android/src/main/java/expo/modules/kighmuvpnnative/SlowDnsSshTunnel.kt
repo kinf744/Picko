@@ -178,7 +178,7 @@ class SlowDnsSshTunnel(
         client.getOutputStream().write(banner.toString().toByteArray())
         client.getOutputStream().flush()
         LocalTunnelIo.configure(remote)
-        emit("info", "SSH", "Bannière SSH reçue via SlowDNS")
+        emit("connection", "SSH_BANNER", banner.toString().trim().take(240))
         val clientInput = client.getInputStream()
         val clientOutput = client.getOutputStream()
         val remoteOutput = remote.getOutputStream()

@@ -627,3 +627,11 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Ajouter l’import d’une configuration depuis le presse-papiers
 - [x] Conserver les avertissements de sécurité lorsque les secrets sont inclus
 - [x] Valider les tests et compiler exclusivement avec GitHub Actions — run 32211022651 réussi, 45,63 Mio
+
+## Refonte du journal Diagnostic
+
+- [ ] Remplacer les panneaux actuels par un journal de connexion chronologique
+- [ ] Structurer les étapes de tunnel, réseau et SSH en lignes lisibles
+- [ ] Capturer et afficher uniquement une bannière SSH réellement reçue
+- [ ] Filtrer secrets et données sensibles avant persistance ou affichage
+- [ ] Valider les tests et compiler exclusivement avec GitHub Actions

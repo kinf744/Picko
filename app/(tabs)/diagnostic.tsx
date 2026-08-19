@@ -1,66 +1,26 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { AppHeader, IconAction, Panel, SectionLabel, StatusPill } from "@/components/kighmu-ui";
+import { AppHeader } from "@/components/kighmu-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
-import { useVpn, type LogLevel } from "@/lib/vpn/vpn-context";
+import { diagnosticTone, formatDiagnosticTime, isSshBanner } from "@/lib/vpn/diagnostic-format";
+import { useVpn, type DiagnosticLog } from "@/lib/vpn/vpn-context";
 
-const filters: { key: "all" | LogLevel; label: string }[] = [
-  { key: "all", label: "Tous" },
-  { key: "error", label: "Erreurs" },
-  { key: "warning", label: "Alertes" },
-  { key: "connection", label: "Connexion" },
-];
-
-const levelLabel: Record<LogLevel, string> = { error: "Erreur", warning: "Alerte", connection: "Connexion", info: "Information" };
+function JournalLine({ log }: { log: DiagnosticLog }) {
+  const colors = useColors();
+  const tone = diagnosticTone(log.level);
+  const lineColor = tone === "error" ? colors.error : tone === "warning" ? colors.warning : tone === "connection" ? colors.primary : colors.foreground;
+  const banner = isSshBanner(log.component);
+  return <View style={[styles.line, { borderBottomColor: colors.border }]}><Text style={[styles.lineText, { color: lineColor }]}><Text style={[styles.time, { color: colors.muted }]}>[{formatDiagnosticTime(log.timestamp)}] </Text><Text style={[styles.tag, { color: lineColor }]}>[KIGHMU]</Text>{banner ? " Message serveur SSH" : ` ${log.message}`}</Text>{banner ? <View style={[styles.banner, { borderColor: colors.primary, backgroundColor: colors.surfaceRaised }]}><View style={styles.bannerHead}><MaterialIcons name="dns" size={17} color={colors.primary} /><Text style={[styles.bannerTitle, { color: colors.foreground }]}>Bannière SSH reçue</Text></View><Text selectable style={[styles.bannerText, { color: colors.foreground }]}>{log.message || "Aucune bannière exploitable n’a été reçue."}</Text></View> : null}</View>;
+}
 
 export default function DiagnosticScreen() {
   const colors = useColors();
   const { logs, clearLogs } = useVpn();
-  const [filter, setFilter] = useState<"all" | LogLevel>("all");
-  const visibleLogs = useMemo(() => filter === "all" ? logs : logs.filter((log) => log.level === filter), [filter, logs]);
-  const report = logs.map((log) => `[${log.timestamp}] ${log.level.toUpperCase()} ${log.component}: ${log.message}`).join("\n") || "Aucun événement enregistré.";
-  const errorCount = useMemo(() => logs.filter((log) => log.level === "error").length, [logs]);
-
-  const shareReport = async () => { await Share.share({ title: "Diagnostic KIGHMU VPN", message: `Rapport KIGHMU VPN\n\n${report}` }); };
-
-  return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <AppHeader />
-      <Panel raised style={styles.summaryPanel}><View style={styles.summaryTop}><View><Text style={[styles.summaryCount, { color: colors.foreground }]}>{logs.length}</Text><Text style={[styles.summaryCaption, { color: colors.muted }]}>événement{logs.length > 1 ? "s" : ""} dans la session locale</Text></View><StatusPill label={errorCount > 0 ? `${errorCount} erreur${errorCount > 1 ? "s" : ""}` : "Journal sain"} tone={errorCount > 0 ? "error" : "success"} /></View><View style={[styles.summaryFooter, { borderTopColor: colors.border }]}><MaterialIcons name="visibility-off" size={16} color={colors.success} /><Text style={[styles.summaryFooterText, { color: colors.muted }]}>Rapport limité aux 300 entrées et nettoyé des valeurs sensibles.</Text></View></Panel>
-      <View style={styles.shareAction}><IconAction label="Partager le rapport" icon="share" onPress={shareReport} /></View>
-      <View><SectionLabel trailing={<Text style={[styles.filterHint, { color: colors.muted }]}>{visibleLogs.length} affiché{visibleLogs.length > 1 ? "s" : ""}</Text>}>Filtrer les événements</SectionLabel><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>{filters.map((item) => <Pressable key={item.key} onPress={() => setFilter(item.key)} style={({ pressed }) => [styles.filter, { backgroundColor: filter === item.key ? colors.primary : colors.surface, borderColor: filter === item.key ? colors.primary : colors.border }, pressed && styles.pressed]}><Text style={[styles.filterText, { color: filter === item.key ? "#FFFFFF" : colors.foreground }]}>{item.label}</Text></Pressable>)}</ScrollView></View>
-      <View><SectionLabel>Chronologie</SectionLabel>{visibleLogs.length === 0 ? <Panel style={styles.empty}><MaterialIcons name="fact-check" size={25} color={colors.primary} /><Text style={[styles.emptyTitle, { color: colors.foreground }]}>Aucun événement dans ce filtre</Text><Text style={[styles.emptyText, { color: colors.muted }]}>Les étapes du tunnel apparaîtront ici lors de la prochaine connexion.</Text></Panel> : <View style={styles.logList}>{visibleLogs.map((log) => <Panel key={log.id} style={styles.logCard}><View style={styles.logTop}><StatusPill label={levelLabel[log.level]} tone={log.level === "error" ? "error" : log.level === "warning" ? "warning" : log.level === "connection" ? "primary" : "success"} /><Text style={[styles.logTime, { color: colors.muted }]}>{new Date(log.timestamp).toLocaleTimeString()}</Text></View><Text style={[styles.logComponent, { color: colors.foreground }]}>{log.component}</Text><Text style={[styles.logMessage, { color: colors.muted }]}>{log.message}</Text></Panel>)}</View>}</View>
-      <Pressable onPress={clearLogs} style={({ pressed }) => [styles.clearButton, { borderColor: colors.border }, pressed && styles.pressed]}><MaterialIcons name="delete-outline" size={18} color={colors.error} /><Text style={[styles.clearText, { color: colors.error }]}>Effacer le journal local</Text></Pressable>
-    </ScrollView>
-  </ScreenContainer>;
+  return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}><FlatList data={logs} keyExtractor={(item) => item.id} renderItem={({ item }) => <JournalLine log={item} />} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} ListHeaderComponent={<><AppHeader /><View style={styles.heading}><View><Text style={[styles.title, { color: colors.foreground }]}>Journal de connexion</Text><Text style={[styles.subtitle, { color: colors.muted }]}>Étapes réelles du tunnel et messages SSH reçus.</Text></View><Pressable accessibilityLabel="Effacer le journal" onPress={clearLogs} style={({ pressed }) => [styles.clear, { borderColor: colors.border, backgroundColor: colors.surface }, pressed && styles.pressed]}><MaterialIcons name="delete-outline" size={18} color={colors.error} /></Pressable></View></>} ListEmptyComponent={<View style={styles.empty}><MaterialIcons name="terminal" size={25} color={colors.primary} /><Text style={[styles.emptyTitle, { color: colors.foreground }]}>En attente d’une connexion</Text><Text style={[styles.emptyText, { color: colors.muted }]}>Les étapes réseau et SSH s’afficheront ici pendant la prochaine tentative.</Text></View>} /></ScreenContainer>;
 }
 
 const styles = StyleSheet.create({
-  content: { paddingBottom: 32, gap: 20 },
-  summaryPanel: { padding: 17 },
-  summaryTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
-  summaryCount: { fontSize: 30, lineHeight: 34, fontWeight: "800", letterSpacing: -0.6 },
-  summaryCaption: { marginTop: 3, fontSize: 12, lineHeight: 17 },
-  summaryFooter: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, marginTop: 16, flexDirection: "row", alignItems: "center", gap: 8 },
-  summaryFooterText: { flex: 1, fontSize: 11, lineHeight: 16 },
-  shareAction: { alignItems: "flex-end", marginTop: -10 },
-  filterHint: { fontSize: 11, fontWeight: "700" },
-  filters: { gap: 8, paddingRight: 20 },
-  filter: { minHeight: 40, borderWidth: 1, borderRadius: 13, justifyContent: "center", paddingHorizontal: 13 },
-  filterText: { fontSize: 12, fontWeight: "800" },
-  logList: { gap: 10 },
-  logCard: { padding: 14 },
-  logTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  logTime: { fontSize: 11, fontWeight: "700" },
-  logComponent: { marginTop: 13, fontSize: 13, fontWeight: "800" },
-  logMessage: { marginTop: 5, fontSize: 12, lineHeight: 18 },
-  empty: { alignItems: "center", paddingVertical: 28 },
-  emptyTitle: { marginTop: 11, fontSize: 15, fontWeight: "800" },
-  emptyText: { marginTop: 6, maxWidth: 250, textAlign: "center", fontSize: 12, lineHeight: 18 },
-  clearButton: { minHeight: 50, borderWidth: 1, borderRadius: 15, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 2 },
-  clearText: { fontSize: 13, fontWeight: "800" },
-  pressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },
+  content: { paddingBottom: 32 }, heading: { marginTop: 18, marginBottom: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, title: { fontSize: 18, fontWeight: "900" }, subtitle: { marginTop: 5, fontSize: 12, lineHeight: 17 }, clear: { width: 42, height: 42, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center" }, line: { paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth }, lineText: { fontSize: 14, lineHeight: 21, fontWeight: "500" }, time: { fontVariant: ["tabular-nums"] }, tag: { fontWeight: "900" }, banner: { marginTop: 9, borderLeftWidth: 3, borderRadius: 12, padding: 13 }, bannerHead: { flexDirection: "row", alignItems: "center", gap: 7 }, bannerTitle: { fontSize: 13, fontWeight: "900" }, bannerText: { marginTop: 9, fontSize: 14, lineHeight: 20, fontWeight: "700" }, empty: { paddingTop: 72, alignItems: "center" }, emptyTitle: { marginTop: 12, fontSize: 16, fontWeight: "900" }, emptyText: { marginTop: 7, maxWidth: 260, textAlign: "center", fontSize: 12, lineHeight: 18 }, pressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },
 });

@@ -150,7 +150,7 @@ class HttpPayloadSshTunnel(
         val banner = readSshBanner(remoteInput)
         client.getOutputStream().write(banner.toByteArray())
         client.getOutputStream().flush()
-        emit("info", "HTTP_PAYLOAD", "[$runtimeLabel] bannière SSH reçue via proxy HTTP")
+        emit("connection", "SSH_BANNER", banner.trim().take(240))
         val returnPipe = thread(isDaemon = true) { pipe(remoteInput, client.getOutputStream()) }
         pipe(client.getInputStream(), remote.getOutputStream())
         returnPipe.join(300)
