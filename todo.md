@@ -555,7 +555,7 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 
 ## Correction erreur Paramètres et aperçu
 
-- [ ] Supprimer toute demande de secret ou variable distante liée aux Paramètres locaux
-- [ ] Vérifier que l’icône Paramètres et l’écran Paramètres sont présents sans configuration sensible
-- [ ] Capturer un aperçu de l’en-tête et de l’écran Paramètres
-- [ ] Confirmer à l’utilisateur que la demande de secret est corrigée
+- [x] Supprimer toute demande de secret ou variable distante liée aux Paramètres locaux
+- [x] Vérifier que l’icône Paramètres et l’écran Paramètres sont présents sans configuration sensible
+- [x] Capturer un aperçu de l’en-tête et de l’écran Paramètres
+- [x] Confirmer à l’utilisateur que la demande de secret est corrigée
