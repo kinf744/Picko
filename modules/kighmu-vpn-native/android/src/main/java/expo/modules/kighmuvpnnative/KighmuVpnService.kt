@@ -314,7 +314,6 @@ class KighmuVpnService : VpnService() {
       .addAddress("10.0.0.2", 24)
       .addRoute("0.0.0.0", 0)
       .addDnsServer("8.8.8.8")
-      .setBlocking(true)
       .setUnderlyingNetworks(arrayOf(network))
     if (isZivpn) {
       // Correspond au parcours multi-profil de Zamois-tun : le trafic du moteur reste

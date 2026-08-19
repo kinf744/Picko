@@ -651,7 +651,17 @@ Le binaire `libuz_core.so` et la bibliothèque HEV armeabi-v7a sont identiques p
 - [x] Enregistrer le test de téléchargement comparatif : même serveur et même réseau, Zamois-tun environ deux fois plus rapide que KIGHMU
 - [ ] Auditer les différences restantes de création TUN, MTU, routes et mode de descripteur Android
 - [x] Appliquer un correctif de chemin réseau KIGHMU réversible, sans modifier libuz_core, le serveur ou la configuration de protocole
-- [ ] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a
+- [x] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a — run 32215579109 réussi, commit 265bb53, APK 45,63 Mio
 - [ ] Faire répéter le test A/B d’une minute sur le nouvel APK
 
 Le correctif aligne le chemin UDP-ZIVPN du catalogue sur le parcours multi-profil de Zamois-tun : MTU TUN et HEV de 1500, mode bloquant explicite, bypass VPN et statut non mesuré pour le réseau physique, ainsi qu’un relais SOCKS local direct même avec un seul profil. Les valeurs Obfs, auth, fenêtres de réception, plafonds, libuz_core et VPS restent inchangés. Son effet doit être confirmé par le nouvel essai A/B.
+
+## Crash au démarrage de tunnel — priorité
+
+- [x] Enregistrer le signalement : l’application se ferme brutalement à chaque tentative de connexion, avant l’établissement du VPN
+- [x] Examiner la régression introduite dans la création du TUN et les options Android communes à toutes les familles
+- [x] Ajouter une protection de stabilité réversible autour du démarrage du tunnel
+- [ ] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a
+- [ ] Faire vérifier sur Android qu’un tunnel peut démarrer sans fermeture de l’application
+
+L’unique changement récent commun aux sept familles était l’activation explicite du descripteur TUN en mode bloquant. Il a été retiré pour revenir au contrat de descripteur précédent ; un relais natif qui suppose un TUN non bloquant peut provoquer une fermeture brutale au premier trafic. Les améliorations propres à UDP-ZIVPN restent isolées et aucun élément serveur ou protocolaire n’est touché.
