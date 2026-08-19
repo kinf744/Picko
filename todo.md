@@ -567,3 +567,12 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Vérifier les états en connexion, actif et arrêt sans modifier la logique du tunnel
 - [x] Valider TypeScript et les tests
 - [ ] Documenter que la validation finale de l’icône doit se faire sur un APK GitHub Actions installé sur Android
+
+## Synchronisation GitHub Actions
+
+- [ ] Comparer la branche locale avec GitHub Picko
+- [ ] Vérifier les fichiers modifiés non poussés et le workflow Android
+- [ ] Pousser les modifications locales vers GitHub sans inclure de secrets
+- [ ] Déclencher et suivre le workflow GitHub Actions armeabi-v7a
+- [ ] Vérifier l’artefact APK et documenter le résultat
+
