@@ -695,7 +695,7 @@ La date `expiresAt: null` était convertie par Android en chaîne `null`, consid
 - [x] Produire le format Clipboard `kighmu://<base64 JSON>` conforme au schéma fourni
 - [x] Accepter et valider ce format Clipboard à l’import sans exposer les secrets dans les logs
 - [x] Ajouter les tests de round robin et de compatibilité Clipboard
-- [ ] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a
+- [x] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a — run 32223588257 réussi, commit 00ef5e25, APK 45,63 Mio
 - [ ] Faire vérifier sur Android le balancier avec deux profils et l’import/export Clipboard
 
 TypeScript, `git diff --check` et 24 tests Vitest sont validés localement. La compilation Android reste exclusivement confiée à GitHub Actions.
@@ -703,3 +703,13 @@ TypeScript, `git diff --check` et 24 tests Vitest sont validés localement. La c
 ### Décision de format Clipboard
 
 Le préfixe attendu est exactement `kighmu://`, suivi d’un JSON UTF-8 encodé en Base64 standard. Le payload doit conserver la structure du fournisseur (`type`, `name`, `sshTunnelConfig`, `vlessTunnelConfig` et les objets imbriqués), au lieu de ré-encoder le format interne multi-familles KIGHMU dans une autre enveloppe.
+
+## Compatibilité directe Clipboard VLESS
+
+- [x] Produire pour un profil VLESS/Xray un payload direct avec `type`, `name`, `sshTunnelConfig.sshConfig` et `vlessTunnelConfig.v2rayConfig`
+- [x] Importer ce payload direct vers un profil `xray-v2ray` KIGHMU de type lien VLESS
+- [x] Préserver le format multi-profils KIGHMU pour les exports contenant plusieurs profils ou familles
+- [x] Ajouter les tests de conversion de l’exemple VLESS, d’encodage Base64 et de rétrocompatibilité
+- [ ] Compiler exclusivement via GitHub Actions et vérifier sur Android
+
+La structure directe est émise lorsqu’un unique profil Xray/V2Ray en lien VLESS est exporté avec les secrets explicitement inclus ; dans les autres cas, le Clipboard conserve l’enveloppe multi-profils KIGHMU sous le même préfixe `kighmu://`. TypeScript, le diff et 25 tests sont validés localement.

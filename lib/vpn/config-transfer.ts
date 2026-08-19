@@ -1,4 +1,13 @@
-import { createProfile, defaultBalancer, omitSecrets, secretFields, TUNNEL_KINDS, type TunnelBalancer, type TunnelKind, type TunnelProfile } from "./tunnel-profiles";
+import {
+  createProfile,
+  defaultBalancer,
+  omitSecrets,
+  secretFields,
+  TUNNEL_KINDS,
+  type TunnelBalancer,
+  type TunnelKind,
+  type TunnelProfile,
+} from "./tunnel-profiles";
 import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, type ExportRestrictions } from "./export-restrictions";
 import { validateTunnelProfile } from "./validation";
 
@@ -50,16 +59,17 @@ function decodeClipboardBase64(value: string): string {
   throw new Error("Décodage Clipboard indisponible sur cet appareil.");
 }
 
-export function buildClipboardPayload(config: ConfigExport): string {
-  const json = JSON.stringify(config);
-  if (json.length > MAX_IMPORT_BYTES) throw new Error("La configuration est trop volumineuse pour le Clipboard.");
-  return `${CLIPBOARD_PREFIX}${encodeClipboardBase64(json)}`;
-}
-
 function unwrapClipboardPayload(raw: string): string {
   const content = raw.trim();
   return content.startsWith(CLIPBOARD_PREFIX) ? decodeClipboardBase64(content.slice(CLIPBOARD_PREFIX.length)) : content;
 }
+
+type DirectVlessClipboard = {
+  type: "VLESS";
+  name: string;
+  sshTunnelConfig: { sshConfig: { port: number } };
+  vlessTunnelConfig: { v2rayConfig: { host: string; port: number; uuid: string; tls: boolean; wsPath: string; wsHeaderHost: string } };
+};
 
 function normalizeProfile(kind: TunnelKind, source: unknown): TunnelProfile | null {
   if (!isRecord(source)) return null;
@@ -89,6 +99,59 @@ function normalizeBalancer(value: unknown): TunnelBalancer {
   };
 }
 
+function directVlessClipboard(config: ConfigExport): DirectVlessClipboard | null {
+  if (!config.containsSecrets || config.tunnels.length !== 1) return null;
+  const [tunnel] = config.tunnels;
+  const [profile] = tunnel.profiles;
+  if (tunnel.kind !== "xray-v2ray" || tunnel.profiles.length !== 1 || profile.kind !== "xray-v2ray" || profile.inputMode !== "link" || !/^vless:\/\//i.test(profile.link.trim())) return null;
+  try {
+    const link = new URL(profile.link.trim());
+    const host = link.hostname.trim();
+    const uuid = decodeURIComponent(link.username).trim();
+    if (!host || !uuid) return null;
+    const query = link.searchParams;
+    return {
+      type: "VLESS",
+      name: profile.name.trim() || "VLESS",
+      sshTunnelConfig: { sshConfig: { port: 80 } },
+      vlessTunnelConfig: {
+        v2rayConfig: {
+          host,
+          port: Number(link.port) || 443,
+          uuid,
+          tls: query.get("security") === "tls" || query.get("tls") === "true",
+          wsPath: query.get("path") || "/",
+          wsHeaderHost: query.get("host") || query.get("sni") || host,
+        },
+      },
+    };
+  } catch { return null; }
+}
+
+function importDirectVless(value: unknown): ImportResult | null {
+  if (!isRecord(value) || String(value.type).toUpperCase() !== "VLESS" || !isRecord(value.vlessTunnelConfig) || !isRecord(value.vlessTunnelConfig.v2rayConfig)) return null;
+  const config = value.vlessTunnelConfig.v2rayConfig;
+  const host = typeof config.host === "string" ? config.host.trim() : "";
+  const uuid = typeof config.uuid === "string" ? config.uuid.trim() : "";
+  if (!host || !uuid) return null;
+  const port = Number(config.port) || 443;
+  const tls = config.tls === true;
+  const wsPath = typeof config.wsPath === "string" && config.wsPath.trim() ? config.wsPath.trim() : "/";
+  const wsHeaderHost = typeof config.wsHeaderHost === "string" && config.wsHeaderHost.trim() ? config.wsHeaderHost.trim() : host;
+  const name = typeof value.name === "string" && value.name.trim() ? value.name.trim().slice(0, 120) : "Profil VLESS importé";
+  const link = `vless://${encodeURIComponent(uuid)}@${host}:${port}?type=ws&security=${tls ? "tls" : "none"}&path=${encodeURIComponent(wsPath)}&host=${encodeURIComponent(wsHeaderHost)}#${encodeURIComponent(name)}`;
+  const profile = normalizeProfile("xray-v2ray", { name, inputMode: "link", link });
+  if (!profile) return null;
+  return {
+    tunnels: [{ kind: "xray-v2ray", profiles: [profile], balancer: defaultBalancer() }],
+    importedKinds: ["xray-v2ray"],
+    importedProfiles: 1,
+    skippedProfiles: 0,
+    containsSecrets: true,
+    restrictions: DEFAULT_EXPORT_RESTRICTIONS,
+  };
+}
+
 export function buildConfigExport(
   profilesByKind: Record<TunnelKind, TunnelProfile[]>,
   balancersByKind: Record<TunnelKind, TunnelBalancer>,
@@ -111,11 +174,19 @@ export function buildConfigExport(
   };
 }
 
+export function buildClipboardPayload(config: ConfigExport): string {
+  const json = JSON.stringify(directVlessClipboard(config) ?? config);
+  if (json.length > MAX_IMPORT_BYTES) throw new Error("La configuration est trop volumineuse pour le Clipboard.");
+  return `${CLIPBOARD_PREFIX}${encodeClipboardBase64(json)}`;
+}
+
 export function parseConfigImport(raw: string): ImportResult {
   const content = unwrapClipboardPayload(raw);
   if (content.length > MAX_IMPORT_BYTES) throw new Error("Le fichier dépasse la taille maximale autorisée (1 Mo).");
   let parsed: unknown;
   try { parsed = JSON.parse(content); } catch { throw new Error("Le fichier ou Clipboard ne contient pas un JSON valide."); }
+  const directVless = importDirectVless(parsed);
+  if (directVless) return directVless;
   if (!isRecord(parsed) || ![1, EXPORT_SCHEMA_VERSION].includes(Number(parsed.schemaVersion)) || parsed.application !== "KIGHMU VPN" || !Array.isArray(parsed.tunnels)) {
     throw new Error("Le fichier n’est pas une configuration KIGHMU VPN compatible.");
   }
