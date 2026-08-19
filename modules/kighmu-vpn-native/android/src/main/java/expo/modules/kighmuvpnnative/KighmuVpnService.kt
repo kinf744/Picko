@@ -105,7 +105,7 @@ class KighmuVpnService : VpnService() {
     thread(isDaemon = true, name = "zivpn-native-log") { readNativeLogs(process, "ZIVPN") }
     if (!waitForLocalPort(process, 7778, 3500L)) error("Le relais SOCKS5 ZIVPN n’est pas apparu sur 127.0.0.1:7778")
     if (!isActive(generation)) return
-    ZivpnTun2Socks.start(this, fd, 7778, 1400)
+    ZivpnTun2Socks.start(this, fd, 7778, ZIVPN_TUN_MTU)
     emitLog("info", "ZIVPN", "Relais TUN→SOCKS5 actif sur 127.0.0.1:7778")
     markConnected(generation, "UDP-ZIVPN connecté à $resolvedHost:$port")
   }
@@ -158,14 +158,21 @@ class KighmuVpnService : VpnService() {
       }
       require(ports.isNotEmpty()) { "Aucun profil $kind n’a démarré" }
       val shouldBalance = root.optJSONObject("balancer")?.optBoolean("enabled", false) == true && ports.size > 1
-      val targetPort = if (shouldBalance) {
+      val useZivpnLocalRelay = kind == "zivpn"
+      val targetPort = if (shouldBalance || useZivpnLocalRelay) {
         SocksProfileBalancer(ports) { level, component, message -> emitLog(level, component, message) }.also { balancer ->
           familyBalancer = balancer
         }.start()
       } else ports.first()
       if (!ZivpnTun2Socks.init()) error("hev_jni indisponible pour le relais ${familyLabel(kind)}")
-      ZivpnTun2Socks.start(this, fd, targetPort, 1400)
-      emitLog("info", "CATALOG", "TUN→SOCKS5 actif sur $targetPort ; balancier=${if (shouldBalance) "actif" else "inactif"}")
+      val relayMtu = if (useZivpnLocalRelay) ZIVPN_TUN_MTU else DEFAULT_TUN_MTU
+      ZivpnTun2Socks.start(this, fd, targetPort, relayMtu)
+      val relayMode = when {
+        shouldBalance -> "balancier multi-profils actif"
+        useZivpnLocalRelay -> "relais local direct ZIVPN actif"
+        else -> "relais direct actif"
+      }
+      emitLog("info", "CATALOG", "TUN→SOCKS5 actif sur $targetPort ; $relayMode ; MTU=$relayMtu")
       markConnected(generation, "${familyLabel(kind)} connecté")
     } catch (error: Throwable) {
       releaseFamilyResources()
@@ -299,13 +306,22 @@ class KighmuVpnService : VpnService() {
     ?: error("Aucun réseau physique disponible")
 
   private fun establishVpn(session: String, network: android.net.Network): Int {
+    val isZivpn = session == "UDP-ZIVPN"
+    val mtu = if (isZivpn) ZIVPN_TUN_MTU else DEFAULT_TUN_MTU
     val builder = Builder()
       .setSession(session)
-      .setMtu(1400)
+      .setMtu(mtu)
       .addAddress("10.0.0.2", 24)
       .addRoute("0.0.0.0", 0)
       .addDnsServer("8.8.8.8")
+      .setBlocking(true)
       .setUnderlyingNetworks(arrayOf(network))
+    if (isZivpn) {
+      // Correspond au parcours multi-profil de Zamois-tun : le trafic du moteur reste
+      // explicitement sur le réseau physique, sans modifier le serveur ou libuz_core.
+      builder.allowBypass()
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
+    }
     builder.addDisallowedApplication(packageName)
     val fd = builder.establish()?.detachFd() ?: error("Android n’a pas fourni l’interface VPN")
     synchronized(lifecycleLock) { tunFd = fd }
@@ -417,6 +433,8 @@ class KighmuVpnService : VpnService() {
     const val CHANNEL_ID = "kighmu-vpn"
     const val NOTIFICATION_ID = 4008
     const val ZIVPN_FIXED_OBFS = "hu``hqb`c"
+    const val DEFAULT_TUN_MTU = 1400
+    const val ZIVPN_TUN_MTU = 1500
 
     fun deviceSecurityInfo(context: Context): Map<String, Any> = mapOf(
       "hardwareId" to deviceHardwareId(context),

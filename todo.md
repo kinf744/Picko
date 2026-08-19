@@ -635,3 +635,23 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [x] Capturer et afficher uniquement une bannière SSH réellement reçue
 - [x] Filtrer secrets et données sensibles avant persistance ou affichage
 - [x] Valider les tests et compiler exclusivement avec GitHub Actions — run 32212277311 réussi, 45,63 Mio
+
+## Analyse de performance UDP-ZIVPN
+
+- [x] Inventorier le chemin client UDP-ZIVPN de KIGHMU VPN et de Zamois-tun
+- [x] Comparer binaire, relais TUN, sockets, buffers et gestion de plage de ports
+- [ ] Établir les causes prouvées de ralentissement avant toute modification
+- [ ] Définir des correctifs client sûrs sans modifier le serveur ni UDP-ZIVPN
+- [ ] Mesurer sur appareil Android réel après compilation GitHub Actions
+
+Le binaire `libuz_core.so` et la bibliothèque HEV armeabi-v7a sont identiques par SHA-256 dans les deux dépôts. La configuration ZIVPN envoyée au moteur est également identique, notamment les fenêtres de réception, la désactivation de découverte MTU et les plafonds `50/10 Mbps`. Les écarts encore présents concernent l’interface VPN : KIGHMU impose un MTU de 1400 et s’appuie sur l’exclusion de son package et le binding du réseau physique ; Zamois-tun peut établir son interface à MTU 1500 et exclut explicitement l’IP du serveur de ses routes. Le balancier KIGHMU ne participe pas lorsqu’un seul profil est sélectionné. Aucun de ces éléments ne constitue encore une cause de débit prouvée sans mesure sur le même appareil et réseau.
+
+## Écart A/B confirmé — UDP-ZIVPN
+
+- [x] Enregistrer le test de téléchargement comparatif : même serveur et même réseau, Zamois-tun environ deux fois plus rapide que KIGHMU
+- [ ] Auditer les différences restantes de création TUN, MTU, routes et mode de descripteur Android
+- [x] Appliquer un correctif de chemin réseau KIGHMU réversible, sans modifier libuz_core, le serveur ou la configuration de protocole
+- [ ] Valider TypeScript, les tests et la compilation GitHub Actions armeabi-v7a
+- [ ] Faire répéter le test A/B d’une minute sur le nouvel APK
+
+Le correctif aligne le chemin UDP-ZIVPN du catalogue sur le parcours multi-profil de Zamois-tun : MTU TUN et HEV de 1500, mode bloquant explicite, bypass VPN et statut non mesuré pour le réseau physique, ainsi qu’un relais SOCKS local direct même avec un seul profil. Les valeurs Obfs, auth, fenêtres de réception, plafonds, libuz_core et VPS restent inchangés. Son effet doit être confirmé par le nouvel essai A/B.

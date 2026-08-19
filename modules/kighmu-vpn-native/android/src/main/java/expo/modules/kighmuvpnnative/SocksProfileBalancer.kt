@@ -28,7 +28,7 @@ class SocksProfileBalancer(
     private set
 
   fun start(): Int {
-    require(upstreamPorts.size >= 2) { "Le balancier requiert au moins deux sorties SOCKS" }
+    require(upstreamPorts.isNotEmpty()) { "Le relais local requiert au moins une sortie SOCKS" }
     check(running.compareAndSet(false, true)) { "Balancier déjà démarré" }
     val listener = ServerSocket(0, 32, InetAddress.getByName("127.0.0.1"))
     server = listener
@@ -43,7 +43,8 @@ class SocksProfileBalancer(
         }
       }
     }
-    emit("info", "BALANCER", "Round-robin local prêt sur 127.0.0.1:$port pour ${upstreamPorts.size} profils")
+    val mode = if (upstreamPorts.size == 1) "Relais local direct" else "Round-robin local"
+    emit("info", "BALANCER", "$mode prêt sur 127.0.0.1:$port pour ${upstreamPorts.size} profil(s)")
     return port
   }
 
