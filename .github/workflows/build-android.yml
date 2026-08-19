@@ -127,6 +127,8 @@ jobs:
           done
           test ! -e "$OUTPUT_DIR/libtun2socks.so"
           test ! -e "$OUTPUT_DIR/libbridge.so"
+          test ! -e "$OUTPUT_DIR/libxray-v2ray.so"
+          test ! -e "$OUTPUT_DIR/libxray-v2rayslowdns.so"
           echo "Artefacts natifs armeabi-v7a validés"
 
       - name: Install JavaScript dependencies

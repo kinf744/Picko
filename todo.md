@@ -864,3 +864,13 @@ Dernière mise à jour : les corrections locales sont validées côté TypeScrip
 - [x] Identifier que le contrôle d’exécutabilité reste dépendant des modes du checkout GitHub
 - [x] Ajouter `chmod 755` pour les quatre binaires autonomes avant le contrôle et Gradle
 - [ ] Republier et relancer GitHub Actions
+
+
+### Inspection APK du run 32265010447
+
+- [x] Build GitHub Actions réussi après correction CI
+- [x] APK armeabi-v7a récupéré, taille 50 391 665 octets
+- [x] Présence confirmée de `libdnstt.so`, `libhysteria.so`, `libhev-socks5-tunnel.so`, `libuz_core.so` et `libxray.so`
+- [x] Absence confirmée de `libbridge.so` et `libtun2socks.so` dans l’APK
+- [ ] Supprimer les anciens `libxray-v2ray.so` et `libxray-v2rayslowdns.so` restés dans le dépôt distant
+- [ ] Ajouter leur absence au contrôle CI et relancer le build
