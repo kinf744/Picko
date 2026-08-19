@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
-import { isNavigationDiagnostic, sanitizeDiagnosticText } from "./diagnostic-format";
+import { isNavigationDiagnostic, sanitizeDiagnosticMessage } from "./diagnostic-format";
 import { buildConfigExport, parseConfigImport, type ConfigExport, type ImportResult } from "./config-transfer";
 import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, type ExportRestrictions } from "./export-restrictions";
 import {
@@ -48,7 +48,7 @@ const emptyBalancers = (): BalancersByKind => ({
   zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "http-payload": defaultBalancer(), "ssh-tls": defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(),
 });
 const redact = (value: string) => value ? "••••••" : "non défini";
-const makeLog = (level: LogLevel, component: string, message: string): DiagnosticLog => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), level, component, message: sanitizeDiagnosticText(message) });
+const makeLog = (level: LogLevel, component: string, message: string): DiagnosticLog => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), level, component, message: sanitizeDiagnosticMessage(component, message) });
 const secretGet = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.getItem(key)) : SecureStore.getItemAsync(key);
 const secretSet = (key: string, value: string) => Platform.OS === "web" ? Promise.resolve(localStorage.setItem(key, value)) : SecureStore.setItemAsync(key, value);
 const secretDelete = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.removeItem(key)) : SecureStore.deleteItemAsync(key);
@@ -184,7 +184,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
       const component = payload.component || "NATIVE";
       if (isNavigationDiagnostic(component)) return;
       const level = payload.level === "error" || payload.level === "warning" || payload.level === "connection" ? payload.level : "info";
-      setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component, message: sanitizeDiagnosticText(payload.message) } as DiagnosticLog, ...current].slice(0, 300));
+      setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component, message: sanitizeDiagnosticMessage(component, payload.message) } as DiagnosticLog, ...current].slice(0, 300));
     },
     (payload) => { if (["connected", "connecting", "disconnected", "error"].includes(payload.status)) setStatus(payload.status as TunnelStatus); },
   ), []);

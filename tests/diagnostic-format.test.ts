@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDiagnosticTime, isNavigationDiagnostic, isSshBanner, sanitizeDiagnosticText } from "../lib/vpn/diagnostic-format";
+import { formatDiagnosticTime, formatSshServerMessage, isNavigationDiagnostic, isSshBanner, isSshServerMessage, sanitizeDiagnosticMessage, sanitizeDiagnosticText } from "../lib/vpn/diagnostic-format";
 
 describe("format du journal Diagnostic", () => {
   it("masque les valeurs sensibles dans les sorties de tunnel", () => {
@@ -24,6 +24,18 @@ describe("format du journal Diagnostic", () => {
     expect(isSshBanner("SSH_BANNER")).toBe(true);
     expect(isSshBanner("SSH_TLS")).toBe(false);
     expect(sanitizeDiagnosticText("SSH-2.0-OpenSSH_9.6p1 Ubuntu", 240)).toBe("SSH-2.0-OpenSSH_9.6p1 Ubuntu");
+  });
+
+  it("distingue le message serveur post-authentification et préserve son contenu utile", () => {
+    const message = "<b>VPS-PRO</b><br><font color='#16A34A'>Utilisateur : test</font> password: valeur";
+    expect(isSshServerMessage("SSH_SERVER_MESSAGE")).toBe(true);
+    expect(isSshBanner("SSH_SERVER_MESSAGE")).toBe(false);
+    const safe = sanitizeDiagnosticMessage("SSH_SERVER_MESSAGE", message);
+    expect(safe).toContain("VPS-PRO");
+    expect(safe).toContain("password: ••••••");
+    const segments = formatSshServerMessage(safe);
+    expect(segments.some((segment) => segment.bold && segment.text.includes("VPS-PRO"))).toBe(true);
+    expect(segments.some((segment) => segment.color === "#16a34a" && segment.text.includes("Utilisateur"))).toBe(true);
   });
 
   it("formate un horaire stable et gère une date invalide", () => {

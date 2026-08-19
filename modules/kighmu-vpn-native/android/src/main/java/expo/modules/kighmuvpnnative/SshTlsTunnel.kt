@@ -71,6 +71,7 @@ class SshTlsTunnel(
       if (!connection.authenticateWithPassword(settings.sshUsername, settings.sshPassword)) {
         error("Authentification SSH refusée")
       }
+      SshServerMessage.capture(connection) { message -> emit("connection", "SSH_SERVER_MESSAGE", message) }
       connection.createDynamicPortForwarder(InetSocketAddress("127.0.0.1", socksPort))
       sshConnection = connection
       emit("info", "SSH_TLS", "[$runtimeLabel] TLS validé et SSH authentifié ; SOCKS5 local 127.0.0.1:$socksPort")

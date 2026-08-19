@@ -3,6 +3,7 @@ package expo.modules.kighmuvpnnative
 import android.content.Context
 import android.net.VpnService
 import com.trilead.ssh2.Connection
+import com.trilead.ssh2.DynamicPortForwarder
 import org.json.JSONObject
 import java.io.File
 import java.net.InetAddress
@@ -68,6 +69,7 @@ class SlowDnsSshTunnel(
   @Volatile private var running = false
   private var dnsttProcess: Process? = null
   private var sshConnection: Connection? = null
+  private var dynamicForwarder: DynamicPortForwarder? = null
   private var bannerServer: ServerSocket? = null
   private var dnsttPort = -1
   private var socksPort = -1
@@ -89,8 +91,11 @@ class SlowDnsSshTunnel(
       if (!connection.authenticateWithPassword(settings.sshUsername, settings.sshPassword)) {
         throw IllegalStateException("Authentification SSH refusée")
       }
-      connection.createDynamicPortForwarder(InetSocketAddress("127.0.0.1", socksPort))
+      SshServerMessage.capture(connection) { message -> emit("connection", "SSH_SERVER_MESSAGE", message) }
+      val forwarder = connection.createDynamicPortForwarder(InetSocketAddress("127.0.0.1", socksPort))
       sshConnection = connection
+      dynamicForwarder = forwarder
+      waitForSocksListener(socksPort)
       emit("info", "SSH", "Authentification réussie ; SOCKS5 local prêt sur 127.0.0.1:$socksPort")
       return socksPort
     } catch (error: Throwable) {
@@ -104,6 +109,8 @@ class SlowDnsSshTunnel(
     running = false
     try { bannerServer?.close() } catch (_: Throwable) {}
     bannerServer = null
+    try { dynamicForwarder?.close() } catch (_: Throwable) {}
+    dynamicForwarder = null
     try { sshConnection?.close() } catch (_: Throwable) {}
     sshConnection = null
     val process = dnsttProcess
@@ -182,8 +189,8 @@ class SlowDnsSshTunnel(
         val clientInput = client.getInputStream()
         val clientOutput = client.getOutputStream()
         val remoteOutput = remote.getOutputStream()
-        val toClient = thread(isDaemon = true) { pipe(remoteInput, clientOutput) }
-        pipe(clientInput, remoteOutput)
+        val toClient = thread(isDaemon = true) { pipeSsh(remoteInput, clientOutput, "serveur→client") }
+        pipeSsh(clientInput, remoteOutput, "client→serveur")
         toClient.join(300)
       } catch (error: Throwable) {
         if (running) emit("warning", "SSH", "Canal SSH SlowDNS interrompu : ${error.message ?: "erreur réseau"}")
@@ -200,8 +207,37 @@ class SlowDnsSshTunnel(
     if (!process.isAlive) throw IllegalStateException("dnstt s’est arrêté au démarrage")
   }
 
+  private fun waitForSocksListener(port: Int) {
+    var lastError: Throwable? = null
+    repeat(15) {
+      try {
+        Socket().use { probe ->
+          LocalTunnelIo.configure(probe, 500)
+          probe.connect(InetSocketAddress("127.0.0.1", port), 500)
+        }
+        return
+      } catch (error: Throwable) {
+        lastError = error
+        Thread.sleep(80)
+      }
+    }
+    throw IllegalStateException("SOCKS5 SSH local indisponible sur 127.0.0.1:$port", lastError)
+  }
+
   private fun findFreePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
 
-  private fun pipe(input: java.io.InputStream, output: java.io.OutputStream) =
-    LocalTunnelIo.pipe(input, output) { running }
+  private fun pipeSsh(input: java.io.InputStream, output: java.io.OutputStream, direction: String) {
+    val buffer = ByteArray(LocalTunnelIo.BUFFER_SIZE)
+    try {
+      while (running) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        output.write(buffer, 0, count)
+        output.flush()
+      }
+    } catch (error: Throwable) {
+      if (running) emit("warning", "SSH", "Pont SlowDNS $direction interrompu : ${error.message ?: "erreur réseau"}")
+      throw error
+    }
+  }
 }

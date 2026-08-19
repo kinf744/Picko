@@ -886,6 +886,32 @@ Dernière mise à jour : les corrections locales sont validées côté TypeScrip
 
 ## Publication de l’ajustement Diagnostic
 
-- [ ] Vérifier le diff typographique du checkpoint `1e22edc1`
-- [ ] Pousser la modification vers `kinf744/Picko`
-- [ ] Vérifier le commit distant et le workflow déclenché
+- [x] Vérifier le diff typographique du checkpoint `1e22edc1`
+- [x] Pousser la modification vers `kinf744/Picko`
+- [x] Vérifier le commit distant et le workflow déclenché
+
+
+## Audit local contre GitHub demandé
+
+- [ ] Comparer les commits locaux avec `kinf744/Picko/main`
+- [ ] Comparer les fichiers fonctionnels non suivis ou modifiés
+- [ ] Distinguer les artefacts locaux des modifications publiables
+- [ ] Signaler les écarts non poussés sans les publier automatiquement
+
+## Incident SSH/SlowDNS — relais local indisponible
+
+- [x] Comparer le démarrage SSH/SlowDNS avec les tunnels SSH frères
+- [x] Vérifier la disponibilité effective du SOCKS local avant le balancier
+- [x] Corriger le cycle de vie du pont SSH via dnstt si nécessaire
+- [x] Valider TypeScript, tests et préparer un build Android
+- [ ] Retester le profil SSH/SlowDNS sur téléphone avec kighmu.txt
+
+## Séparation bannière SSH et message serveur
+
+- [x] Cartographier les tunnels SSH et leurs événements de journal
+- [x] Conserver la bannière protocolaire `SSH-2.0-…` comme événement distinct
+- [x] Capturer le message post-authentification/MOTD des tunnels SSH
+- [x] Afficher le message serveur stylé dans le Diagnostic avec rendu HTML sûr
+- [x] Valider TypeScript et les tests locaux (30 tests)
+- [ ] Valider la compilation Android GitHub
+- [ ] Pousser tous les correctifs vers `kinf744/Picko`
