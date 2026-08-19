@@ -789,3 +789,13 @@ Dernière mise à jour : les corrections locales sont validées côté TypeScrip
 - [x] Ne pas supprimer `libuz_core.so` ni modifier son chemin UDP-ZIVPN
 - [x] Vérifier que chaque référence Kotlin pointe vers un fichier conservé
 - [x] Vérifier que le relais HEV/tun2socks reste partagé par les familles prévues
+
+
+## Vérification et retrait éventuel de libbridge.so
+
+- [x] Rechercher les références Kotlin, CMake, Gradle et workflow à `libbridge.so`
+- [x] Vérifier si un tunnel KIGHMU charge ou dépend de `libbridge.so`
+- [x] Supprimer `libbridge.so` si aucune dépendance n’est trouvée
+- [x] Valider TypeScript, tests et packaging logique après suppression
+- [ ] Pousser la suppression et lancer GitHub Actions
+- [ ] Vérifier le résultat du build avant installation Android
