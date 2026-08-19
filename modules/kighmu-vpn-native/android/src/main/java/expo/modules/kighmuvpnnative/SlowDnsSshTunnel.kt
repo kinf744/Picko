@@ -83,7 +83,7 @@ class SlowDnsSshTunnel(
       dnsttPort = findFreePort()
       socksPort = findFreePort()
       startDnstt(settings)
-      waitForAlive(dnsttProcess ?: error("Processus dnstt absent"), 800L)
+      waitForDnsttReady(dnsttProcess ?: error("Processus dnstt absent"), dnsttPort)
       val bannerPort = startBannerProxy()
       emit("info", "SSH", "Ouverture du canal SSH via SlowDNS")
       val connection = Connection("127.0.0.1", bannerPort)
@@ -202,9 +202,21 @@ class SlowDnsSshTunnel(
     return server.localPort
   }
 
-  private fun waitForAlive(process: Process, delayMs: Long) {
-    Thread.sleep(delayMs)
+  private fun waitForDnsttReady(process: Process, port: Int) {
+    val deadline = System.nanoTime() + 8_000_000_000L
+    while (System.nanoTime() < deadline && process.isAlive) {
+      try {
+        Socket().use { probe ->
+          LocalTunnelIo.configure(probe, 300)
+          probe.connect(InetSocketAddress("127.0.0.1", port), 300)
+        }
+        return
+      } catch (_: Throwable) {
+        Thread.sleep(200)
+      }
+    }
     if (!process.isAlive) throw IllegalStateException("dnstt s’est arrêté au démarrage")
+    throw IllegalStateException("dnstt n’a pas ouvert son canal TCP local sur 127.0.0.1:$port dans les 8s")
   }
 
   private fun waitForSocksListener(port: Int) {

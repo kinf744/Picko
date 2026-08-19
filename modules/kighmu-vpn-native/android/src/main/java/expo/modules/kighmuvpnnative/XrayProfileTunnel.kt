@@ -103,7 +103,24 @@ class XrayProfileTunnel(
     if (!hasSocks) normalisedInbounds.put(JSONObject().put("listen", "127.0.0.1").put("port", socksPort).put("protocol", "socks").put("settings", JSONObject().put("udp", true)))
     root.put("inbounds", normalisedInbounds)
     if (upstreamHost != null && upstreamPort != null) rewriteOutbound(root.optJSONArray("outbounds"), upstreamHost, upstreamPort)
+    stripGeoSiteRules(root)
     return root
+  }
+
+  private fun stripGeoSiteRules(root: JSONObject) {
+    // xray-core fat binaries do not ship geoip.dat/geosite.dat; rules referencing them
+    // make xray fail to start (or drop traffic). Drop them, mirroring Zamois-tun.
+    val routing = root.optJSONObject("routing") ?: return
+    val rules = routing.optJSONArray("rules") ?: return
+    val cleaned = JSONArray()
+    for (index in 0 until rules.length()) {
+      val rule = rules.optJSONObject(index) ?: continue
+      val ip = rule.optJSONArray("ip")?.toString() ?: ""
+      val domain = rule.optJSONArray("domain")?.toString() ?: ""
+      if (!ip.contains("geoip:") && !domain.contains("geosite:")) cleaned.put(rule)
+    }
+    routing.put("rules", cleaned)
+    root.put("routing", routing)
   }
 
   private fun rewriteOutbound(outbounds: JSONArray?, host: String, port: Int) {
@@ -115,6 +132,15 @@ class XrayProfileTunnel(
       val settings = outbound.optJSONObject("settings") ?: continue
       settings.optJSONArray("vnext")?.optJSONObject(0)?.let { it.put("address", host).put("port", port) }
       settings.optJSONArray("servers")?.optJSONObject(0)?.let { it.put("address", host).put("port", port) }
+      // The outbound now targets the local dnstt tunnel: TLS/Reality handshakes must be
+      // disabled or xray would try a TLS/Reality handshake with dnstt itself (Zamois-tun pattern).
+      val stream = outbound.optJSONObject("streamSettings")
+      if (stream != null) {
+        stream.put("security", "none")
+        stream.remove("tlsSettings")
+        stream.remove("realitySettings")
+        outbound.put("streamSettings", stream)
+      }
     }
   }
 
@@ -132,7 +158,7 @@ class XrayProfileTunnel(
       val user = JSONObject().put("id", id).put("security", source.optString("scy", "auto").ifBlank { "auto" })
       if (source.optString("flow").isNotBlank()) user.put("flow", source.optString("flow"))
       val outbound = JSONObject().put("protocol", "vmess").put("settings", JSONObject().put("vnext", JSONArray().put(JSONObject().put("address", host).put("port", port).put("users", JSONArray().put(user)))))
-      applyLinkTransport(outbound, host, mapOf("type" to source.optString("net"), "path" to source.optString("path"), "host" to source.optString("host"), "sni" to source.optString("sni"), "alpn" to source.optString("alpn"), "allowinsecure" to source.optString("allowInsecure")))
+      applyLinkTransport(outbound, host, mapOf("type" to source.optString("net"), "path" to source.optString("path"), "host" to source.optString("host"), "sni" to source.optString("sni"), "alpn" to source.optString("alpn"), "tls" to source.optString("tls"), "allowinsecure" to source.optString("allowInsecure")))
       return baseConfig(outbound)
     }
     val withoutFragment = link.substringAfter("://").substringBefore("#")
@@ -169,14 +195,30 @@ class XrayProfileTunnel(
     val stream = outbound.optJSONObject("streamSettings") ?: JSONObject()
     val network = (query["type"] ?: query["net"]).orEmpty().ifBlank { "tcp" }.lowercase()
     stream.put("network", network)
-    val security = query["security"] ?: if (query["tls"] == "1" || query["tls"].equals("true", true)) "tls" else "none"
+    val securityParam = (query["security"]).orEmpty().lowercase()
+    val tlsParam = (query["tls"]).orEmpty().lowercase()
+    val security = when {
+      securityParam.isNotBlank() -> securityParam
+      tlsParam == "tls" || tlsParam == "1" || tlsParam == "true" -> "tls"
+      else -> "none"
+    }
     stream.put("security", security)
-    if (security == "tls") {
-      val tls = stream.optJSONObject("tlsSettings") ?: JSONObject()
-      tls.put("serverName", query["sni"] ?: query["host"] ?: host)
-      if (query["alpn"].orEmpty().isNotBlank()) tls.put("alpn", JSONArray(query["alpn"]!!.split(",")))
-      if (query["allowinsecure"] == "1" || query["allowinsecure"].equals("true", true)) tls.put("allowInsecure", true)
-      stream.put("tlsSettings", tls)
+    when (security) {
+      "tls" -> {
+        val tls = stream.optJSONObject("tlsSettings") ?: JSONObject()
+        tls.put("serverName", query["sni"] ?: query["host"] ?: host)
+        if (query["alpn"].orEmpty().isNotBlank()) tls.put("alpn", JSONArray(query["alpn"]!!.split(",")))
+        if (query["allowinsecure"] == "1" || query["allowinsecure"].equals("true", true)) tls.put("allowInsecure", true)
+        stream.put("tlsSettings", tls)
+      }
+      "reality" -> {
+        val reality = stream.optJSONObject("realitySettings") ?: JSONObject()
+        reality.put("serverName", query["sni"] ?: query["host"] ?: host)
+        query["fp"]?.takeIf { it.isNotBlank() }?.let { reality.put("fingerprint", it) }
+        query["pbk"]?.takeIf { it.isNotBlank() }?.let { reality.put("publicKey", it) }
+        query["sid"]?.takeIf { it.isNotBlank() }?.let { reality.put("shortId", it) }
+        stream.put("realitySettings", reality)
+      }
     }
     when (network) {
       "ws", "websocket" -> {

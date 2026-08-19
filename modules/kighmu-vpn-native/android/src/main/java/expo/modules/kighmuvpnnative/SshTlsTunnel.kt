@@ -14,7 +14,6 @@ import java.net.Socket
 import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLParameters
 import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
 import kotlin.concurrent.thread
 
 /**
@@ -104,10 +103,16 @@ class SshTlsTunnel(
     LocalTunnelIo.configure(plainSocket, LocalTunnelIo.HANDSHAKE_TIMEOUT_MS)
     plainSocket.connect(InetSocketAddress(settings.tlsHost, settings.tlsPort), LocalTunnelIo.HANDSHAKE_TIMEOUT_MS)
     val serverName = settings.sni.ifBlank { settings.tlsHost }
-    val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-    val socket = factory.createSocket(plainSocket, serverName, settings.tlsPort, true) as SSLSocket
+    // SSH-over-TLS tunnels typically use self-signed certificates. Trust all like the
+    // Zamois-tun SshSslEngine: no chain validation and no hostname pinning, but SNI kept.
+    val trustAll = arrayOf<javax.net.ssl.X509TrustManager>(object : javax.net.ssl.X509TrustManager {
+      override fun checkClientTrusted(c: Array<java.security.cert.X509Certificate>, a: String) {}
+      override fun checkServerTrusted(c: Array<java.security.cert.X509Certificate>, a: String) {}
+      override fun getAcceptedIssuers() = arrayOf<java.security.cert.X509Certificate>()
+    })
+    val sslContext = javax.net.ssl.SSLContext.getInstance("TLS").apply { init(null, trustAll, java.security.SecureRandom()) }
+    val socket = sslContext.socketFactory.createSocket(plainSocket, serverName, settings.tlsPort, true) as SSLSocket
     val parameters: SSLParameters = socket.sslParameters
-    parameters.endpointIdentificationAlgorithm = "HTTPS"
     parameters.serverNames = listOf(SNIHostName(serverName))
     socket.sslParameters = parameters
     socket.enabledProtocols = socket.supportedProtocols.filter { it == "TLSv1.2" || it == "TLSv1.3" }.toTypedArray()

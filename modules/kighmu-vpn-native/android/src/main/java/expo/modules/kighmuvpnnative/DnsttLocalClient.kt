@@ -42,8 +42,9 @@ class DnsttLocalClient(
         try { started.inputStream.bufferedReader().useLines { lines -> lines.forEach { line -> if (running && line.isNotBlank()) emit("info", "DNSTT", "[$runtimeLabel] ${line.take(300)}") } } }
         catch (_: Throwable) { if (running) emit("warning", "DNSTT", "[$runtimeLabel] lecture des logs interrompue") }
       }
-      Thread.sleep(800)
+      Thread.sleep(500)
       if (!started.isAlive) error("Le client dnstt $runtimeLabel s’est arrêté au démarrage")
+      if (!waitForDnsttReady(started)) error("Le client dnstt $runtimeLabel n’a pas ouvert son canal TCP local dans les 8s")
       emit("info", "DNSTT", "[$runtimeLabel] prêt sur 127.0.0.1:$port")
       return port
     } catch (error: Throwable) {
@@ -63,5 +64,20 @@ class DnsttLocalClient(
       if (active.isAlive) try { active.destroyForcibly() } catch (_: Throwable) {}
     }
     port = -1
+  }
+
+  private fun waitForDnsttReady(process: Process): Boolean {
+    val deadline = System.nanoTime() + 8_000_000_000L
+    while (System.nanoTime() < deadline && process.isAlive) {
+      try {
+        java.net.Socket().use { probe ->
+          probe.connect(java.net.InetSocketAddress("127.0.0.1", port), 300)
+        }
+        return true
+      } catch (_: Throwable) {
+        Thread.sleep(200)
+      }
+    }
+    return false
   }
 }
