@@ -583,3 +583,11 @@ Résultat de capture : entre 13:34:08 et 13:34:13 UTC, aucun paquet associé au 
 - [ ] Accepter un lien VMess, VLESS ou Trojan pour V2Ray+DNS à la place du JSON brut
 - [ ] Retirer le champ Hôte SSH du formulaire SlowDNS et conserver une configuration compatible
 - [ ] Valider les modèles et démarrer le build GitHub Actions armeabi-v7a
+
+## Restrictions configurables à l’export
+
+- [ ] Ajouter les options de verrouillage et de restrictions réseau au format exporté
+- [ ] Ajouter les options appareil, expiration, SSH lié à l’appareil et anti-torrent
+- [ ] Ajouter une note utilisateur facultative et la sélection de familles de tunnel
+- [ ] Rendre l’interface d’export cohérente avec le design Signal Control
+- [ ] Valider l’import, les tests et la compilation GitHub Actions

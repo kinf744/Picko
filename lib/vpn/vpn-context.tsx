@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
 import { buildConfigExport, parseConfigImport, type ConfigExport, type ImportResult } from "./config-transfer";
+import type { ExportRestrictions } from "./export-restrictions";
 import {
   TUNNEL_CATALOG,
   TUNNEL_KINDS,
@@ -94,7 +95,7 @@ type VpnContextValue = {
   disconnect: () => Promise<void>;
   clearLogs: () => void;
   resetAllProfiles: () => Promise<void>;
-  buildConfigExport: (kinds: TunnelKind[], includeSecrets?: boolean) => ConfigExport;
+  buildConfigExport: (kinds: TunnelKind[], includeSecrets?: boolean, restrictions?: ExportRestrictions) => ConfigExport;
   importConfig: (raw: string, mode: "append" | "replace-imported") => Promise<ImportResult>;
 };
 const VpnContext = createContext<VpnContextValue | null>(null);
@@ -286,7 +287,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     addLog("info", "STORAGE", "Toutes les collections de profils et leurs secrets ont été réinitialisés.");
   }, [addLog]);
 
-  const exportConfiguration = useCallback((kinds: TunnelKind[], includeSecrets = false) => buildConfigExport(profilesByKind, balancersByKind, kinds, includeSecrets), [balancersByKind, profilesByKind]);
+  const exportConfiguration = useCallback((kinds: TunnelKind[], includeSecrets = false, restrictions?: ExportRestrictions) => buildConfigExport(profilesByKind, balancersByKind, kinds, includeSecrets, restrictions), [balancersByKind, profilesByKind]);
 
   const importConfig = useCallback(async (raw: string, mode: "append" | "replace-imported") => {
     const parsed = parseConfigImport(raw);

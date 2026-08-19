@@ -84,7 +84,7 @@ class KighmuVpnService : VpnService() {
     if (!binary.exists() || binary.length() == 0L || !binary.canExecute()) error("libuz_core.so absent ou non exécutable")
     if (!ZivpnTun2Socks.init()) error("hev_jni indisponible dans l’APK")
     val config = File(cacheDir, "zivpn-client.json")
-    config.writeText(buildUzConfig(resolvedHost, port, password, obfs))
+    config.writeText(buildUzConfig(resolvedHost, port, password, ZIVPN_FIXED_OBFS))
     val process = ProcessBuilder(binary.absolutePath, "-s", ZIVPN_FIXED_OBFS, "--config", config.readText())
       .directory(filesDir)
       .apply {

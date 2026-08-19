@@ -1,14 +1,16 @@
 import { createProfile, defaultBalancer, omitSecrets, secretFields, TUNNEL_KINDS, type TunnelBalancer, type TunnelKind, type TunnelProfile } from "./tunnel-profiles";
+import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, type ExportRestrictions } from "./export-restrictions";
 import { validateTunnelProfile } from "./validation";
 
 const MAX_IMPORT_BYTES = 1_000_000;
-const EXPORT_SCHEMA_VERSION = 1;
+const EXPORT_SCHEMA_VERSION = 2;
 
 export type ConfigExport = {
   schemaVersion: number;
   application: "KIGHMU VPN";
   exportedAt: string;
   containsSecrets: boolean;
+  restrictions: ExportRestrictions;
   tunnels: Array<{ kind: TunnelKind; profiles: TunnelProfile[]; balancer: TunnelBalancer }>;
 };
 
@@ -18,6 +20,7 @@ export type ImportResult = {
   importedProfiles: number;
   skippedProfiles: number;
   containsSecrets: boolean;
+  restrictions: ExportRestrictions;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -56,6 +59,7 @@ export function buildConfigExport(
   balancersByKind: Record<TunnelKind, TunnelBalancer>,
   kinds: TunnelKind[],
   includeSecrets = false,
+  restrictions: ExportRestrictions = DEFAULT_EXPORT_RESTRICTIONS,
 ): ConfigExport {
   const uniqueKinds = TUNNEL_KINDS.filter((kind) => kinds.includes(kind));
   return {
@@ -63,6 +67,7 @@ export function buildConfigExport(
     application: "KIGHMU VPN",
     exportedAt: new Date().toISOString(),
     containsSecrets: includeSecrets,
+    restrictions: normalizeExportRestrictions(restrictions),
     tunnels: uniqueKinds.map((kind) => ({
       kind,
       profiles: profilesByKind[kind].map((profile) => includeSecrets ? { ...profile } : omitSecrets(profile)),
@@ -75,7 +80,7 @@ export function parseConfigImport(raw: string): ImportResult {
   if (raw.length > MAX_IMPORT_BYTES) throw new Error("Le fichier dépasse la taille maximale autorisée (1 Mo).");
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { throw new Error("Le fichier ne contient pas un JSON valide."); }
-  if (!isRecord(parsed) || parsed.schemaVersion !== EXPORT_SCHEMA_VERSION || parsed.application !== "KIGHMU VPN" || !Array.isArray(parsed.tunnels)) {
+  if (!isRecord(parsed) || ![1, EXPORT_SCHEMA_VERSION].includes(Number(parsed.schemaVersion)) || parsed.application !== "KIGHMU VPN" || !Array.isArray(parsed.tunnels)) {
     throw new Error("Le fichier n’est pas une configuration KIGHMU VPN compatible.");
   }
   const tunnels: ImportResult["tunnels"] = [];
@@ -97,5 +102,6 @@ export function parseConfigImport(raw: string): ImportResult {
     importedProfiles,
     skippedProfiles,
     containsSecrets: parsed.containsSecrets === true,
+    restrictions: normalizeExportRestrictions(parsed.restrictions),
   };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildConfigExport, parseConfigImport } from "../lib/vpn/config-transfer";
+import { DEFAULT_EXPORT_RESTRICTIONS } from "../lib/vpn/export-restrictions";
 import { createProfile, defaultBalancer, type TunnelKind, type TunnelProfile, type ZivpnProfile } from "../lib/vpn/tunnel-profiles";
 
 const emptyProfiles = () => ({
@@ -34,6 +35,17 @@ describe("transfert de configurations KIGHMU VPN", () => {
     expect(imported.importedKinds).toEqual(["zivpn"]);
     expect(imported.importedProfiles).toBe(1);
     expect(imported.tunnels[0].profiles[0]).toMatchObject({ kind: "zivpn", host: "203.0.113.10", port: "5667", password: "" });
+  });
+
+  it("conserve les restrictions sélectionnées dans un export compatible", () => {
+    const profiles = emptyProfiles();
+    profiles.zivpn = [makeZivpn({ host: "203.0.113.10", port: "5667", password: "secret-password" })];
+    const restrictions = { ...DEFAULT_EXPORT_RESTRICTIONS, lockConfiguration: true, mobileDataOnly: true, blockRootedDevice: true, expiresAt: "2027-12-31", userNote: "Configuration réservée aux utilisateurs autorisés." };
+    const exported = buildConfigExport(profiles, emptyBalancers(), ["zivpn"], false, restrictions);
+    const imported = parseConfigImport(JSON.stringify(exported));
+
+    expect(exported.schemaVersion).toBe(2);
+    expect(imported.restrictions).toMatchObject({ lockConfiguration: true, mobileDataOnly: true, blockRootedDevice: true, expiresAt: "2027-12-31", userNote: "Configuration réservée aux utilisateurs autorisés." });
   });
 
   it("refuse un fichier qui ne suit pas le schéma KIGHMU VPN", () => {
