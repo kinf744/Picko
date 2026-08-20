@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
+import { profileEndpoint, VpnMethodLabel } from "@/lib/vpn/profiles";
 import { useVpn } from "@/lib/vpn/vpn-context";
 
 const statusCopy = {
@@ -14,12 +15,13 @@ const statusCopy = {
 
 export default function HomeScreen() {
   const colors = useColors();
-  const { config, status, lastError, connect, disconnect } = useVpn();
+  const { primaryProfile, activeProfiles, status, lastError, connect, disconnect } = useVpn();
   const copy = statusCopy[status];
   const isBusy = status === "connecting";
   const isConnected = status === "connected";
   const canDisconnect = isBusy || isConnected;
-  const endpoint = config.host ? `${config.host}:${config.port || "—"}` : "Aucun profil enregistré";
+  const endpoint = primaryProfile ? profileEndpoint(primaryProfile) : "Aucun profil enregistré";
+  const method = primaryProfile ? VpnMethodLabel[primaryProfile.method] : "—";
 
   return (
     <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
@@ -57,9 +59,10 @@ export default function HomeScreen() {
             <Text className="text-base font-bold text-foreground">Profil actif</Text>
             <Pressable onPress={() => router.push("./configuration")}><IconSymbol name="pencil" size={20} color={colors.primary} /></Pressable>
           </View>
+          <View style={styles.row}><Text className="text-sm text-muted">Méthode</Text><Text className="max-w-[62%] text-right text-sm font-semibold text-foreground">{method}</Text></View>
           <View style={styles.row}><Text className="text-sm text-muted">Serveur</Text><Text className="max-w-[62%] text-right text-sm font-semibold text-foreground">{endpoint}</Text></View>
-          <View style={styles.row}><Text className="text-sm text-muted">Obfs</Text><Text className="text-sm font-semibold text-foreground">{config.obfs ? "Configuré" : "Non configuré"}</Text></View>
-          <View style={styles.row}><Text className="text-sm text-muted">Mot de passe</Text><Text className="text-sm font-semibold text-foreground">{config.password ? "Protégé" : "Non configuré"}</Text></View>
+          <View style={styles.row}><Text className="text-sm text-muted">Équilibrage</Text><Text className="text-sm font-semibold text-foreground">{activeProfiles.length} tunnel(s) actif(s)</Text></View>
+          <View style={styles.row}><Text className="text-sm text-muted">Secrets</Text><Text className="text-sm font-semibold text-foreground">{primaryProfile?.password ? "Protégés" : "Non configurés"}</Text></View>
         </View>
 
         <Pressable onPress={() => router.push("./diagnostic")} style={({ pressed }) => [styles.diagnosticLink, pressed && styles.pressed]}>

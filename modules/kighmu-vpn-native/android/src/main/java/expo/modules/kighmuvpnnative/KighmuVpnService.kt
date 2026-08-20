@@ -5,24 +5,18 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
-import java.io.File
-import java.net.InetAddress
-import java.net.Socket
-import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-/**
- * Temporary diagnostic client based on the UDP-ZIVPN engine from Zamois-tun.
- * KIGHMU's libkighmu.so is intentionally not referenced in this test service.
- */
 class KighmuVpnService : VpnService() {
   private val lifecycleLock = Any()
   private var tunFd = -1
-  private var zivpnProcess: Process? = null
+  private var tunnels: List<LocalTunnel> = emptyList()
+  private var balancer: LocalSocksBalancer? = null
   private var attemptGeneration = 0L
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -30,9 +24,7 @@ class KighmuVpnService : VpnService() {
       ACTION_STOP -> stopVpn()
       ACTION_START -> {
         val generation = beginStart() ?: return START_NOT_STICKY
-        thread(isDaemon = true, name = "zivpn-test-start") {
-          startZivpn(intent, generation)
-        }
+        thread(isDaemon = true, name = "picko-vpn-start") { startTunnels(intent, generation) }
       }
     }
     return START_NOT_STICKY
@@ -47,36 +39,31 @@ class KighmuVpnService : VpnService() {
   }
 
   private fun isActive(generation: Long): Boolean = synchronized(lifecycleLock) {
-    generation == attemptGeneration && currentStatus == STATUS_CONNECTING
+    generation == attemptGeneration && (currentStatus == STATUS_CONNECTING || currentStatus == STATUS_CONNECTED)
   }
 
-  private fun startZivpn(intent: Intent, generation: Long) {
-    val host = intent.getStringExtra(EXTRA_HOST).orEmpty().trim()
-    val port = intent.getStringExtra(EXTRA_PORT).orEmpty().trim().replace(Regex("\\s+"), "")
-    val obfs = intent.getStringExtra(EXTRA_OBFS).orEmpty().trim()
-    val password = intent.getStringExtra(EXTRA_PASSWORD).orEmpty().trim()
-    if (host.isBlank() || port.isBlank() || obfs.isBlank() || password.isBlank()) {
-      fail(generation, "Host, port, Obfs et mot de passe sont obligatoires")
-      return
-    }
-
+  private fun startTunnels(intent: Intent, generation: Long) {
     try {
-      createNotificationChannel()
-      startForeground(NOTIFICATION_ID, notification("Préparation du test UDP-ZIVPN"))
-      val physicalNetwork = (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).activeNetwork
-        ?: error("Aucun réseau physique disponible")
-      val resolvedHost = try { InetAddress.getByName(host).hostAddress ?: host } catch (_: Throwable) { host }
-      if (!isActive(generation)) return
+      val profilesJson = intent.getStringExtra(EXTRA_PROFILES_JSON).orEmpty()
+      val profiles = TunnelProfile.parseMany(profilesJson)
+      if (profiles.isEmpty()) error("Aucun profil de tunnel utilisable n’a été reçu")
+      profiles.forEach { profile -> profile.validate()?.let { error("${profile.name} : $it") } }
 
-      val builder = Builder()
-        .setSession("UDP-ZIVPN test")
+      createNotificationChannel()
+      startForeground(NOTIFICATION_ID, notification("Préparation de ${profiles.size} tunnel(s)"))
+      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+      val physicalNetwork = connectivity.activeNetwork ?: error("Aucun réseau physique disponible")
+      if (!connectivity.bindProcessToNetwork(physicalNetwork)) error("Impossible de lier les tunnels au réseau physique")
+
+      val established = Builder()
+        .setSession("Picko multi-tunnel")
         .setMtu(1400)
         .addAddress("10.0.0.2", 24)
         .addRoute("0.0.0.0", 0)
         .addDnsServer("8.8.8.8")
         .setUnderlyingNetworks(arrayOf(physicalNetwork))
-      builder.addDisallowedApplication(packageName)
-      val established = builder.establish() ?: error("Android n’a pas fourni l’interface VPN")
+        .apply { addDisallowedApplication(packageName) }
+        .establish() ?: error("Android n’a pas fourni l’interface VPN")
       val fd = established.detachFd()
       synchronized(lifecycleLock) {
         if (!isActive(generation)) {
@@ -86,93 +73,75 @@ class KighmuVpnService : VpnService() {
         tunFd = fd
       }
 
-      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-      if (!connectivity.bindProcessToNetwork(physicalNetwork)) {
-        error("Impossible de lier ZIVPN au réseau physique")
-      }
-      emitLog("info", "ZIVPN", "Application exclue du TUN et processus lié au réseau physique")
-
-      val nativeDir = applicationInfo.nativeLibraryDir
-      val binary = File(nativeDir, "libuz_core.so")
-      if (!binary.exists() || binary.length() == 0L || !binary.canExecute()) {
-        error("libuz_core.so absent ou non exécutable dans nativeLibraryDir")
-      }
-      if (!ZivpnTun2Socks.init()) error("hev_jni indisponible dans l’APK")
-
-      val config = File(cacheDir, "zivpn-client.json")
-      config.writeText(buildUzConfig(resolvedHost, port, password, obfs))
-      val process = ProcessBuilder(binary.absolutePath, "-s", obfs, "--config", config.readText())
-        .directory(filesDir)
-        .apply {
-          environment()["LD_LIBRARY_PATH"] = nativeDir
-          environment()["HOME"] = cacheDir.absolutePath
-          environment()["TMPDIR"] = cacheDir.absolutePath
-          redirectErrorStream(true)
+      val started = mutableListOf<LocalTunnel>()
+      profiles.forEach { profile ->
+        if (!isActive(generation)) return@forEach
+        try {
+          val tunnel: LocalTunnel = when (profile.method) {
+            "zivpn-udp" -> ZivpnTunnel(this, profile, ::emitLog)
+            "ssh-slowdns" -> SshSlowDnsTunnel(this, profile, ::emitLog)
+            "hysteria-udp" -> HysteriaTunnel(this, profile, ::emitLog)
+            else -> error("Méthode non prise en charge")
+          }
+          emitLog("connection", "TUNNEL", "Démarrage de ${profile.name} (${profile.method})")
+          tunnel.start()
+          started.add(tunnel)
+        } catch (error: Throwable) {
+          emitLog("warning", "TUNNEL", "${profile.name} indisponible : ${error.message ?: "erreur inconnue"}")
         }
-        .start()
+      }
+      if (started.isEmpty()) error("Aucun tunnel n’a pu établir un proxy SOCKS local")
+      if (!isActive(generation)) {
+        started.forEach { it.stop() }
+        return
+      }
+
+      val localBalancer = LocalSocksBalancer(::emitLog)
+      localBalancer.start(started.map { it.socksPort })
+      if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
+      ZivpnTun2Socks.start(this, fd, localBalancer.port, 1400)
       synchronized(lifecycleLock) {
         if (!isActive(generation)) {
-          process.destroyForcibly()
-          ParcelFileDescriptor.adoptFd(fd).close()
-          config.delete()
+          localBalancer.stop()
+          started.forEach { it.stop() }
           return
         }
-        zivpnProcess = process
-      }
-      emitLog("info", "ZIVPN", "libuz_core.so démarré, ABI armeabi-v7a, serveur=$resolvedHost:$port")
-      thread(isDaemon = true, name = "zivpn-native-log") { readNativeLogs(process) }
-
-      val socksReady = waitForLocalPort(process, 7778, 3500L)
-      if (!socksReady) error("Le relais SOCKS5 ZIVPN n’est pas apparu sur 127.0.0.1:7778")
-      if (!isActive(generation)) return
-      ZivpnTun2Socks.start(this, fd, 7778, 1400)
-      emitLog("info", "ZIVPN", "Relais TUN→SOCKS5 actif sur 127.0.0.1:7778")
-      synchronized(lifecycleLock) {
-        if (!isActive(generation)) return
+        tunnels = started.toList()
+        balancer = localBalancer
         currentStatus = STATUS_CONNECTED
         stateSink?.invoke(STATUS_CONNECTED)
       }
-      startForeground(NOTIFICATION_ID, notification("UDP-ZIVPN connecté à $resolvedHost:$port"))
+      emitLog("connection", "BALANCER", "VPN connecté avec ${started.size} tunnel(s) disponibles")
+      startForeground(NOTIFICATION_ID, notification("Connecté : ${started.size} tunnel(s) équilibrés"))
+      monitorTunnels(generation)
     } catch (error: Throwable) {
       fail(generation, error.message ?: error::class.java.simpleName)
     }
   }
 
-  private fun buildUzConfig(host: String, port: String, password: String, obfs: String): String {
-    return """{"server":"${json(host + ":" + port)}","obfs":"${json(obfs)}","auth":"${json(password)}","socks5":{"listen":"127.0.0.1:7778"},"insecure":true,"recvwindowconn":65536,"recvwindow":262144,"disable_mtu_discovery":true,"down_mbps":50,"up_mbps":10}"""
-  }
-
-  private fun json(value: String): String = value
-    .replace("\\", "\\\\")
-    .replace("\"", "\\\"")
-    .replace("\n", "\\n")
-    .replace("\r", "\\r")
-
-  private fun waitForLocalPort(process: Process, port: Int, timeoutMs: Long): Boolean {
-    val deadline = System.nanoTime() + timeoutMs * 1_000_000L
-    while (System.nanoTime() < deadline && process.isAlive) {
-      try {
-        Socket("127.0.0.1", port).use { return true }
-      } catch (_: Throwable) {
-        Thread.sleep(50)
+  private fun monitorTunnels(generation: Long) {
+    thread(isDaemon = true, name = "picko-vpn-health") {
+      var lastPorts = emptyList<Int>()
+      while (isActive(generation)) {
+        Thread.sleep(5_000)
+        val healthy = synchronized(lifecycleLock) { tunnels.filter { it.isHealthy() } }
+        val ports = healthy.map { it.socksPort }
+        if (ports != lastPorts) {
+          balancer?.updatePorts(ports)
+          emitLog("info", "BALANCER", "${ports.size} tunnel(s) sain(s) après contrôle de santé")
+          lastPorts = ports
+        }
+        if (ports.isEmpty()) {
+          fail(generation, "Tous les tunnels sont indisponibles")
+          return@thread
+        }
       }
-    }
-    return false
-  }
-
-  private fun readNativeLogs(process: Process) {
-    try {
-      process.inputStream.bufferedReader().useLines { lines ->
-        lines.forEach { line -> if (line.isNotBlank()) emitLog("info", "ZIVPN", line.take(500)) }
-      }
-    } catch (error: Throwable) {
-      emitLog("warning", "ZIVPN", "Lecture du journal interrompue: ${error.message ?: "erreur"}")
     }
   }
 
   private fun fail(generation: Long, message: String) {
     if (!isActive(generation)) return
-    emitLog("error", "ZIVPN", "Échec du test client: $message")
+    emitLog("error", "VPN", "Échec de connexion : $message")
     stopVpn(STATUS_ERROR)
   }
 
@@ -181,36 +150,34 @@ class KighmuVpnService : VpnService() {
   }
 
   private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
-    val process: Process?
     val fd: Int
+    val runningTunnels: List<LocalTunnel>
+    val runningBalancer: LocalSocksBalancer?
     synchronized(lifecycleLock) {
       attemptGeneration += 1
-      process = zivpnProcess
-      zivpnProcess = null
       fd = tunFd
       tunFd = -1
+      runningTunnels = tunnels
+      tunnels = emptyList()
+      runningBalancer = balancer
+      balancer = null
       currentStatus = finalStatus
       stateSink?.invoke(finalStatus)
     }
-    if (fd >= 0) {
-      try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
-    }
-    try { (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).bindProcessToNetwork(null) } catch (_: Throwable) {}
+    try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
+    try { runningBalancer?.stop() } catch (_: Throwable) {}
+    runningTunnels.forEach { tunnel -> try { tunnel.stop() } catch (_: Throwable) {} }
+    if (fd >= 0) try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
+    try { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).bindProcessToNetwork(null) } catch (_: Throwable) {}
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
-    thread(isDaemon = true, name = "zivpn-test-stop") {
-      try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
-      try { process?.waitFor(700, TimeUnit.MILLISECONDS) } catch (_: Throwable) {}
-      try { process?.destroyForcibly() } catch (_: Throwable) {}
-      File(cacheDir, "zivpn-client.json").delete()
-      emitLog("info", "ZIVPN", "Arrêt complet du test client UDP-ZIVPN")
-    }
+    emitLog("info", "VPN", if (finalStatus == STATUS_ERROR) "VPN arrêté après erreur" else "VPN arrêté")
     stopSelf()
   }
 
   private fun createNotificationChannel() {
     if (Build.VERSION.SDK_INT >= 26) {
       getSystemService(NotificationManager::class.java).createNotificationChannel(
-        NotificationChannel(CHANNEL_ID, "UDP-ZIVPN test", NotificationManager.IMPORTANCE_LOW),
+        NotificationChannel(CHANNEL_ID, "Picko VPN", NotificationManager.IMPORTANCE_LOW),
       )
     }
   }
@@ -221,7 +188,7 @@ class KighmuVpnService : VpnService() {
     val stopPending = PendingIntent.getService(this, NOTIFICATION_ID, Intent(this, KighmuVpnService::class.java).apply { action = ACTION_STOP }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.stat_sys_warning)
-      .setContentTitle("UDP-ZIVPN test")
+      .setContentTitle("Picko VPN")
       .setContentText(text)
       .setOngoing(true)
       .setContentIntent(pending)
@@ -231,15 +198,11 @@ class KighmuVpnService : VpnService() {
 
   override fun onRevoke() { stopVpn(); super.onRevoke() }
   override fun onDestroy() { stopVpn(); super.onDestroy() }
-  override fun onBind(intent: Intent?) = super.onBind(intent)
 
   companion object {
     const val ACTION_START = "expo.modules.kighmuvpnnative.START"
     const val ACTION_STOP = "expo.modules.kighmuvpnnative.STOP"
-    const val EXTRA_HOST = "host"
-    const val EXTRA_PORT = "port"
-    const val EXTRA_OBFS = "obfs"
-    const val EXTRA_PASSWORD = "password"
+    const val EXTRA_PROFILES_JSON = "profilesJson"
     const val PREPARE_REQUEST_CODE = 4007
     const val STATUS_DISCONNECTED = "disconnected"
     const val STATUS_CONNECTING = "connecting"
