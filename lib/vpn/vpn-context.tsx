@@ -83,6 +83,7 @@ type VpnContextValue = {
   hydrated: boolean;
   createProfile: (method: TunnelMethod) => VpnProfile;
   saveProfile: (profile: VpnProfile) => Promise<boolean>;
+  duplicateProfile: (profile: VpnProfile) => Promise<boolean>;
   deleteProfile: (id: string) => Promise<void>;
   setProfileEnabled: (id: string, enabled: boolean) => Promise<void>;
   connect: () => Promise<void>;
@@ -170,6 +171,28 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     }
   }, [addLog, persistProfiles, profiles]);
 
+  const duplicateProfile = useCallback(async (source: VpnProfile) => {
+    const existingNames = new Set(profiles.map((profile) => profile.name.trim().toLocaleLowerCase()));
+    const baseName = source.name.trim() || "Profil de tunnel";
+    let copyName = `${baseName} (copie)`;
+    let suffix = 2;
+    while (existingNames.has(copyName.toLocaleLowerCase())) {
+      copyName = `${baseName} (copie ${suffix})`;
+      suffix += 1;
+    }
+    const clone = { ...source, id: createEmptyProfile(source.method).id, name: copyName };
+    try {
+      const next = [...profiles, clone];
+      await persistProfiles(next);
+      setProfiles(next);
+      addLog("info", "STORAGE", `Profil « ${source.name || "sans nom"} » cloné sous « ${copyName} ».`);
+      return true;
+    } catch {
+      addLog("error", "STORAGE", "Échec du clonage du profil sécurisé.");
+      return false;
+    }
+  }, [addLog, persistProfiles, profiles]);
+
   const deleteProfile = useCallback(async (id: string) => {
     const next = profiles.filter((profile) => profile.id !== id);
     await persistProfiles(next);
@@ -239,7 +262,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     addLog("connection", "TUNNEL", "Déconnexion demandée.");
   }, [addLog]);
 
-  const value = useMemo(() => ({ profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, deleteProfile, setProfileEnabled, connect, disconnect, clearLogs: () => setLogs([]) }), [profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, deleteProfile, setProfileEnabled, connect, disconnect]);
+  const value = useMemo(() => ({ profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, deleteProfile, setProfileEnabled, connect, disconnect, clearLogs: () => setLogs([]) }), [profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, deleteProfile, setProfileEnabled, connect, disconnect]);
   return <VpnContext.Provider value={value}>{children}</VpnContext.Provider>;
 }
 

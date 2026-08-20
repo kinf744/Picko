@@ -17,7 +17,7 @@ function Field({ label, value, onChangeText, placeholder, secureTextEntry, keybo
 
 export default function ConfigurationScreen() {
   const colors = useColors();
-  const { profiles, createProfile, saveProfile, deleteProfile, setProfileEnabled } = useVpn();
+  const { profiles, createProfile, saveProfile, duplicateProfile, deleteProfile, setProfileEnabled } = useVpn();
   const [methodPickerVisible, setMethodPickerVisible] = useState(false);
   const [draft, setDraft] = useState<VpnProfile | null>(null);
   const [errors, setErrors] = useState<ProfileValidationErrors>({});
@@ -43,6 +43,10 @@ export default function ConfigurationScreen() {
     setSaving(false);
     if (saved) setDraft(null);
   };
+  const cloneProfile = async (profile: VpnProfile) => {
+    const cloned = await duplicateProfile(profile);
+    if (!cloned) Alert.alert("Clonage impossible", "Le profil n’a pas pu être dupliqué. Réessayez après avoir vérifié l’espace de stockage de l’application.");
+  };
   const confirmDelete = (profile: VpnProfile) => Alert.alert("Supprimer ce profil ?", `« ${profile.name} » et ses secrets seront supprimés de l’appareil.`, [
     { text: "Annuler", style: "cancel" },
     { text: "Supprimer", style: "destructive", onPress: () => void deleteProfile(profile.id) },
@@ -66,7 +70,7 @@ export default function ConfigurationScreen() {
         </View>
         <Text className="mt-3 text-sm text-muted">{profileEndpoint(profile)}</Text>
         <Text className="mt-1 text-xs text-muted">{profile.enabled ? "Actif : inclus dans l’équilibrage" : "Inactif : conservé sans connexion"}</Text>
-        <View style={styles.actions}><Pressable onPress={() => beginEdit(profile)} style={({ pressed }) => [styles.outlineButton, { borderColor: colors.primary }, pressed && styles.pressed]}><Text style={[styles.outlineText, { color: colors.primary }]}>Modifier</Text></Pressable><Pressable onPress={() => confirmDelete(profile)} style={({ pressed }) => [styles.outlineButton, { borderColor: colors.error }, pressed && styles.pressed]}><Text style={[styles.outlineText, { color: colors.error }]}>Supprimer</Text></Pressable></View>
+        <View style={styles.actions}><Pressable onPress={() => beginEdit(profile)} style={({ pressed }) => [styles.outlineButton, { borderColor: colors.primary }, pressed && styles.pressed]}><Text style={[styles.outlineText, { color: colors.primary }]}>Modifier</Text></Pressable><Pressable onPress={() => void cloneProfile(profile)} style={({ pressed }) => [styles.outlineButton, { borderColor: colors.primary }, pressed && styles.pressed]}><Text style={[styles.outlineText, { color: colors.primary }]}>Cloner</Text></Pressable><Pressable onPress={() => confirmDelete(profile)} style={({ pressed }) => [styles.outlineButton, { borderColor: colors.error }, pressed && styles.pressed]}><Text style={[styles.outlineText, { color: colors.error }]}>Supprimer</Text></Pressable></View>
       </View>)}</View>
     </ScrollView>
 
@@ -90,13 +94,13 @@ export default function ConfigurationScreen() {
             {draft.method === "zivpn-udp" ? <>
               <Field label="Hôte ou adresse IP" value={draft.host} onChangeText={(host) => updateDraft({ host })} placeholder="vpn.exemple.com" error={errors.host} />
               <Field label="Port ou plage" value={draft.port} onChangeText={(port) => updateDraft({ port })} placeholder="443 ou 6000-19999" keyboardType="numeric" error={errors.port} />
-              <Field label="Obfs" value={draft.obfs} onChangeText={(obfs) => updateDraft({ obfs })} placeholder="Clé Salamander" secureTextEntry error={errors.obfs} />
-              <Field label="Mot de passe" value={draft.password} onChangeText={(password) => updateDraft({ password })} placeholder="Mot de passe du serveur" secureTextEntry error={errors.password} />
+              <Field label="Obfs" value={draft.obfs} onChangeText={(obfs) => updateDraft({ obfs })} placeholder="Clé Salamander" error={errors.obfs} />
+              <Field label="Mot de passe" value={draft.password} onChangeText={(password) => updateDraft({ password })} placeholder="Mot de passe du serveur" error={errors.password} />
             </> : draft.method === "ssh-slowdns" ? <>
               <Field label="Serveur SSH" value={draft.sshHost} onChangeText={(sshHost) => updateDraft({ sshHost })} placeholder="ssh.exemple.com" error={errors.sshHost} />
               <Field label="Port SSH" value={draft.sshPort} onChangeText={(sshPort) => updateDraft({ sshPort })} placeholder="22" keyboardType="numeric" error={errors.sshPort} />
               <Field label="Utilisateur SSH" value={draft.sshUser} onChangeText={(sshUser) => updateDraft({ sshUser })} placeholder="utilisateur" error={errors.sshUser} />
-              <Field label="Mot de passe SSH" value={draft.password} onChangeText={(password) => updateDraft({ password })} placeholder="Mot de passe SSH" secureTextEntry error={errors.password} />
+              <Field label="Mot de passe SSH" value={draft.password} onChangeText={(password) => updateDraft({ password })} placeholder="Mot de passe SSH" error={errors.password} />
               <Field label="Résolveur DNS" value={draft.dnsServer} onChangeText={(dnsServer) => updateDraft({ dnsServer })} placeholder="8.8.8.8" error={errors.dnsServer} />
               <Field label="Port DNS" value={draft.dnsPort} onChangeText={(dnsPort) => updateDraft({ dnsPort })} placeholder="53" keyboardType="numeric" error={errors.dnsPort} />
               <Field label="Domaine SlowDNS" value={draft.nameserver} onChangeText={(nameserver) => updateDraft({ nameserver })} placeholder="tunnel.exemple.com" error={errors.nameserver} />
@@ -104,10 +108,10 @@ export default function ConfigurationScreen() {
             </> : <>
               <Field label="Serveur Hysteria" value={draft.hysteriaHost} onChangeText={(hysteriaHost) => updateDraft({ hysteriaHost })} placeholder="hysteria.exemple.com" error={errors.hysteriaHost} />
               <Field label="Port ou plage Hysteria" value={draft.hysteriaPort} onChangeText={(hysteriaPort) => updateDraft({ hysteriaPort })} placeholder="443 ou 20000-50000" error={errors.hysteriaPort} />
-              <Field label="Mot de passe Hysteria" value={draft.hysteriaAuth} onChangeText={(hysteriaAuth) => updateDraft({ hysteriaAuth })} placeholder="Mot de passe du serveur" secureTextEntry error={errors.hysteriaAuth} />
+              <Field label="Mot de passe Hysteria" value={draft.hysteriaAuth} onChangeText={(hysteriaAuth) => updateDraft({ hysteriaAuth })} placeholder="Mot de passe du serveur" error={errors.hysteriaAuth} />
               <Field label="Débit montant (Mbps)" value={draft.hysteriaUpMbps} onChangeText={(hysteriaUpMbps) => updateDraft({ hysteriaUpMbps })} placeholder="100" keyboardType="numeric" error={errors.hysteriaUpMbps} />
               <Field label="Débit descendant (Mbps)" value={draft.hysteriaDownMbps} onChangeText={(hysteriaDownMbps) => updateDraft({ hysteriaDownMbps })} placeholder="100" keyboardType="numeric" error={errors.hysteriaDownMbps} />
-              <Field label="Obfs Hysteria (facultatif)" value={draft.hysteriaObfs} onChangeText={(hysteriaObfs) => updateDraft({ hysteriaObfs })} placeholder="Clé d’obfuscation" secureTextEntry />
+              <Field label="Obfs Hysteria (facultatif)" value={draft.hysteriaObfs} onChangeText={(hysteriaObfs) => updateDraft({ hysteriaObfs })} placeholder="Clé d’obfuscation" />
             </>}
           </View>
           <Pressable onPress={() => void saveDraft()} disabled={saving} style={({ pressed }) => [styles.addButton, { backgroundColor: colors.primary }, (pressed || saving) && styles.pressed]}><Text style={styles.addText}>{saving ? "Enregistrement…" : "Enregistrer le profil"}</Text></Pressable>
