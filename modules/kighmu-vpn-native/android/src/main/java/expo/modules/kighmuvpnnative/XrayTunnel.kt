@@ -161,7 +161,10 @@ class XrayTunnel(
     val port = source.optInt("port", 443)
     val uuid = source.optString("id")
     val transport = source.optString("net", "tcp")
-    val stream = buildStream(transport, source.optString("path", "/"), source.optString("host"), source.optString("tls"), source.optString("sni"), "", "")
+    val path = URLDecoder.decode(source.optString("path", "/"), "UTF-8")
+    val sni = source.optString("sni").ifBlank { host }
+    val streamHost = source.optString("host").ifBlank { host }
+    val stream = buildStream(transport, path, streamHost, source.optString("tls"), sni, "", "")
     return baseConfig(protocol, host, port, uuid, "auto", stream)
   }
 
@@ -169,9 +172,13 @@ class XrayTunnel(
     val query = queryMap(uri.rawQuery)
     val host = uri.host ?: error("Serveur Xray absent")
     val port = if (uri.port > 0) uri.port else 443
-    val user = URLDecoder.decode(uri.userInfo.orEmpty(), "UTF-8")
+    val user = uri.userInfo.orEmpty()
     val transport = query["type"] ?: query["network"] ?: "tcp"
-    val stream = buildStream(transport, query["path"] ?: "/", query["host"] ?: "", query["security"] ?: "none", query["sni"] ?: "", query["pbk"] ?: "", query["sid"] ?: "", query["fp"] ?: "chrome")
+    val security = query["security"] ?: "none"
+    val streamPath = query["path"] ?: query["serviceName"] ?: "/"
+    val sni = query["sni"] ?: query["host"] ?: host
+    val streamHost = query["host"] ?: sni
+    val stream = buildStream(transport, streamPath, streamHost, security, sni, query["pbk"] ?: "", query["sid"] ?: "", query["fp"] ?: "chrome")
     val uuidOrPassword = if (protocol == "trojan") user else user.substringBefore(":")
     val flow = query["flow"].orEmpty()
     val result = JSONObject(baseConfig(protocol, host, port, uuidOrPassword, "none", stream))
@@ -192,7 +199,7 @@ class XrayTunnel(
       else -> JSONObject().put("address", host).put("port", port).put("users", JSONArray().put(JSONObject().put("id", credential).put("alterId", 0).put("security", encryption).put("encryption", "none")))
     }
     val settings = if (protocol == "trojan") JSONObject().put("servers", JSONArray().put(users)) else JSONObject().put("vnext", JSONArray().put(users))
-    val outbound = JSONObject().put("protocol", protocol).put("settings", settings).put("streamSettings", stream)
+    val outbound = JSONObject().put("protocol", protocol).put("settings", settings).put("streamSettings", stream).put("mux", JSONObject().put("enabled", false))
     return JSONObject().put("log", JSONObject().put("loglevel", "warning")).put("inbounds", JSONArray()).put("outbounds", JSONArray().put(outbound).put(JSONObject().put("protocol", "freedom").put("tag", "direct"))).put("routing", JSONObject().put("rules", JSONArray())).toString()
   }
 
@@ -200,16 +207,23 @@ class XrayTunnel(
     val network = when (transport.lowercase()) {
       "websocket" -> "ws"
       "mkcp" -> "kcp"
+      "raw" -> "tcp"
       else -> transport.lowercase()
     }
-    val stream = JSONObject().put("network", network).put("security", if (publicKey.isNotBlank()) "reality" else if (securityValue == "tls" || securityValue == "reality") "tls" else "none")
+    val security = when (securityValue.lowercase()) {
+      "reality" -> "reality"
+      "tls" -> "tls"
+      else -> "none"
+    }
+    val stream = JSONObject().put("network", network).put("security", security)
     when (network) {
       "ws" -> stream.put("wsSettings", JSONObject().put("path", path.ifBlank { "/" }).put("headers", JSONObject().put("Host", host)))
-      "grpc" -> stream.put("grpcSettings", JSONObject().put("serviceName", path.trim('/')))
-      "xhttp", "splithttp" -> stream.put("xhttpSettings", JSONObject().put("path", path.ifBlank { "/" }).put("host", host).put("mode", "auto"))
+      "grpc" -> stream.put("grpcSettings", JSONObject().put("serviceName", path.trim('/')).put("multiMode", false))
+      "xhttp" -> stream.put("xhttpSettings", JSONObject().put("path", path.ifBlank { "/" }).put("host", host).put("mode", "stream-up").put("scMaxConcurrentPosts", 16).put("scMinPostsIntervalMs", 10).put("scMaxEachPostBytes", 1_000_000).put("noSSEHeader", true).put("xPaddingBytes", "100-1000"))
+      "splithttp" -> stream.put("splithttpSettings", JSONObject().put("path", path.ifBlank { "/" }).put("host", host).put("mode", "stream-up").put("scMaxConcurrentPosts", 16).put("scMinPostsIntervalMs", 10).put("scMaxEachPostBytes", 1_000_000))
       "h2", "http" -> stream.put("httpSettings", JSONObject().put("path", path.ifBlank { "/" }).put("host", JSONArray().put(host)))
       "httpupgrade" -> stream.put("httpupgradeSettings", JSONObject().put("path", path.ifBlank { "/" }).put("host", host))
-      "kcp" -> stream.put("kcpSettings", JSONObject().put("mtu", 1350).put("tti", 20).put("header", JSONObject().put("type", "none")))
+      "kcp" -> stream.put("kcpSettings", JSONObject().put("mtu", 1350).put("tti", 20).put("uplinkCapacity", 5).put("downlinkCapacity", 20).put("congestion", false).put("readBufferSize", 2).put("writeBufferSize", 2).put("header", JSONObject().put("type", "none")).put("seed", host))
       "tcp" -> stream.put("tcpSettings", JSONObject().put("header", JSONObject().put("type", "none")))
     }
     if (stream.optString("security") == "reality") stream.put("realitySettings", JSONObject().put("serverName", sni.ifBlank { host }).put("fingerprint", fingerprint).put("publicKey", publicKey).put("shortId", shortId))
