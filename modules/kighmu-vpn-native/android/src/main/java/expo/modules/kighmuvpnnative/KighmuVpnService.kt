@@ -123,9 +123,12 @@ class KighmuVpnService : VpnService() {
   private fun monitorTunnels(generation: Long) {
     thread(isDaemon = true, name = "picko-vpn-health") {
       var lastPorts = emptyList<Int>()
+      var recoveryLogged = false
       while (isActive(generation)) {
         Thread.sleep(5_000)
-        val healthy = synchronized(lifecycleLock) { tunnels.filter { it.isHealthy() } }
+        val snapshot = synchronized(lifecycleLock) { tunnels.toList() }
+        val healthy = snapshot.filter { it.isHealthy() }
+        val recovering = snapshot.any { it.isRecovering() }
         val ports = healthy.map { it.socksPort }
         if (ports != lastPorts) {
           balancer?.updatePorts(ports)
@@ -133,8 +136,17 @@ class KighmuVpnService : VpnService() {
           lastPorts = ports
         }
         if (ports.isEmpty()) {
-          fail(generation, "Tous les tunnels sont indisponibles")
-          return@thread
+          if (recovering) {
+            if (!recoveryLogged) {
+              emitLog("warning", "HYSTERIA", "Tunnel temporairement indisponible; reconnexion en cours")
+              recoveryLogged = true
+            }
+          } else {
+            fail(generation, "Tous les tunnels sont indisponibles")
+            return@thread
+          }
+        } else {
+          recoveryLogged = false
         }
       }
     }
