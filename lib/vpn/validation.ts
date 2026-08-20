@@ -1,7 +1,8 @@
-import type { VpnProfile } from "./profiles";
+import { hasXrayInput, xrayLinkScheme, type VpnProfile } from "./profiles";
 
 export type VpnValidationConfig = Pick<VpnProfile, "host" | "port" | "obfs" | "password">;
 export type HysteriaValidationConfig = Pick<VpnProfile, "hysteriaHost" | "hysteriaPort" | "hysteriaAuth" | "hysteriaUpMbps" | "hysteriaDownMbps">;
+export type XrayValidationConfig = Pick<VpnProfile, "xrayMode" | "xrayLink" | "xrayJson">;
 export type ProfileValidationErrors = Partial<Record<keyof VpnProfile, string>>;
 
 export function isValidPort(port: string, allowRange = false) {
@@ -50,6 +51,25 @@ export function validateHysteriaConfig(config: HysteriaValidationConfig) {
   return errors;
 }
 
+export function validateXrayConfig(config: XrayValidationConfig) {
+  const errors: Partial<Record<keyof XrayValidationConfig, string>> = {};
+  if (!hasXrayInput(config as VpnProfile)) {
+    if (config.xrayMode === "json") errors.xrayJson = "Collez une configuration JSON Xray valide.";
+    else errors.xrayLink = "Collez un lien vmess://, vless:// ou trojan://.";
+  } else if (config.xrayMode === "link" && !["vmess", "vless", "trojan"].includes(xrayLinkScheme(config.xrayLink))) {
+    errors.xrayLink = "Le lien doit commencer par vmess://, vless:// ou trojan://.";
+  }
+  if (config.xrayMode === "json" && config.xrayJson.trim()) {
+    try {
+      const parsed = JSON.parse(config.xrayJson) as { outbounds?: unknown };
+      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.outbounds)) errors.xrayJson = "Le JSON doit contenir un tableau outbounds.";
+    } catch {
+      errors.xrayJson = "Le JSON Xray est invalide.";
+    }
+  }
+  return errors;
+}
+
 export function validateProfile(profile: VpnProfile): ProfileValidationErrors {
   const errors: ProfileValidationErrors = {
     name: required(profile.name, "Donnez un nom à ce profil."),
@@ -66,8 +86,10 @@ export function validateProfile(profile: VpnProfile): ProfileValidationErrors {
     if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Utilisez un port DNS valide.";
     errors.nameserver = required(profile.nameserver, "Saisissez le domaine SlowDNS.");
     errors.publicKey = required(profile.publicKey, "Saisissez la clé publique DNSTT.");
-  } else {
+  } else if (profile.method === "hysteria-udp") {
     Object.assign(errors, validateHysteriaConfig(profile));
+  } else {
+    Object.assign(errors, validateXrayConfig(profile));
   }
 
   return withoutEmptyErrors(errors) as ProfileValidationErrors;

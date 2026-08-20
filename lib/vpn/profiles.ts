@@ -1,4 +1,5 @@
-export type TunnelMethod = "zivpn-udp" | "ssh-slowdns" | "hysteria-udp";
+export type TunnelMethod = "zivpn-udp" | "ssh-slowdns" | "hysteria-udp" | "xray";
+export type XrayInputMode = "link" | "json";
 
 export type VpnProfile = {
   id: string;
@@ -22,15 +23,19 @@ export type VpnProfile = {
   hysteriaUpMbps: string;
   hysteriaDownMbps: string;
   hysteriaObfs: string;
+  xrayMode: XrayInputMode;
+  xrayLink: string;
+  xrayJson: string;
 };
 
-export type VpnProfileSecrets = Pick<VpnProfile, "obfs" | "password" | "hysteriaAuth" | "hysteriaObfs">;
+export type VpnProfileSecrets = Pick<VpnProfile, "obfs" | "password" | "hysteriaAuth" | "hysteriaObfs" | "xrayLink" | "xrayJson">;
 export type StoredVpnProfile = Omit<VpnProfile, keyof VpnProfileSecrets>;
 
 export const VpnMethodLabel: Record<TunnelMethod, string> = {
   "zivpn-udp": "ZiVPN UDP",
   "ssh-slowdns": "SSH SlowDNS",
   "hysteria-udp": "Hysteria UDP",
+  xray: "Xray",
 };
 
 function makeId() {
@@ -40,7 +45,7 @@ function makeId() {
 export function createEmptyProfile(method: TunnelMethod): VpnProfile {
   return {
     id: makeId(),
-    name: method === "zivpn-udp" ? "Profil ZiVPN" : method === "ssh-slowdns" ? "Profil SSH SlowDNS" : "Profil Hysteria",
+    name: method === "zivpn-udp" ? "Profil ZiVPN" : method === "ssh-slowdns" ? "Profil SSH SlowDNS" : method === "hysteria-udp" ? "Profil Hysteria" : "Profil Xray",
     method,
     enabled: true,
     host: "",
@@ -60,11 +65,14 @@ export function createEmptyProfile(method: TunnelMethod): VpnProfile {
     hysteriaUpMbps: "100",
     hysteriaDownMbps: "100",
     hysteriaObfs: "",
+    xrayMode: "link",
+    xrayLink: "",
+    xrayJson: "",
   };
 }
 
 export function stripSecrets(profile: VpnProfile): StoredVpnProfile {
-  const { obfs: _obfs, password: _password, hysteriaAuth: _hysteriaAuth, hysteriaObfs: _hysteriaObfs, ...stored } = profile;
+  const { obfs: _obfs, password: _password, hysteriaAuth: _hysteriaAuth, hysteriaObfs: _hysteriaObfs, xrayLink: _xrayLink, xrayJson: _xrayJson, ...stored } = profile;
   return stored;
 }
 
@@ -75,5 +83,20 @@ export function profileEndpoint(profile: VpnProfile) {
   if (profile.method === "hysteria-udp") {
     return profile.hysteriaHost ? `${profile.hysteriaHost}:${profile.hysteriaPort || "443"}` : "Serveur Hysteria non défini";
   }
+  if (profile.method === "xray") {
+    return profile.xrayMode === "json" ? (profile.xrayJson.trim() ? "Configuration JSON Xray" : "JSON Xray non défini") : (profile.xrayLink.trim() ? "Lien Xray configuré" : "Lien Xray non défini");
+  }
   return profile.host ? `${profile.host}:${profile.port || "—"}` : "Serveur ZiVPN non défini";
+}
+
+export function hasXrayInput(profile: VpnProfile) {
+  return profile.xrayMode === "json" ? Boolean(profile.xrayJson.trim()) : Boolean(profile.xrayLink.trim());
+}
+
+export function normalizeXrayMode(profile: VpnProfile): VpnProfile {
+  return { ...createEmptyProfile("xray"), ...profile, xrayMode: profile.xrayMode === "json" ? "json" : "link" };
+}
+
+export function xrayLinkScheme(link: string) {
+  return link.trim().split(":", 1)[0].toLowerCase();
 }

@@ -41,17 +41,19 @@ function makeLog(level: LogLevel, component: string, message: string): Diagnosti
 async function readSecret(id: string) {
   const key = secretKey(id);
   const value = Platform.OS === "web" ? localStorage.getItem(key) : await SecureStore.getItemAsync(key);
-  if (!value) return { obfs: "", password: "", hysteriaAuth: "", hysteriaObfs: "" };
+  if (!value) return { obfs: "", password: "", hysteriaAuth: "", hysteriaObfs: "", xrayLink: "", xrayJson: "" };
   try {
-    const parsed = JSON.parse(value) as { obfs?: string; password?: string; hysteriaAuth?: string; hysteriaObfs?: string };
+    const parsed = JSON.parse(value) as { obfs?: string; password?: string; hysteriaAuth?: string; hysteriaObfs?: string; xrayLink?: string; xrayJson?: string };
     return {
       obfs: parsed.obfs ?? "",
       password: parsed.password ?? "",
       hysteriaAuth: parsed.hysteriaAuth ?? "",
       hysteriaObfs: parsed.hysteriaObfs ?? "",
+      xrayLink: parsed.xrayLink ?? "",
+      xrayJson: parsed.xrayJson ?? "",
     };
   } catch {
-    return { obfs: "", password: "", hysteriaAuth: "", hysteriaObfs: "" };
+    return { obfs: "", password: "", hysteriaAuth: "", hysteriaObfs: "", xrayLink: "", xrayJson: "" };
   }
 }
 
@@ -61,6 +63,8 @@ async function writeSecret(profile: VpnProfile) {
     password: profile.password,
     hysteriaAuth: profile.hysteriaAuth,
     hysteriaObfs: profile.hysteriaObfs,
+    xrayLink: profile.xrayLink,
+    xrayJson: profile.xrayJson,
   });
   const key = secretKey(profile.id);
   if (Platform.OS === "web") localStorage.setItem(key, value);

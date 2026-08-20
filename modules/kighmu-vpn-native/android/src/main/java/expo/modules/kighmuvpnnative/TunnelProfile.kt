@@ -24,11 +24,15 @@ data class TunnelProfile(
   val hysteriaUpMbps: String = "100",
   val hysteriaDownMbps: String = "100",
   val hysteriaObfs: String = "",
+  val xrayMode: String = "link",
+  val xrayLink: String = "",
+  val xrayJson: String = "",
 ) {
   companion object {
     private const val ZIVPN = "zivpn-udp"
     private const val SLOWDNS = "ssh-slowdns"
     private const val HYSTERIA = "hysteria-udp"
+    private const val XRAY = "xray"
 
     fun parseMany(json: String): List<TunnelProfile> {
       val array = JSONObject(json).optJSONArray("profiles") ?: JSONArray()
@@ -36,11 +40,12 @@ data class TunnelProfile(
         for (index in 0 until array.length()) {
           val source = array.optJSONObject(index) ?: continue
           val method = source.optString("method").trim()
-          if (method !in setOf(ZIVPN, SLOWDNS, HYSTERIA)) continue
+          if (method !in setOf(ZIVPN, SLOWDNS, HYSTERIA, XRAY)) continue
           val defaultName = when (method) {
             ZIVPN -> "ZiVPN UDP"
             SLOWDNS -> "SSH SlowDNS"
-            else -> "Hysteria UDP"
+            HYSTERIA -> "Hysteria UDP"
+            else -> "Xray"
           }
           add(TunnelProfile(
             id = source.optString("id").trim().ifBlank { "profile-$index" },
@@ -63,6 +68,9 @@ data class TunnelProfile(
             hysteriaUpMbps = source.optString("hysteriaUpMbps", "100").trim(),
             hysteriaDownMbps = source.optString("hysteriaDownMbps", "100").trim(),
             hysteriaObfs = source.optString("hysteriaObfs").trim(),
+            xrayMode = if (source.optString("xrayMode").trim() == "json") "json" else "link",
+            xrayLink = source.optString("xrayLink").trim(),
+            xrayJson = source.optString("xrayJson").trim(),
           ))
         }
       }
@@ -96,10 +104,20 @@ data class TunnelProfile(
       !isValidMbps(hysteriaDownMbps) -> "débit descendant Hysteria invalide"
       else -> null
     }
+    XRAY -> when {
+      xrayMode == "json" && xrayJson.isBlank() -> "JSON Xray manquant"
+      xrayMode == "link" && !xrayLink.matches(Regex("^(vmess|vless|trojan)://.+")) -> "lien Xray vmess, vless ou trojan invalide"
+      xrayMode == "json" && !isJsonXray(xrayJson) -> "JSON Xray invalide ou sans outbounds"
+      else -> null
+    }
     else -> "méthode de tunnel inconnue"
   }
 
   fun normalizedPublicKey(): String = publicKey.filterNot { it.isWhitespace() || it in "()'\"`;&|$" }
+
+  private fun isJsonXray(value: String): Boolean = try {
+    JSONObject(value).optJSONArray("outbounds") != null
+  } catch (_: Throwable) { false }
 
   private fun isValidSinglePort(value: String): Boolean = value.toIntOrNull()?.let { it in 1..65535 } == true
 

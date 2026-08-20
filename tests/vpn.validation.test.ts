@@ -88,3 +88,28 @@ describe("validateProfile", () => {
     expect(Object.keys(errors).sort()).toEqual(["hysteriaAuth", "hysteriaDownMbps", "hysteriaHost", "hysteriaPort", "hysteriaUpMbps"]);
   });
 });
+
+
+describe("validation Xray", () => {
+  it("accepte un lien VLESS complet", () => {
+    const profile = {
+      ...createEmptyProfile("xray"),
+      name: "Xray VLESS",
+      xrayMode: "link" as const,
+      xrayLink: "vless://11111111-1111-1111-1111-111111111111@example.test:443?type=ws&security=tls&path=%2F#xray",
+    };
+    expect(validateProfile(profile)).toEqual({});
+  });
+
+  it("accepte un JSON Xray avec outbounds et rejette un schéma de lien inconnu", () => {
+    const jsonProfile = {
+      ...createEmptyProfile("xray"),
+      name: "Xray JSON",
+      xrayMode: "json" as const,
+      xrayJson: JSON.stringify({ inbounds: [], outbounds: [{ protocol: "freedom" }] }),
+    };
+    expect(validateProfile(jsonProfile)).toEqual({});
+    const invalidLink = { ...createEmptyProfile("xray"), name: "Xray invalide", xrayLink: "ss://not-supported" };
+    expect(validateProfile(invalidLink).xrayLink).toBeTruthy();
+  });
+});

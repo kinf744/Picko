@@ -81,6 +81,7 @@ class KighmuVpnService : VpnService() {
             "zivpn-udp" -> ZivpnTunnel(this, profile, ::emitLog)
             "ssh-slowdns" -> SshSlowDnsTunnel(this, profile, ::emitLog)
             "hysteria-udp" -> HysteriaTunnel(this, profile, ::emitLog)
+            "xray" -> XrayTunnel(this, profile, ::emitLog)
             else -> error("Méthode non prise en charge")
           }
           emitLog("connection", "TUNNEL", "Démarrage de ${profile.name} (${profile.method})")
