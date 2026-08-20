@@ -88,6 +88,12 @@ export function validateProfile(profile: VpnProfile): ProfileValidationErrors {
     errors.publicKey = required(profile.publicKey, "Saisissez la clé publique DNSTT.");
   } else if (profile.method === "hysteria-udp") {
     Object.assign(errors, validateHysteriaConfig(profile));
+  } else if (profile.method === "v2ray-dns") {
+    Object.assign(errors, validateXrayConfig(profile));
+    errors.dnsServer = required(profile.dnsServer, "Saisissez le résolveur DNS à utiliser.");
+    if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Utilisez un port DNS valide.";
+    errors.nameserver = required(profile.nameserver, "Saisissez le domaine SlowDNS.");
+    errors.publicKey = required(profile.publicKey, "Saisissez la clé publique DNSTT.");
   } else {
     Object.assign(errors, validateXrayConfig(profile));
   }

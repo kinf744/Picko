@@ -1,4 +1,4 @@
-export type TunnelMethod = "zivpn-udp" | "ssh-slowdns" | "hysteria-udp" | "xray";
+export type TunnelMethod = "zivpn-udp" | "ssh-slowdns" | "hysteria-udp" | "xray" | "v2ray-dns";
 export type XrayInputMode = "link" | "json";
 
 export type VpnProfile = {
@@ -36,6 +36,7 @@ export const VpnMethodLabel: Record<TunnelMethod, string> = {
   "ssh-slowdns": "SSH SlowDNS",
   "hysteria-udp": "Hysteria UDP",
   xray: "Xray",
+  "v2ray-dns": "V2Ray DNS",
 };
 
 function makeId() {
@@ -45,7 +46,7 @@ function makeId() {
 export function createEmptyProfile(method: TunnelMethod): VpnProfile {
   return {
     id: makeId(),
-    name: method === "zivpn-udp" ? "Profil ZiVPN" : method === "ssh-slowdns" ? "Profil SSH SlowDNS" : method === "hysteria-udp" ? "Profil Hysteria" : "Profil Xray",
+    name: method === "zivpn-udp" ? "Profil ZiVPN" : method === "ssh-slowdns" ? "Profil SSH SlowDNS" : method === "hysteria-udp" ? "Profil Hysteria" : method === "v2ray-dns" ? "Profil V2Ray DNS" : "Profil Xray",
     method,
     enabled: true,
     host: "",
@@ -85,6 +86,10 @@ export function profileEndpoint(profile: VpnProfile) {
   }
   if (profile.method === "xray") {
     return profile.xrayMode === "json" ? (profile.xrayJson.trim() ? "Configuration JSON Xray" : "JSON Xray non défini") : (profile.xrayLink.trim() ? "Lien Xray configuré" : "Lien Xray non défini");
+  }
+  if (profile.method === "v2ray-dns") {
+    const xray = profile.xrayMode === "json" ? "JSON Xray" : (profile.xrayLink.trim() ? "Lien Xray" : "Xray non défini");
+    return profile.nameserver.trim() ? `${xray} via ${profile.nameserver.trim()}` : `${xray} — domaine SlowDNS non défini`;
   }
   return profile.host ? `${profile.host}:${profile.port || "—"}` : "Serveur ZiVPN non défini";
 }

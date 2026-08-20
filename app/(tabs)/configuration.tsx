@@ -55,13 +55,13 @@ export default function ConfigurationScreen() {
   return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <Text className="text-3xl font-bold text-foreground">Profils de tunnel</Text>
-      <Text className="mt-2 text-sm leading-5 text-muted">Créez vos profils ZiVPN UDP, SSH SlowDNS, Hysteria UDP ou Xray, puis activez ceux que vous souhaitez équilibrer. Les secrets restent uniquement sur l’appareil.</Text>
+      <Text className="mt-2 text-sm leading-5 text-muted">Créez vos profils ZiVPN UDP, SSH SlowDNS, Hysteria UDP, Xray ou V2Ray DNS, puis activez ceux que vous souhaitez équilibrer. Les secrets restent uniquement sur l’appareil.</Text>
 
       <Pressable onPress={() => setMethodPickerVisible(true)} style={({ pressed }) => [styles.addButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}>
         <Text style={styles.addText}>Ajouter un profil</Text>
       </Pressable>
 
-      {profiles.length === 0 ? <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text className="text-base font-bold text-foreground">Aucun profil</Text><Text className="mt-2 text-sm leading-5 text-muted">Utilisez « Ajouter un profil » pour créer un tunnel ZiVPN UDP, SSH SlowDNS, Hysteria UDP ou Xray.</Text></View> : null}
+      {profiles.length === 0 ? <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text className="text-base font-bold text-foreground">Aucun profil</Text><Text className="mt-2 text-sm leading-5 text-muted">Utilisez « Ajouter un profil » pour créer un tunnel ZiVPN UDP, SSH SlowDNS, Hysteria UDP, Xray ou V2Ray DNS.</Text></View> : null}
 
       <View style={styles.profileList}>{profiles.map((profile) => <View key={profile.id} style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.profileHeader}>
@@ -82,6 +82,7 @@ export default function ConfigurationScreen() {
         <Pressable onPress={() => beginCreate("ssh-slowdns")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">SSH SlowDNS</Text><Text className="mt-1 text-sm text-muted">SSH transporté par DNSTT / DNS</Text></Pressable>
         <Pressable onPress={() => beginCreate("hysteria-udp")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">Hysteria UDP</Text><Text className="mt-1 text-sm text-muted">UDP rapide, avec port hopping facultatif</Text></Pressable>
         <Pressable onPress={() => beginCreate("xray")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">Xray</Text><Text className="mt-1 text-sm text-muted">Lien VMess, VLESS ou Trojan, ou JSON Xray</Text></Pressable>
+        <Pressable onPress={() => beginCreate("v2ray-dns")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">V2Ray DNS</Text><Text className="mt-1 text-sm text-muted">Xray/V2Ray transporté par DNSTT / DNS</Text></Pressable>
         <Pressable onPress={() => setMethodPickerVisible(false)} style={styles.cancelButton}><Text className="text-sm font-semibold text-muted">Annuler</Text></Pressable>
       </View></View>
     </Modal>
@@ -113,6 +114,14 @@ export default function ConfigurationScreen() {
               <Field label="Débit montant (Mbps)" value={draft.hysteriaUpMbps} onChangeText={(hysteriaUpMbps) => updateDraft({ hysteriaUpMbps })} placeholder="100" keyboardType="numeric" error={errors.hysteriaUpMbps} />
               <Field label="Débit descendant (Mbps)" value={draft.hysteriaDownMbps} onChangeText={(hysteriaDownMbps) => updateDraft({ hysteriaDownMbps })} placeholder="100" keyboardType="numeric" error={errors.hysteriaDownMbps} />
               <Field label="Obfs Hysteria (facultatif)" value={draft.hysteriaObfs} onChangeText={(hysteriaObfs) => updateDraft({ hysteriaObfs })} placeholder="Clé d’obfuscation" />
+            </> : draft.method === "v2ray-dns" ? <>
+              <Field label="Lien V2Ray / Xray (vmess / vless / trojan)" value={draft.xrayLink} onChangeText={(xrayLink) => updateDraft({ xrayLink, xrayMode: "link" })} placeholder="vless://…" multiline error={errors.xrayLink} />
+              <Field label="Configuration JSON Xray (facultatif)" value={draft.xrayJson} onChangeText={(xrayJson) => updateDraft({ xrayJson, xrayMode: "json" })} placeholder={'{ "inbounds": [...], "outbounds": [...] }'} multiline error={errors.xrayJson} />
+              <View style={styles.modeRow}><Text className="text-sm font-semibold text-foreground">Mode Xray actif</Text><View style={styles.modeButtons}><Pressable onPress={() => updateDraft({ xrayMode: "link" })} style={[styles.modeButton, { borderColor: draft.xrayMode === "link" ? colors.primary : colors.border }]}><Text style={{ color: draft.xrayMode === "link" ? colors.primary : colors.muted }}>Lien</Text></Pressable><Pressable onPress={() => updateDraft({ xrayMode: "json" })} style={[styles.modeButton, { borderColor: draft.xrayMode === "json" ? colors.primary : colors.border }]}><Text style={{ color: draft.xrayMode === "json" ? colors.primary : colors.muted }}>JSON</Text></Pressable></View></View>
+              <Field label="Résolveur DNS" value={draft.dnsServer} onChangeText={(dnsServer) => updateDraft({ dnsServer })} placeholder="8.8.8.8" error={errors.dnsServer} />
+              <Field label="Port DNS" value={draft.dnsPort} onChangeText={(dnsPort) => updateDraft({ dnsPort })} placeholder="53" keyboardType="numeric" error={errors.dnsPort} />
+              <Field label="Domaine SlowDNS" value={draft.nameserver} onChangeText={(nameserver) => updateDraft({ nameserver })} placeholder="tunnel.exemple.com" error={errors.nameserver} />
+              <Field label="Clé publique DNSTT" value={draft.publicKey} onChangeText={(publicKey) => updateDraft({ publicKey })} placeholder="Clé publique du serveur DNSTT" multiline error={errors.publicKey} />
             </> : <>
               <Field label="Lien Xray (vmess / vless / trojan)" value={draft.xrayLink} onChangeText={(xrayLink) => updateDraft({ xrayLink, xrayMode: "link" })} placeholder="vless://…" multiline error={errors.xrayLink} />
               <Text className="text-sm leading-5 text-muted">Pour une configuration avancée, collez directement le JSON Xray ci-dessous. Le mode JSON est prioritaire lorsque vous le sélectionnez dans le nom du profil.</Text>

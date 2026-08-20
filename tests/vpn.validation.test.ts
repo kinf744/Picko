@@ -90,6 +90,29 @@ describe("validateProfile", () => {
 });
 
 
+describe("validation V2Ray DNS", () => {
+  it("accepte un profil V2Ray DNS complet", () => {
+    const profile = {
+      ...createEmptyProfile("v2ray-dns"),
+      name: "V2Ray DNS principal",
+      xrayMode: "link" as const,
+      xrayLink: "vless://11111111-1111-1111-1111-111111111111@example.test:443?type=ws&security=tls&path=%2F#v2dns",
+      dnsServer: "8.8.8.8",
+      dnsPort: "53",
+      nameserver: "tunnel.example.test",
+      publicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    };
+    expect(validateProfile(profile)).toEqual({});
+  });
+
+  it("requiert Xray et les paramètres DNSTT", () => {
+    const errors = validateProfile({ ...createEmptyProfile("v2ray-dns"), name: "V2Ray DNS incomplet" });
+    expect(errors.xrayLink).toBeTruthy();
+    expect(errors.nameserver).toBeTruthy();
+    expect(errors.publicKey).toBeTruthy();
+  });
+});
+
 describe("validation Xray", () => {
   it("accepte un lien VLESS complet", () => {
     const profile = {

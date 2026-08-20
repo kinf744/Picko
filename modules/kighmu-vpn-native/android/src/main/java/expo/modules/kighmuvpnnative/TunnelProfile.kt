@@ -33,6 +33,7 @@ data class TunnelProfile(
     private const val SLOWDNS = "ssh-slowdns"
     private const val HYSTERIA = "hysteria-udp"
     private const val XRAY = "xray"
+    private const val V2RAY_DNS = "v2ray-dns"
 
     fun parseMany(json: String): List<TunnelProfile> {
       val array = JSONObject(json).optJSONArray("profiles") ?: JSONArray()
@@ -40,12 +41,13 @@ data class TunnelProfile(
         for (index in 0 until array.length()) {
           val source = array.optJSONObject(index) ?: continue
           val method = source.optString("method").trim()
-          if (method !in setOf(ZIVPN, SLOWDNS, HYSTERIA, XRAY)) continue
+          if (method !in setOf(ZIVPN, SLOWDNS, HYSTERIA, XRAY, V2RAY_DNS)) continue
           val defaultName = when (method) {
             ZIVPN -> "ZiVPN UDP"
             SLOWDNS -> "SSH SlowDNS"
             HYSTERIA -> "Hysteria UDP"
-            else -> "Xray"
+            XRAY -> "Xray"
+            else -> "V2Ray DNS"
           }
           add(TunnelProfile(
             id = source.optString("id").trim().ifBlank { "profile-$index" },
@@ -104,16 +106,26 @@ data class TunnelProfile(
       !isValidMbps(hysteriaDownMbps) -> "débit descendant Hysteria invalide"
       else -> null
     }
-    XRAY -> when {
-      xrayMode == "json" && xrayJson.isBlank() -> "JSON Xray manquant"
-      xrayMode == "link" && !xrayLink.matches(Regex("^(vmess|vless|trojan)://.+")) -> "lien Xray vmess, vless ou trojan invalide"
-      xrayMode == "json" && !isJsonXray(xrayJson) -> "JSON Xray invalide ou sans outbounds"
+    XRAY -> validateXrayInput()
+    V2RAY_DNS -> when {
+      validateXrayInput() != null -> validateXrayInput()
+      dnsServer.isBlank() -> "résolveur DNS manquant"
+      !isValidSinglePort(dnsPort) -> "port DNS invalide"
+      nameserver.isBlank() -> "domaine SlowDNS manquant"
+      normalizedPublicKey().isBlank() -> "clé publique DNSTT manquante"
       else -> null
     }
     else -> "méthode de tunnel inconnue"
   }
 
   fun normalizedPublicKey(): String = publicKey.filterNot { it.isWhitespace() || it in "()'\"`;&|$" }
+
+  private fun validateXrayInput(): String? = when {
+    xrayMode == "json" && xrayJson.isBlank() -> "JSON Xray manquant"
+    xrayMode == "link" && !xrayLink.matches(Regex("^(vmess|vless|trojan)://.+")) -> "lien Xray vmess, vless ou trojan invalide"
+    xrayMode == "json" && !isJsonXray(xrayJson) -> "JSON Xray invalide ou sans outbounds"
+    else -> null
+  }
 
   private fun isJsonXray(value: String): Boolean = try {
     JSONObject(value).optJSONArray("outbounds") != null
