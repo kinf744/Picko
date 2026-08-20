@@ -14,10 +14,6 @@ env:
   JAVA_VERSION: '17'
   NODE_VERSION: '20'
   PNPM_VERSION: '9.12.0'
-  GO_VERSION: '1.23.x'
-  HYSTERIA_GO_VERSION: '1.20.14'
-  DNSTT_REVISION: '0c5c52a57d899c05428c116898941761a2ed83c2'
-  HYSTERIA_VERSION: 'v1.3.5'
   ANDROID_NDK_VERSION: '27.2.12479018'
 
 jobs:
@@ -48,70 +44,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Setup Go for dnstt ARMv7
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Setup Android NDK for dnstt ARMv7
+      - name: Setup Android NDK for CMake
         uses: android-actions/setup-android@v3
 
       - name: Install pinned Android NDK
         run: sdkmanager "ndk;${{ env.ANDROID_NDK_VERSION }}"
-
-      - name: Build isolated dnstt clients for Android armeabi-v7a
-        run: |
-          set -euo pipefail
-          SOURCE_DIR="$RUNNER_TEMP/dnstt"
-          OUTPUT_DIR="${GITHUB_WORKSPACE}/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a"
-          OUTPUT="${OUTPUT_DIR}/libdnstt.so"
-          NDK_ROOT="${ANDROID_HOME}/ndk/${{ env.ANDROID_NDK_VERSION }}"
-          TOOLCHAIN="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          CC="${TOOLCHAIN}/armv7a-linux-androideabi24-clang"
-          CXX="${TOOLCHAIN}/armv7a-linux-androideabi24-clang++"
-          test -x "$CC"
-          test -x "$CXX"
-          rm -rf "$SOURCE_DIR"
-          git clone https://www.bamsoftware.com/git/dnstt.git "$SOURCE_DIR"
-          git -C "$SOURCE_DIR" checkout --detach "$DNSTT_REVISION"
-          mkdir -p "$OUTPUT_DIR"
-          (
-            cd "$SOURCE_DIR"
-            CGO_ENABLED=1 CC="$CC" CXX="$CXX" GOOS=android GOARCH=arm GOARM=7 \
-              go build -trimpath -buildvcs=false -ldflags='-s -w' \
-              -o "$OUTPUT" ./dnstt-client
-          )
-          chmod 755 "$OUTPUT"
-          test -s "$OUTPUT"
-          chmod 755 "$OUTPUT"
-          find "$OUTPUT_DIR" -maxdepth 1 -type f -name 'libdnstt-*.so' -delete
-          file "$OUTPUT"
-
-      - name: Setup Go for Hysteria v1 ARMv7
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.HYSTERIA_GO_VERSION }}
-
-      - name: Build Hysteria v1 client for Android armeabi-v7a
-        run: |
-          set -euo pipefail
-          SOURCE_DIR="$RUNNER_TEMP/hysteria"
-          OUTPUT="${GITHUB_WORKSPACE}/modules/kighmu-vpn-native/android/src/main/jniLibs/armeabi-v7a/libhysteria.so"
-          NDK_ROOT="${ANDROID_HOME}/ndk/${{ env.ANDROID_NDK_VERSION }}"
-          TOOLCHAIN="${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          CC="${TOOLCHAIN}/armv7a-linux-androideabi24-clang"
-          CXX="${TOOLCHAIN}/armv7a-linux-androideabi24-clang++"
-          rm -rf "$SOURCE_DIR"
-          git clone --depth 1 --branch "$HYSTERIA_VERSION" https://github.com/HyNetwork/hysteria.git "$SOURCE_DIR"
-          (
-            cd "$SOURCE_DIR"
-            CGO_ENABLED=1 CC="$CC" CXX="$CXX" GOOS=android GOARCH=arm GOARM=7 \
-              go build -trimpath -buildvcs=false -buildmode=pie -ldflags='-s -w -extldflags=-pie' \
-              -o "$OUTPUT" ./app/cmd
-          )
-          chmod 755 "$OUTPUT"
-          test -s "$OUTPUT"
-          file "$OUTPUT"
 
       - name: Verify native tunnel artifacts
         run: |
