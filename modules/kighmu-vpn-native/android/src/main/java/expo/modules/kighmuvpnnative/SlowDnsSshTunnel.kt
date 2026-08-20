@@ -71,6 +71,8 @@ class SlowDnsSshTunnel(
   private var sshConnection: Connection? = null
   private var dynamicForwarder: DynamicPortForwarder? = null
   private var bannerServer: ServerSocket? = null
+  private var bridgeClient: Socket? = null
+  private var bridgeRemote: Socket? = null
   private var dnsttPort = -1
   private var socksPort = -1
 
@@ -87,7 +89,12 @@ class SlowDnsSshTunnel(
       val bannerPort = startBannerProxy()
       emit("info", "SSH", "Ouverture du canal SSH via SlowDNS")
       val connection = Connection("127.0.0.1", bannerPort)
-      connection.connect(null, 20_000, 30_000)
+      try {
+        connection.connect(null, 20_000, 30_000)
+      } catch (error: Throwable) {
+        emit("error", "SSH", "Échec connect() trilead : ${error.message} | cause : ${error.cause?.message ?: "inconnue"}")
+        throw error
+      }
       if (!connection.authenticateWithPassword(settings.sshUsername, settings.sshPassword)) {
         throw IllegalStateException("Authentification SSH refusée")
       }
@@ -109,6 +116,10 @@ class SlowDnsSshTunnel(
     running = false
     try { bannerServer?.close() } catch (_: Throwable) {}
     bannerServer = null
+    try { bridgeClient?.close() } catch (_: Throwable) {}
+    bridgeClient = null
+    try { bridgeRemote?.close() } catch (_: Throwable) {}
+    bridgeRemote = null
     try { dynamicForwarder?.close() } catch (_: Throwable) {}
     dynamicForwarder = null
     try { sshConnection?.close() } catch (_: Throwable) {}
@@ -168,10 +179,13 @@ class SlowDnsSshTunnel(
       var remote: Socket? = null
       try {
         client = server.accept()
+        vpnService.protect(client)
         remote = Socket()
         vpnService.protect(remote)
         LocalTunnelIo.configure(remote, LocalTunnelIo.HANDSHAKE_TIMEOUT_MS)
         remote.connect(InetSocketAddress("127.0.0.1", dnsttPort), LocalTunnelIo.HANDSHAKE_TIMEOUT_MS)
+        bridgeClient = client
+        bridgeRemote = remote
         val remoteInput = remote.getInputStream()
         val banner = StringBuilder()
         while (true) {
@@ -181,20 +195,18 @@ class SlowDnsSshTunnel(
           if (value == '\n'.code) break
           if (banner.length > 512) throw IllegalStateException("Bannière SSH invalide")
         }
+        val clientOutput = client.getOutputStream()
+        clientOutput.write(banner.toString().toByteArray())
+        clientOutput.flush()
         LocalTunnelIo.configure(client)
-        client.getOutputStream().write(banner.toString().toByteArray())
-        client.getOutputStream().flush()
         LocalTunnelIo.configure(remote)
         emit("connection", "SSH_BANNER", banner.toString().trim().take(240))
-        val clientInput = client.getInputStream()
-        val clientOutput = client.getOutputStream()
         val remoteOutput = remote.getOutputStream()
-        val toClient = thread(isDaemon = true) { pipeSsh(remoteInput, clientOutput, "serveur→client") }
-        pipeSsh(clientInput, remoteOutput, "client→serveur")
-        toClient.join(300)
+        val clientInput = client.getInputStream()
+        thread(isDaemon = true, name = "slowdns-ssh-s2c") { pipeBanner(remoteInput, clientOutput) }
+        thread(isDaemon = true, name = "slowdns-ssh-c2s") { pipeBanner(clientInput, remoteOutput) }
       } catch (error: Throwable) {
         if (running) emit("warning", "SSH", "Canal SSH SlowDNS interrompu : ${error.message ?: "erreur réseau"}")
-      } finally {
         try { client?.close() } catch (_: Throwable) {}
         try { remote?.close() } catch (_: Throwable) {}
       }
@@ -238,18 +250,16 @@ class SlowDnsSshTunnel(
 
   private fun findFreePort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
 
-  private fun pipeSsh(input: java.io.InputStream, output: java.io.OutputStream, direction: String) {
+  private fun pipeBanner(input: java.io.InputStream, output: java.io.OutputStream) {
     val buffer = ByteArray(LocalTunnelIo.BUFFER_SIZE)
     try {
-      while (running) {
+      while (true) {
         val count = input.read(buffer)
         if (count < 0) break
         output.write(buffer, 0, count)
-        output.flush()
+        if (input.available() == 0) output.flush()
       }
-    } catch (error: Throwable) {
-      if (running) emit("warning", "SSH", "Pont SlowDNS $direction interrompu : ${error.message ?: "erreur réseau"}")
-      throw error
+    } catch (_: Throwable) {
     }
   }
 }

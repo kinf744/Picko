@@ -54,6 +54,7 @@ class SshTlsTunnel(
   @Volatile private var running = false
   private var tlsSocket: SSLSocket? = null
   private var bridgeServer: ServerSocket? = null
+  private var bridgeClient: Socket? = null
   private var sshConnection: Connection? = null
   private var dynamicForwarder: DynamicPortForwarder? = null
 
@@ -68,7 +69,12 @@ class SshTlsTunnel(
       val bridgePort = startBridge(tls)
       val socksPort = findFreePort()
       val connection = Connection("127.0.0.1", bridgePort)
-      connection.connect(null, 20_000, 30_000)
+      try {
+        connection.connect(null, 20_000, 30_000)
+      } catch (error: Throwable) {
+        emit("error", "SSH_TLS", "[$runtimeLabel] échec connect() trilead : ${error.message} | cause : ${error.cause?.message ?: "inconnue"}")
+        throw error
+      }
       if (!connection.authenticateWithPassword(settings.sshUsername, settings.sshPassword)) {
         error("Authentification SSH refusée")
       }
@@ -89,6 +95,8 @@ class SshTlsTunnel(
     running = false
     try { bridgeServer?.close() } catch (_: Throwable) {}
     bridgeServer = null
+    try { bridgeClient?.close() } catch (_: Throwable) {}
+    bridgeClient = null
     try { dynamicForwarder?.close() } catch (_: Throwable) {}
     dynamicForwarder = null
     try { sshConnection?.close() } catch (_: Throwable) {}
@@ -131,19 +139,20 @@ class SshTlsTunnel(
       try {
         client = server.accept()
         LocalTunnelIo.configure(client)
+        bridgeClient = client
         val remoteInput = remote.inputStream
         val banner = readSshBanner(remoteInput)
-        client.getOutputStream().write(banner.toByteArray())
-        client.getOutputStream().flush()
+        val clientOutput = client.getOutputStream()
+        clientOutput.write(banner.toByteArray())
+        clientOutput.flush()
         emit("connection", "SSH_BANNER", banner.trim().take(240))
-        val returnPipe = thread(isDaemon = true) { pipe(remoteInput, client.getOutputStream()) }
-        pipe(client.getInputStream(), remote.outputStream)
-        returnPipe.join(300)
+        val remoteOutput = remote.outputStream
+        val clientInput = client.getInputStream()
+        thread(isDaemon = true) { pipe(remoteInput, clientOutput) }
+        thread(isDaemon = true) { pipe(clientInput, remoteOutput) }
       } catch (error: Throwable) {
         if (running) emit("warning", "SSH_TLS", "[$runtimeLabel] canal SSH/TLS interrompu : ${error.message ?: "erreur réseau"}")
-      } finally {
         try { client?.close() } catch (_: Throwable) {}
-        try { remote.close() } catch (_: Throwable) {}
         try { server.close() } catch (_: Throwable) {}
       }
     }
