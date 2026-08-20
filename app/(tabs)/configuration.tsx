@@ -55,13 +55,13 @@ export default function ConfigurationScreen() {
   return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <Text className="text-3xl font-bold text-foreground">Profils de tunnel</Text>
-      <Text className="mt-2 text-sm leading-5 text-muted">Créez vos profils ZiVPN UDP, SSH SlowDNS, Hysteria UDP, Xray ou V2Ray DNS, puis activez ceux que vous souhaitez équilibrer. Les secrets restent uniquement sur l’appareil.</Text>
+      <Text className="mt-2 text-sm leading-5 text-muted">Créez vos profils ZiVPN UDP, SSH SlowDNS, Hysteria UDP, Xray, V2Ray DNS, HTTP Proxy payload ou SSH SSL/TLS, puis activez ceux que vous souhaitez équilibrer. Les secrets restent uniquement sur l’appareil.</Text>
 
       <Pressable onPress={() => setMethodPickerVisible(true)} style={({ pressed }) => [styles.addButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}>
         <Text style={styles.addText}>Ajouter un profil</Text>
       </Pressable>
 
-      {profiles.length === 0 ? <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text className="text-base font-bold text-foreground">Aucun profil</Text><Text className="mt-2 text-sm leading-5 text-muted">Utilisez « Ajouter un profil » pour créer un tunnel ZiVPN UDP, SSH SlowDNS, Hysteria UDP, Xray ou V2Ray DNS.</Text></View> : null}
+      {profiles.length === 0 ? <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text className="text-base font-bold text-foreground">Aucun profil</Text><Text className="mt-2 text-sm leading-5 text-muted">Utilisez « Ajouter un profil » pour créer un tunnel ZiVPN UDP, SSH SlowDNS, Hysteria UDP, Xray, V2Ray DNS, HTTP Proxy payload ou SSH SSL/TLS.</Text></View> : null}
 
       <View style={styles.profileList}>{profiles.map((profile) => <View key={profile.id} style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.profileHeader}>
@@ -83,6 +83,8 @@ export default function ConfigurationScreen() {
         <Pressable onPress={() => beginCreate("hysteria-udp")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">Hysteria UDP</Text><Text className="mt-1 text-sm text-muted">UDP rapide, avec port hopping facultatif</Text></Pressable>
         <Pressable onPress={() => beginCreate("xray")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">Xray</Text><Text className="mt-1 text-sm text-muted">Lien VMess, VLESS ou Trojan, ou JSON Xray</Text></Pressable>
         <Pressable onPress={() => beginCreate("v2ray-dns")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">V2Ray DNS</Text><Text className="mt-1 text-sm text-muted">Xray/V2Ray transporté par DNSTT / DNS</Text></Pressable>
+        <Pressable onPress={() => beginCreate("http-proxy-payload")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">HTTP Proxy Payload</Text><Text className="mt-1 text-sm text-muted">SSH transporté au travers d’un proxy HTTP personnalisé</Text></Pressable>
+        <Pressable onPress={() => beginCreate("ssh-ssl-tls")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">SSH SSL/TLS</Text><Text className="mt-1 text-sm text-muted">SSH encapsulé dans une connexion SSL/TLS avec SNI</Text></Pressable>
         <Pressable onPress={() => setMethodPickerVisible(false)} style={styles.cancelButton}><Text className="text-sm font-semibold text-muted">Annuler</Text></Pressable>
       </View></View>
     </Modal>
@@ -122,6 +124,23 @@ export default function ConfigurationScreen() {
               <Field label="Port DNS" value={draft.dnsPort} onChangeText={(dnsPort) => updateDraft({ dnsPort })} placeholder="53" keyboardType="numeric" error={errors.dnsPort} />
               <Field label="Domaine SlowDNS" value={draft.nameserver} onChangeText={(nameserver) => updateDraft({ nameserver })} placeholder="tunnel.exemple.com" error={errors.nameserver} />
               <Field label="Clé publique DNSTT" value={draft.publicKey} onChangeText={(publicKey) => updateDraft({ publicKey })} placeholder="Clé publique du serveur DNSTT" multiline error={errors.publicKey} />
+            </> : draft.method === "http-proxy-payload" ? <>
+              <Field label="Serveur SSH cible" value={draft.sshHost} onChangeText={(sshHost) => updateDraft({ sshHost })} placeholder="ssh.exemple.com" error={errors.sshHost} />
+              <Field label="Port SSH cible" value={draft.sshPort} onChangeText={(sshPort) => updateDraft({ sshPort })} placeholder="22" keyboardType="numeric" error={errors.sshPort} />
+              <Field label="Utilisateur SSH" value={draft.sshUser} onChangeText={(sshUser) => updateDraft({ sshUser })} placeholder="utilisateur" error={errors.sshUser} />
+              <Field label="Mot de passe SSH" value={draft.password} onChangeText={(password) => updateDraft({ password })} placeholder="Mot de passe SSH" error={errors.password} />
+              <Field label="Serveur du proxy HTTP" value={draft.proxyHost} onChangeText={(proxyHost) => updateDraft({ proxyHost })} placeholder="proxy.exemple.com" error={errors.proxyHost} />
+              <Field label="Port du proxy HTTP" value={draft.proxyPort} onChangeText={(proxyPort) => updateDraft({ proxyPort })} placeholder="8080" keyboardType="numeric" error={errors.proxyPort} />
+              <Field label="Payload HTTP" value={draft.httpPayload} onChangeText={(httpPayload) => updateDraft({ httpPayload })} placeholder="CONNECT [host]:[port] HTTP/1.1[crlf]…" multiline error={errors.httpPayload} />
+              <Text className="text-sm leading-5 text-muted">Variables disponibles : [host], [port], [proxy_host], [proxy_port], [crlf], [split] et [delay]. Le payload reste entièrement visible après enregistrement.</Text>
+            </> : draft.method === "ssh-ssl-tls" ? <>
+              <Field label="Serveur SSL/TLS" value={draft.sshHost} onChangeText={(sshHost) => updateDraft({ sshHost })} placeholder="ssl.exemple.com" error={errors.sshHost} />
+              <Field label="Port SSL/TLS" value={draft.sshPort} onChangeText={(sshPort) => updateDraft({ sshPort })} placeholder="443" keyboardType="numeric" error={errors.sshPort} />
+              <Field label="Utilisateur SSH" value={draft.sshUser} onChangeText={(sshUser) => updateDraft({ sshUser })} placeholder="utilisateur" error={errors.sshUser} />
+              <Field label="Mot de passe SSH" value={draft.password} onChangeText={(password) => updateDraft({ password })} placeholder="Mot de passe SSH" error={errors.password} />
+              <Field label="SNI (facultatif)" value={draft.sslSni} onChangeText={(sslSni) => updateDraft({ sslSni })} placeholder="sni.exemple.com" error={errors.sslSni} />
+              <Field label="Version TLS" value={draft.sslTlsVersion} onChangeText={(sslTlsVersion) => updateDraft({ sslTlsVersion })} placeholder="TLS, TLSv1.2 ou TLSv1.3" error={errors.sslTlsVersion} />
+              <Text className="text-sm leading-5 text-muted">Utilisez le SNI attendu par le serveur. Le certificat est accepté comme dans l’implémentation de référence.</Text>
             </> : <>
               <Field label="Lien Xray (vmess / vless / trojan)" value={draft.xrayLink} onChangeText={(xrayLink) => updateDraft({ xrayLink, xrayMode: "link" })} placeholder="vless://…" multiline error={errors.xrayLink} />
               <Text className="text-sm leading-5 text-muted">Pour une configuration avancée, collez directement le JSON Xray ci-dessous. Le mode JSON est prioritaire lorsque vous le sélectionnez dans le nom du profil.</Text>

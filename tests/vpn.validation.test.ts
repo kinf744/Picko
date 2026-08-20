@@ -90,6 +90,47 @@ describe("validateProfile", () => {
 });
 
 
+describe("validation HTTP Proxy et SSH SSL/TLS", () => {
+  it("accepte un profil HTTP Proxy payload complet", () => {
+    const profile = {
+      ...createEmptyProfile("http-proxy-payload"),
+      name: "HTTP Proxy principal",
+      sshHost: "ssh.example.test",
+      sshPort: "22",
+      sshUser: "alice",
+      password: "secret",
+      proxyHost: "proxy.example.test",
+      proxyPort: "8080",
+      httpPayload: "CONNECT [host]:[port] HTTP/1.1[crlf]Host: [host]:[port][crlf][crlf]",
+    };
+    expect(validateProfile(profile)).toEqual({});
+  });
+
+  it("accepte un profil SSH SSL/TLS avec SNI", () => {
+    const profile = {
+      ...createEmptyProfile("ssh-ssl-tls"),
+      name: "SSH TLS principal",
+      sshHost: "tls.example.test",
+      sshPort: "443",
+      sshUser: "alice",
+      password: "secret",
+      sslSni: "cdn.example.test",
+      sslTlsVersion: "TLSv1.2",
+    };
+    expect(validateProfile(profile)).toEqual({});
+  });
+
+  it("requiert les paramètres HTTP et SSH SSL/TLS essentiels", () => {
+    const httpErrors = validateProfile({ ...createEmptyProfile("http-proxy-payload"), name: "HTTP incomplet" });
+    expect(httpErrors.proxyHost).toBeTruthy();
+    expect(httpErrors.httpPayload).toBeUndefined();
+    expect(httpErrors.sshHost).toBeTruthy();
+    const tlsErrors = validateProfile({ ...createEmptyProfile("ssh-ssl-tls"), name: "TLS incomplet", sslTlsVersion: "SSLv3" });
+    expect(tlsErrors.sshHost).toBeTruthy();
+    expect(tlsErrors.sslTlsVersion).toBeTruthy();
+  });
+});
+
 describe("validation V2Ray DNS", () => {
   it("accepte un profil V2Ray DNS complet", () => {
     const profile = {

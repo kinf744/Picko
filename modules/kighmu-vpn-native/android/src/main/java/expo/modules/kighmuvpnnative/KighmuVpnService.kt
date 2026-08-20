@@ -83,6 +83,8 @@ class KighmuVpnService : VpnService() {
             "hysteria-udp" -> HysteriaTunnel(this, profile, ::emitLog)
             "xray" -> XrayTunnel(this, profile, ::emitLog)
             "v2ray-dns" -> V2RayDnsTunnel(this, profile, ::emitLog)
+            "http-proxy-payload" -> HttpProxyPayloadTunnel(this, profile, ::emitLog)
+            "ssh-ssl-tls" -> SshSslTlsTunnel(this, profile, ::emitLog)
             else -> error("Méthode non prise en charge")
           }
           emitLog("connection", "TUNNEL", "Démarrage de ${profile.name} (${profile.method})")

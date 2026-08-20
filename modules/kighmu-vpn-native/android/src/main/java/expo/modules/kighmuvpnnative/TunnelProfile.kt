@@ -27,6 +27,11 @@ data class TunnelProfile(
   val xrayMode: String = "link",
   val xrayLink: String = "",
   val xrayJson: String = "",
+  val proxyHost: String = "",
+  val proxyPort: String = "8080",
+  val httpPayload: String = "",
+  val sslSni: String = "",
+  val sslTlsVersion: String = "TLS",
 ) {
   companion object {
     private const val ZIVPN = "zivpn-udp"
@@ -34,6 +39,8 @@ data class TunnelProfile(
     private const val HYSTERIA = "hysteria-udp"
     private const val XRAY = "xray"
     private const val V2RAY_DNS = "v2ray-dns"
+    private const val HTTP_PROXY_PAYLOAD = "http-proxy-payload"
+    private const val SSH_SSL_TLS = "ssh-ssl-tls"
 
     fun parseMany(json: String): List<TunnelProfile> {
       val array = JSONObject(json).optJSONArray("profiles") ?: JSONArray()
@@ -41,13 +48,15 @@ data class TunnelProfile(
         for (index in 0 until array.length()) {
           val source = array.optJSONObject(index) ?: continue
           val method = source.optString("method").trim()
-          if (method !in setOf(ZIVPN, SLOWDNS, HYSTERIA, XRAY, V2RAY_DNS)) continue
+          if (method !in setOf(ZIVPN, SLOWDNS, HYSTERIA, XRAY, V2RAY_DNS, HTTP_PROXY_PAYLOAD, SSH_SSL_TLS)) continue
           val defaultName = when (method) {
             ZIVPN -> "ZiVPN UDP"
             SLOWDNS -> "SSH SlowDNS"
             HYSTERIA -> "Hysteria UDP"
             XRAY -> "Xray"
-            else -> "V2Ray DNS"
+            V2RAY_DNS -> "V2Ray DNS"
+            HTTP_PROXY_PAYLOAD -> "HTTP Proxy Payload"
+            else -> "SSH SSL/TLS"
           }
           add(TunnelProfile(
             id = source.optString("id").trim().ifBlank { "profile-$index" },
@@ -73,6 +82,11 @@ data class TunnelProfile(
             xrayMode = if (source.optString("xrayMode").trim() == "json") "json" else "link",
             xrayLink = source.optString("xrayLink").trim(),
             xrayJson = source.optString("xrayJson").trim(),
+            proxyHost = source.optString("proxyHost").trim(),
+            proxyPort = source.optString("proxyPort", "8080").trim(),
+            httpPayload = source.optString("httpPayload").trim(),
+            sslSni = source.optString("sslSni").trim(),
+            sslTlsVersion = source.optString("sslTlsVersion", "TLS").trim().ifBlank { "TLS" },
           ))
         }
       }
@@ -113,6 +127,24 @@ data class TunnelProfile(
       !isValidSinglePort(dnsPort) -> "port DNS invalide"
       nameserver.isBlank() -> "domaine SlowDNS manquant"
       normalizedPublicKey().isBlank() -> "clé publique DNSTT manquante"
+      else -> null
+    }
+    HTTP_PROXY_PAYLOAD -> when {
+      sshHost.isBlank() -> "serveur SSH manquant"
+      !isValidSinglePort(sshPort) -> "port SSH invalide"
+      sshUser.isBlank() -> "utilisateur SSH manquant"
+      password.isBlank() -> "mot de passe SSH manquant"
+      proxyHost.isBlank() -> "serveur proxy HTTP manquant"
+      !isValidSinglePort(proxyPort) -> "port proxy HTTP invalide"
+      httpPayload.isBlank() -> "payload HTTP manquant"
+      else -> null
+    }
+    SSH_SSL_TLS -> when {
+      sshHost.isBlank() -> "serveur SSL/TLS manquant"
+      !isValidSinglePort(sshPort) -> "port SSL/TLS invalide"
+      sshUser.isBlank() -> "utilisateur SSH manquant"
+      password.isBlank() -> "mot de passe SSH manquant"
+      sslTlsVersion !in setOf("TLS", "TLSv1.2", "TLSv1.3") -> "version TLS invalide"
       else -> null
     }
     else -> "méthode de tunnel inconnue"

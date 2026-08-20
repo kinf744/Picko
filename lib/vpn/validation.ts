@@ -3,6 +3,8 @@ import { hasXrayInput, xrayLinkScheme, type VpnProfile } from "./profiles";
 export type VpnValidationConfig = Pick<VpnProfile, "host" | "port" | "obfs" | "password">;
 export type HysteriaValidationConfig = Pick<VpnProfile, "hysteriaHost" | "hysteriaPort" | "hysteriaAuth" | "hysteriaUpMbps" | "hysteriaDownMbps">;
 export type XrayValidationConfig = Pick<VpnProfile, "xrayMode" | "xrayLink" | "xrayJson">;
+export type HttpProxyValidationConfig = Pick<VpnProfile, "sshHost" | "sshPort" | "sshUser" | "password" | "proxyHost" | "proxyPort" | "httpPayload">;
+export type SshSslValidationConfig = Pick<VpnProfile, "sshHost" | "sshPort" | "sshUser" | "password" | "sslTlsVersion">;
 export type ProfileValidationErrors = Partial<Record<keyof VpnProfile, string>>;
 
 export function isValidPort(port: string, allowRange = false) {
@@ -51,6 +53,28 @@ export function validateHysteriaConfig(config: HysteriaValidationConfig) {
   return errors;
 }
 
+export function validateHttpProxyConfig(config: HttpProxyValidationConfig) {
+  const errors: Partial<Record<keyof HttpProxyValidationConfig, string>> = {};
+  errors.sshHost = required(config.sshHost, "Saisissez le serveur SSH.");
+  if (!isValidPort(config.sshPort)) errors.sshPort = "Utilisez un port SSH valide.";
+  errors.sshUser = required(config.sshUser, "Saisissez l’utilisateur SSH.");
+  errors.password = required(config.password, "Le mot de passe SSH est requis.");
+  errors.proxyHost = required(config.proxyHost, "Saisissez le serveur du proxy HTTP.");
+  if (!isValidPort(config.proxyPort)) errors.proxyPort = "Utilisez un port de proxy HTTP valide.";
+  errors.httpPayload = required(config.httpPayload, "Saisissez le payload HTTP à envoyer au proxy.");
+  return withoutEmptyErrors(errors);
+}
+
+export function validateSshSslConfig(config: SshSslValidationConfig) {
+  const errors: Partial<Record<keyof SshSslValidationConfig, string>> = {};
+  errors.sshHost = required(config.sshHost, "Saisissez le serveur SSL/TLS.");
+  if (!isValidPort(config.sshPort)) errors.sshPort = "Utilisez un port SSL/TLS valide.";
+  errors.sshUser = required(config.sshUser, "Saisissez l’utilisateur SSH.");
+  errors.password = required(config.password, "Le mot de passe SSH est requis.");
+  if (!["TLS", "TLSv1.2", "TLSv1.3"].includes(config.sslTlsVersion.trim() || "TLS")) errors.sslTlsVersion = "Choisissez TLS, TLSv1.2 ou TLSv1.3.";
+  return withoutEmptyErrors(errors);
+}
+
 export function validateXrayConfig(config: XrayValidationConfig) {
   const errors: Partial<Record<keyof XrayValidationConfig, string>> = {};
   if (!hasXrayInput(config as VpnProfile)) {
@@ -94,6 +118,10 @@ export function validateProfile(profile: VpnProfile): ProfileValidationErrors {
     if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Utilisez un port DNS valide.";
     errors.nameserver = required(profile.nameserver, "Saisissez le domaine SlowDNS.");
     errors.publicKey = required(profile.publicKey, "Saisissez la clé publique DNSTT.");
+  } else if (profile.method === "http-proxy-payload") {
+    Object.assign(errors, validateHttpProxyConfig(profile));
+  } else if (profile.method === "ssh-ssl-tls") {
+    Object.assign(errors, validateSshSslConfig(profile));
   } else {
     Object.assign(errors, validateXrayConfig(profile));
   }

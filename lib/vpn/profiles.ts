@@ -1,4 +1,4 @@
-export type TunnelMethod = "zivpn-udp" | "ssh-slowdns" | "hysteria-udp" | "xray" | "v2ray-dns";
+export type TunnelMethod = "zivpn-udp" | "ssh-slowdns" | "hysteria-udp" | "xray" | "v2ray-dns" | "http-proxy-payload" | "ssh-ssl-tls";
 export type XrayInputMode = "link" | "json";
 
 export type VpnProfile = {
@@ -26,6 +26,11 @@ export type VpnProfile = {
   xrayMode: XrayInputMode;
   xrayLink: string;
   xrayJson: string;
+  proxyHost: string;
+  proxyPort: string;
+  httpPayload: string;
+  sslSni: string;
+  sslTlsVersion: string;
 };
 
 export type VpnProfileSecrets = Pick<VpnProfile, "obfs" | "password" | "hysteriaAuth" | "hysteriaObfs" | "xrayLink" | "xrayJson">;
@@ -37,6 +42,8 @@ export const VpnMethodLabel: Record<TunnelMethod, string> = {
   "hysteria-udp": "Hysteria UDP",
   xray: "Xray",
   "v2ray-dns": "V2Ray DNS",
+  "http-proxy-payload": "HTTP Proxy Payload",
+  "ssh-ssl-tls": "SSH SSL/TLS",
 };
 
 function makeId() {
@@ -46,7 +53,7 @@ function makeId() {
 export function createEmptyProfile(method: TunnelMethod): VpnProfile {
   return {
     id: makeId(),
-    name: method === "zivpn-udp" ? "Profil ZiVPN" : method === "ssh-slowdns" ? "Profil SSH SlowDNS" : method === "hysteria-udp" ? "Profil Hysteria" : method === "v2ray-dns" ? "Profil V2Ray DNS" : "Profil Xray",
+    name: method === "zivpn-udp" ? "Profil ZiVPN" : method === "ssh-slowdns" ? "Profil SSH SlowDNS" : method === "hysteria-udp" ? "Profil Hysteria" : method === "v2ray-dns" ? "Profil V2Ray DNS" : method === "http-proxy-payload" ? "Profil HTTP Proxy" : method === "ssh-ssl-tls" ? "Profil SSH SSL/TLS" : "Profil Xray",
     method,
     enabled: true,
     host: "",
@@ -54,7 +61,7 @@ export function createEmptyProfile(method: TunnelMethod): VpnProfile {
     obfs: "",
     password: "",
     sshHost: "",
-    sshPort: "22",
+    sshPort: method === "ssh-ssl-tls" ? "443" : "22",
     sshUser: "",
     dnsServer: "8.8.8.8",
     dnsPort: "53",
@@ -69,6 +76,11 @@ export function createEmptyProfile(method: TunnelMethod): VpnProfile {
     xrayMode: "link",
     xrayLink: "",
     xrayJson: "",
+    proxyHost: "",
+    proxyPort: "8080",
+    httpPayload: "CONNECT [host]:[port] HTTP/1.1[crlf]Host: [host]:[port][crlf]Proxy-Connection: Keep-Alive[crlf][crlf]",
+    sslSni: "",
+    sslTlsVersion: "TLS",
   };
 }
 
@@ -90,6 +102,12 @@ export function profileEndpoint(profile: VpnProfile) {
   if (profile.method === "v2ray-dns") {
     const xray = profile.xrayMode === "json" ? "JSON Xray" : (profile.xrayLink.trim() ? "Lien Xray" : "Xray non défini");
     return profile.nameserver.trim() ? `${xray} via ${profile.nameserver.trim()}` : `${xray} — domaine SlowDNS non défini`;
+  }
+  if (profile.method === "http-proxy-payload") {
+    return profile.proxyHost.trim() ? `${profile.proxyHost.trim()}:${profile.proxyPort || "8080"} → SSH ${profile.sshHost || "non défini"}` : "Proxy HTTP non défini";
+  }
+  if (profile.method === "ssh-ssl-tls") {
+    return profile.sshHost.trim() ? `${profile.sshHost.trim()}:${profile.sshPort || "443"}${profile.sslSni.trim() ? ` (SNI ${profile.sslSni.trim()})` : ""}` : "Serveur SSL/TLS non défini";
   }
   return profile.host ? `${profile.host}:${profile.port || "—"}` : "Serveur ZiVPN non défini";
 }
