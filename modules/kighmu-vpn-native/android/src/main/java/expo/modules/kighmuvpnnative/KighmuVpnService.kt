@@ -80,6 +80,7 @@ class KighmuVpnService : VpnService() {
           val tunnel: LocalTunnel = when (profile.method) {
             "zivpn-udp" -> ZivpnTunnel(this, profile, ::emitLog)
             "ssh-slowdns" -> SshSlowDnsTunnel(this, profile, ::emitLog)
+            "hysteria-udp" -> HysteriaTunnel(this, profile, ::emitLog)
             else -> error("Méthode non prise en charge")
           }
           emitLog("connection", "TUNNEL", "Démarrage de ${profile.name} (${profile.method})")

@@ -41,17 +41,27 @@ function makeLog(level: LogLevel, component: string, message: string): Diagnosti
 async function readSecret(id: string) {
   const key = secretKey(id);
   const value = Platform.OS === "web" ? localStorage.getItem(key) : await SecureStore.getItemAsync(key);
-  if (!value) return { obfs: "", password: "" };
+  if (!value) return { obfs: "", password: "", hysteriaAuth: "", hysteriaObfs: "" };
   try {
-    const parsed = JSON.parse(value) as { obfs?: string; password?: string };
-    return { obfs: parsed.obfs ?? "", password: parsed.password ?? "" };
+    const parsed = JSON.parse(value) as { obfs?: string; password?: string; hysteriaAuth?: string; hysteriaObfs?: string };
+    return {
+      obfs: parsed.obfs ?? "",
+      password: parsed.password ?? "",
+      hysteriaAuth: parsed.hysteriaAuth ?? "",
+      hysteriaObfs: parsed.hysteriaObfs ?? "",
+    };
   } catch {
-    return { obfs: "", password: "" };
+    return { obfs: "", password: "", hysteriaAuth: "", hysteriaObfs: "" };
   }
 }
 
 async function writeSecret(profile: VpnProfile) {
-  const value = JSON.stringify({ obfs: profile.obfs, password: profile.password });
+  const value = JSON.stringify({
+    obfs: profile.obfs,
+    password: profile.password,
+    hysteriaAuth: profile.hysteriaAuth,
+    hysteriaObfs: profile.hysteriaObfs,
+  });
   const key = secretKey(profile.id);
   if (Platform.OS === "web") localStorage.setItem(key, value);
   else await SecureStore.setItemAsync(key, value);

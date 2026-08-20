@@ -51,13 +51,13 @@ export default function ConfigurationScreen() {
   return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <Text className="text-3xl font-bold text-foreground">Profils de tunnel</Text>
-      <Text className="mt-2 text-sm leading-5 text-muted">Créez vos profils ZiVPN UDP ou SSH SlowDNS, puis activez ceux que vous souhaitez équilibrer. Les secrets restent uniquement sur l’appareil.</Text>
+      <Text className="mt-2 text-sm leading-5 text-muted">Créez vos profils ZiVPN UDP, SSH SlowDNS ou Hysteria UDP, puis activez ceux que vous souhaitez équilibrer. Les secrets restent uniquement sur l’appareil.</Text>
 
       <Pressable onPress={() => setMethodPickerVisible(true)} style={({ pressed }) => [styles.addButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}>
         <Text style={styles.addText}>Ajouter un profil</Text>
       </Pressable>
 
-      {profiles.length === 0 ? <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text className="text-base font-bold text-foreground">Aucun profil</Text><Text className="mt-2 text-sm leading-5 text-muted">Utilisez « Ajouter un profil » pour créer un tunnel ZiVPN UDP ou SSH SlowDNS.</Text></View> : null}
+      {profiles.length === 0 ? <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}><Text className="text-base font-bold text-foreground">Aucun profil</Text><Text className="mt-2 text-sm leading-5 text-muted">Utilisez « Ajouter un profil » pour créer un tunnel ZiVPN UDP, SSH SlowDNS ou Hysteria UDP.</Text></View> : null}
 
       <View style={styles.profileList}>{profiles.map((profile) => <View key={profile.id} style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.profileHeader}>
@@ -76,6 +76,7 @@ export default function ConfigurationScreen() {
         <Text className="mt-2 text-sm leading-5 text-muted">Choisissez la méthode du tunnel à configurer.</Text>
         <Pressable onPress={() => beginCreate("zivpn-udp")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">ZiVPN UDP</Text><Text className="mt-1 text-sm text-muted">Tunnel UDP avec Obfs et mot de passe</Text></Pressable>
         <Pressable onPress={() => beginCreate("ssh-slowdns")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">SSH SlowDNS</Text><Text className="mt-1 text-sm text-muted">SSH transporté par DNSTT / DNS</Text></Pressable>
+        <Pressable onPress={() => beginCreate("hysteria-udp")} style={({ pressed }) => [styles.methodButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}><Text className="text-base font-bold text-foreground">Hysteria UDP</Text><Text className="mt-1 text-sm text-muted">UDP rapide, avec port hopping facultatif</Text></Pressable>
         <Pressable onPress={() => setMethodPickerVisible(false)} style={styles.cancelButton}><Text className="text-sm font-semibold text-muted">Annuler</Text></Pressable>
       </View></View>
     </Modal>
@@ -91,7 +92,7 @@ export default function ConfigurationScreen() {
               <Field label="Port ou plage" value={draft.port} onChangeText={(port) => updateDraft({ port })} placeholder="443 ou 6000-19999" keyboardType="numeric" error={errors.port} />
               <Field label="Obfs" value={draft.obfs} onChangeText={(obfs) => updateDraft({ obfs })} placeholder="Clé Salamander" secureTextEntry error={errors.obfs} />
               <Field label="Mot de passe" value={draft.password} onChangeText={(password) => updateDraft({ password })} placeholder="Mot de passe du serveur" secureTextEntry error={errors.password} />
-            </> : <>
+            </> : draft.method === "ssh-slowdns" ? <>
               <Field label="Serveur SSH" value={draft.sshHost} onChangeText={(sshHost) => updateDraft({ sshHost })} placeholder="ssh.exemple.com" error={errors.sshHost} />
               <Field label="Port SSH" value={draft.sshPort} onChangeText={(sshPort) => updateDraft({ sshPort })} placeholder="22" keyboardType="numeric" error={errors.sshPort} />
               <Field label="Utilisateur SSH" value={draft.sshUser} onChangeText={(sshUser) => updateDraft({ sshUser })} placeholder="utilisateur" error={errors.sshUser} />
@@ -100,6 +101,13 @@ export default function ConfigurationScreen() {
               <Field label="Port DNS" value={draft.dnsPort} onChangeText={(dnsPort) => updateDraft({ dnsPort })} placeholder="53" keyboardType="numeric" error={errors.dnsPort} />
               <Field label="Domaine SlowDNS" value={draft.nameserver} onChangeText={(nameserver) => updateDraft({ nameserver })} placeholder="tunnel.exemple.com" error={errors.nameserver} />
               <Field label="Clé publique DNSTT" value={draft.publicKey} onChangeText={(publicKey) => updateDraft({ publicKey })} placeholder="Clé publique du serveur DNSTT" multiline error={errors.publicKey} />
+            </> : <>
+              <Field label="Serveur Hysteria" value={draft.hysteriaHost} onChangeText={(hysteriaHost) => updateDraft({ hysteriaHost })} placeholder="hysteria.exemple.com" error={errors.hysteriaHost} />
+              <Field label="Port ou plage Hysteria" value={draft.hysteriaPort} onChangeText={(hysteriaPort) => updateDraft({ hysteriaPort })} placeholder="443 ou 20000-50000" error={errors.hysteriaPort} />
+              <Field label="Mot de passe Hysteria" value={draft.hysteriaAuth} onChangeText={(hysteriaAuth) => updateDraft({ hysteriaAuth })} placeholder="Mot de passe du serveur" secureTextEntry error={errors.hysteriaAuth} />
+              <Field label="Débit montant (Mbps)" value={draft.hysteriaUpMbps} onChangeText={(hysteriaUpMbps) => updateDraft({ hysteriaUpMbps })} placeholder="100" keyboardType="numeric" error={errors.hysteriaUpMbps} />
+              <Field label="Débit descendant (Mbps)" value={draft.hysteriaDownMbps} onChangeText={(hysteriaDownMbps) => updateDraft({ hysteriaDownMbps })} placeholder="100" keyboardType="numeric" error={errors.hysteriaDownMbps} />
+              <Field label="Obfs Hysteria (facultatif)" value={draft.hysteriaObfs} onChangeText={(hysteriaObfs) => updateDraft({ hysteriaObfs })} placeholder="Clé d’obfuscation" secureTextEntry />
             </>}
           </View>
           <Pressable onPress={() => void saveDraft()} disabled={saving} style={({ pressed }) => [styles.addButton, { backgroundColor: colors.primary }, (pressed || saving) && styles.pressed]}><Text style={styles.addText}>{saving ? "Enregistrement…" : "Enregistrer le profil"}</Text></Pressable>

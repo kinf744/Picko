@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { validateVpnConfig, type VpnValidationConfig } from "../lib/vpn/validation";
+import { createEmptyProfile } from "../lib/vpn/profiles";
+import { validateHysteriaConfig, validateProfile, validateVpnConfig, type VpnValidationConfig } from "../lib/vpn/validation";
 
 const valid: VpnValidationConfig = { host: "203.0.113.10", port: "6000-19999", obfs: "salamander-key", password: "secret" };
 
-describe("validateConfig", () => {
+describe("validateVpnConfig", () => {
   it("accepts a host, a single port and the required secrets", () => {
     expect(validateVpnConfig({ ...valid, port: "443" })).toEqual({});
   });
@@ -24,10 +25,19 @@ describe("validateConfig", () => {
   });
 });
 
-import { createEmptyProfile } from "../lib/vpn/profiles";
-import { validateProfile } from "../lib/vpn/validation";
-
 describe("validateProfile", () => {
+  it("accepts a complete ZiVPN profile without an undefined-name error", () => {
+    const profile = {
+      ...createEmptyProfile("zivpn-udp"),
+      name: "UDP principal",
+      host: "203.0.113.10",
+      port: "443",
+      obfs: "salamander-key",
+      password: "secret",
+    };
+    expect(validateProfile(profile)).toEqual({});
+  });
+
   it("accepts a complete SSH SlowDNS profile", () => {
     const profile = {
       ...createEmptyProfile("ssh-slowdns"),
@@ -51,5 +61,30 @@ describe("validateProfile", () => {
     expect(errors.password).toBeTruthy();
     expect(errors.nameserver).toBeTruthy();
     expect(errors.publicKey).toBeTruthy();
+  });
+
+  it("accepts a complete Hysteria profile with port hopping", () => {
+    const profile = {
+      ...createEmptyProfile("hysteria-udp"),
+      name: "Hysteria principal",
+      hysteriaHost: "hysteria.example.test",
+      hysteriaPort: "20000-50000",
+      hysteriaAuth: "hysteria-secret",
+      hysteriaUpMbps: "100",
+      hysteriaDownMbps: "200",
+      hysteriaObfs: "optional-obfs",
+    };
+    expect(validateProfile(profile)).toEqual({});
+  });
+
+  it("requires the essential Hysteria parameters", () => {
+    const errors = validateHysteriaConfig({
+      hysteriaHost: "",
+      hysteriaPort: "70000",
+      hysteriaAuth: "",
+      hysteriaUpMbps: "0",
+      hysteriaDownMbps: "",
+    });
+    expect(Object.keys(errors).sort()).toEqual(["hysteriaAuth", "hysteriaDownMbps", "hysteriaHost", "hysteriaPort", "hysteriaUpMbps"]);
   });
 });
