@@ -9,6 +9,7 @@ import { Platform } from "react-native";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { VpnProvider } from "@/lib/vpn/vpn-context";
+import { VpnSettingsProvider } from "@/lib/vpn/settings-context";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -101,15 +102,15 @@ export default function RootLayout() {
   if (shouldOverrideSafeArea) {
     return (
       <ThemeProvider>
-        <VpnProvider>
-          <SafeAreaProvider initialMetrics={providerInitialMetrics}>
-          <SafeAreaFrameContext.Provider value={frame}>
-            <SafeAreaInsetsContext.Provider value={insets}>
-              {content}
-                      </SafeAreaInsetsContext.Provider>
-          </SafeAreaFrameContext.Provider>
-          </SafeAreaProvider>
-        </VpnProvider>
+        <VpnSettingsProvider>
+          <VpnProvider>
+            <SafeAreaProvider initialMetrics={providerInitialMetrics}>
+              <SafeAreaFrameContext.Provider value={frame}>
+                <SafeAreaInsetsContext.Provider value={insets}>{content}</SafeAreaInsetsContext.Provider>
+              </SafeAreaFrameContext.Provider>
+            </SafeAreaProvider>
+          </VpnProvider>
+        </VpnSettingsProvider>
       </ThemeProvider>
 
     );
@@ -117,9 +118,11 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
-      <VpnProvider>
-        <SafeAreaProvider initialMetrics={providerInitialMetrics}>{content}</SafeAreaProvider>
-      </VpnProvider>
+      <VpnSettingsProvider>
+        <VpnProvider>
+          <SafeAreaProvider initialMetrics={providerInitialMetrics}>{content}</SafeAreaProvider>
+        </VpnProvider>
+      </VpnSettingsProvider>
     </ThemeProvider>
   );
 }

@@ -9,7 +9,13 @@ import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.URL
 import kotlin.concurrent.thread
 
 class KighmuVpnService : VpnService() {
@@ -18,6 +24,10 @@ class KighmuVpnService : VpnService() {
   private var tunnels: List<LocalTunnel> = emptyList()
   private var balancer: LocalSocksBalancer? = null
   private var attemptGeneration = 0L
+  @Volatile private var runtimeSettings = VpnRuntimeSettings()
+  @Volatile private var activeProfilesJson = ""
+  @Volatile private var primaryProfileName = ""
+  private var vpnWakeLock: PowerManager.WakeLock? = null
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     when (intent?.action) {
@@ -45,7 +55,11 @@ class KighmuVpnService : VpnService() {
   private fun startTunnels(intent: Intent, generation: Long) {
     try {
       val profilesJson = intent.getStringExtra(EXTRA_PROFILES_JSON).orEmpty()
+      val payload = JSONObject(profilesJson)
+      runtimeSettings = VpnRuntimeSettings.parse(payload)
+      activeProfilesJson = profilesJson
       val profiles = TunnelProfile.parseMany(profilesJson)
+      primaryProfileName = profiles.firstOrNull()?.name.orEmpty()
       if (profiles.isEmpty()) error("Aucun profil de tunnel utilisable n’a été reçu")
       profiles.forEach { profile -> profile.validate()?.let { error("${profile.name} : $it") } }
 
@@ -57,12 +71,14 @@ class KighmuVpnService : VpnService() {
 
       val established = Builder()
         .setSession("Picko multi-tunnel")
-        .setMtu(1400)
+        .setMtu(runtimeSettings.mtu)
         .addAddress("10.0.0.2", 24)
         .addRoute("0.0.0.0", 0)
-        .addDnsServer("8.8.8.8")
         .setUnderlyingNetworks(arrayOf(physicalNetwork))
-        .apply { addDisallowedApplication(packageName) }
+        .apply {
+          runtimeSettings.dnsServers().forEach { addDnsServer(it) }
+          addDisallowedApplication(packageName)
+        }
         .establish() ?: error("Android n’a pas fourni l’interface VPN")
       val fd = established.detachFd()
       synchronized(lifecycleLock) {
@@ -103,7 +119,7 @@ class KighmuVpnService : VpnService() {
       val localBalancer = LocalSocksBalancer(::emitLog)
       localBalancer.start(started.map { it.socksPort })
       if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
-      ZivpnTun2Socks.start(this, fd, localBalancer.port, 1400)
+      ZivpnTun2Socks.start(this, fd, localBalancer.port, runtimeSettings.mtu)
       synchronized(lifecycleLock) {
         if (!isActive(generation)) {
           localBalancer.stop()
@@ -115,7 +131,8 @@ class KighmuVpnService : VpnService() {
         currentStatus = STATUS_CONNECTED
         stateSink?.invoke(STATUS_CONNECTED)
       }
-      emitLog("connection", "BALANCER", "VPN connecté avec ${started.size} tunnel(s) disponibles")
+      if (runtimeSettings.wakeLockEnabled) acquireWakeLock()
+      emitLog("connection", "BALANCER", "VPN connecté avec ${started.size} tunnel(s) disponibles ; MTU ${runtimeSettings.mtu}")
       startForeground(NOTIFICATION_ID, notification("Connecté : ${started.size} tunnel(s) équilibrés"))
       monitorTunnels(generation)
     } catch (error: Throwable) {
@@ -127,8 +144,10 @@ class KighmuVpnService : VpnService() {
     thread(isDaemon = true, name = "picko-vpn-health") {
       var lastPorts = emptyList<Int>()
       var recoveryLogged = false
+      var pingFailures = 0
+      var nextPingAt = System.currentTimeMillis() + runtimeSettings.httpPingIntervalMs
       while (isActive(generation)) {
-        Thread.sleep(5_000)
+        Thread.sleep(2_500)
         val snapshot = synchronized(lifecycleLock) { tunnels.toList() }
         val healthy = snapshot.filter { it.isHealthy() }
         val recovering = snapshot.any { it.isRecovering() }
@@ -141,9 +160,12 @@ class KighmuVpnService : VpnService() {
         if (ports.isEmpty()) {
           if (recovering) {
             if (!recoveryLogged) {
-              emitLog("warning", "HYSTERIA", "Tunnel temporairement indisponible; reconnexion en cours")
+              emitLog("warning", "TUNNEL", "Tunnel temporairement indisponible ; reconnexion locale en cours")
               recoveryLogged = true
             }
+          } else if (runtimeSettings.alwaysReconnect) {
+            restartVpn(generation, "Tous les tunnels sont indisponibles")
+            return@thread
           } else {
             fail(generation, "Tous les tunnels sont indisponibles")
             return@thread
@@ -151,6 +173,63 @@ class KighmuVpnService : VpnService() {
         } else {
           recoveryLogged = false
         }
+        val now = System.currentTimeMillis()
+        if (runtimeSettings.httpPingEnabled && now >= nextPingAt && ports.isNotEmpty()) {
+          nextPingAt = now + runtimeSettings.httpPingIntervalMs
+          if (httpPing()) {
+            if (pingFailures > 0) emitLog("connection", "PING", "Vérification HTTP rétablie via le balancier SOCKS")
+            pingFailures = 0
+          } else {
+            pingFailures += 1
+            emitLog("warning", "PING", "Échec HTTP $pingFailures/${runtimeSettings.reconnectAfterFailures.coerceAtLeast(1)}")
+            if (runtimeSettings.reconnectAfterFailures > 0 && pingFailures >= runtimeSettings.reconnectAfterFailures) {
+              if (runtimeSettings.alwaysReconnect) {
+                restartVpn(generation, "Vérification HTTP en échec à $pingFailures reprises")
+              } else {
+                fail(generation, "Vérification HTTP en échec à $pingFailures reprises")
+              }
+              return@thread
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private fun httpPing(): Boolean = try {
+    val socksPort = synchronized(lifecycleLock) { balancer?.port } ?: return false
+    val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
+    val connection = URL(runtimeSettings.httpPingUrl).openConnection(proxy) as HttpURLConnection
+    connection.connectTimeout = runtimeSettings.httpPingTimeoutMs
+    connection.readTimeout = runtimeSettings.httpPingTimeoutMs
+    connection.instanceFollowRedirects = true
+    connection.setRequestProperty("Connection", "close")
+    val code = connection.responseCode
+    connection.disconnect()
+    code in 200..399
+  } catch (error: Throwable) {
+    emitLog("info", "PING", "Vérification HTTP indisponible : ${error.message ?: "erreur réseau"}")
+    false
+  }
+
+  private fun restartVpn(generation: Long, reason: String) {
+    if (!isActive(generation)) return
+    val payload = activeProfilesJson
+    if (payload.isBlank()) {
+      fail(generation, reason)
+      return
+    }
+    emitLog("warning", "VPN", "$reason ; redémarrage automatique demandé")
+    stopVpn(STATUS_DISCONNECTED)
+    thread(isDaemon = true, name = "picko-vpn-restart") {
+      try { Thread.sleep(1_000) } catch (_: InterruptedException) { return@thread }
+      try {
+        startForegroundService(Intent(this, KighmuVpnService::class.java).apply {
+          action = ACTION_START
+          putExtra(EXTRA_PROFILES_JSON, payload)
+        })
+      } catch (error: Throwable) {
+        emitLog("error", "VPN", "Redémarrage automatique impossible : ${error.message ?: "erreur Android"}")
       }
     }
   }
@@ -162,7 +241,21 @@ class KighmuVpnService : VpnService() {
   }
 
   private fun emitLog(level: String, component: String, message: String) {
+    if (!runtimeSettings.debugMode && level == "info") return
     logSink?.invoke(level, component, message)
+  }
+
+  private fun acquireWakeLock() {
+    try {
+      val manager = getSystemService(POWER_SERVICE) as PowerManager
+      val lock = manager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:PickoVpn")
+      lock.setReferenceCounted(false)
+      lock.acquire()
+      vpnWakeLock = lock
+      emitLog("connection", "VPN", "WakeLock activé")
+    } catch (error: Throwable) {
+      emitLog("warning", "VPN", "WakeLock non disponible : ${error.message ?: "permission manquante"}")
+    }
   }
 
   private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
@@ -184,6 +277,8 @@ class KighmuVpnService : VpnService() {
     try { runningBalancer?.stop() } catch (_: Throwable) {}
     runningTunnels.forEach { tunnel -> try { tunnel.stop() } catch (_: Throwable) {} }
     if (fd >= 0) try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
+    try { vpnWakeLock?.takeIf { it.isHeld }?.release() } catch (_: Throwable) {}
+    vpnWakeLock = null
     try { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).bindProcessToNetwork(null) } catch (_: Throwable) {}
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
     emitLog("info", "VPN", if (finalStatus == STATUS_ERROR) "VPN arrêté après erreur" else "VPN arrêté")
@@ -204,7 +299,7 @@ class KighmuVpnService : VpnService() {
     val stopPending = PendingIntent.getService(this, NOTIFICATION_ID, Intent(this, KighmuVpnService::class.java).apply { action = ACTION_STOP }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(android.R.drawable.stat_sys_warning)
-      .setContentTitle("Picko VPN")
+      .setContentTitle(if (runtimeSettings.profileNameInNotification && primaryProfileName.isNotBlank()) "Picko VPN — $primaryProfileName" else "Picko VPN")
       .setContentText(text)
       .setOngoing(true)
       .setContentIntent(pending)

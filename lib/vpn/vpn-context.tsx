@@ -5,6 +5,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { getNativeVpn, subscribeNativeVpn } from "./native";
 import { createEmptyProfile, stripSecrets, type StoredVpnProfile, type TunnelMethod, type VpnProfile } from "./profiles";
 import { validateProfile } from "./validation";
+import { useVpnSettings } from "./settings-context";
 
 export type TunnelStatus = "disconnected" | "connecting" | "connected" | "error";
 export type LogLevel = "info" | "connection" | "warning" | "error";
@@ -98,6 +99,7 @@ type VpnContextValue = {
 const VpnContext = createContext<VpnContextValue | null>(null);
 
 export function VpnProvider({ children }: { children: React.ReactNode }) {
+  const { settings, hydrated: settingsHydrated } = useVpnSettings();
   const [profiles, setProfiles] = useState<VpnProfile[]>([]);
   const [status, setStatus] = useState<TunnelStatus>("disconnected");
   const [logs, setLogs] = useState<DiagnosticLog[]>([]);
@@ -215,6 +217,11 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   const primaryProfile = activeProfiles[0] ?? profiles[0] ?? null;
 
   const connect = useCallback(async () => {
+    if (!settingsHydrated) {
+      setLastError("Chargement des paramètres VPN en cours. Réessayez dans un instant.");
+      addLog("warning", "SETTINGS", "Connexion différée pendant le chargement des paramètres.");
+      return;
+    }
     if (activeProfiles.length === 0) {
       setLastError("Activez au moins un profil de tunnel avant de vous connecter.");
       setStatus("error");
@@ -246,14 +253,14 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
         addLog("warning", "ANDROID", "L’autorisation VPN doit être confirmée dans la fenêtre système.");
         return;
       }
-      await native.startVpn(JSON.stringify({ profiles: activeProfiles }));
+      await native.startVpn(JSON.stringify({ profiles: activeProfiles, settings }));
       addLog("connection", "NATIVE", "Service VPN démarré ; initialisation et contrôle de santé des tunnels en cours.");
     } catch (error) {
       setLastError("Le service VPN Android n’a pas pu démarrer.");
       setStatus("error");
       addLog("error", "NATIVE", `Échec du démarrage natif : ${String(error).slice(0, 180)}`);
     }
-  }, [activeProfiles, addLog]);
+  }, [activeProfiles, addLog, settings, settingsHydrated]);
 
   const disconnect = useCallback(async () => {
     try {

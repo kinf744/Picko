@@ -30,8 +30,18 @@ export default function HomeScreen() {
           <View>
             <Text className="text-sm font-semibold text-primary">KIGHMU VPN</Text>
           </View>
-          <View style={[styles.brandMark, { backgroundColor: colors.primary }]}>
-            <IconSymbol name="shield.fill" size={22} color="#FFFFFF" />
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={() => router.push("/settings")}
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir les paramètres VPN"
+              style={({ pressed }) => [styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}
+            >
+              <IconSymbol name="gearshape.fill" size={20} color={colors.primary} />
+            </Pressable>
+            <View style={[styles.brandMark, { backgroundColor: colors.primary }]}>
+              <IconSymbol name="shield.fill" size={22} color="#FFFFFF" />
+            </View>
           </View>
         </View>
 
@@ -78,6 +88,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   content: { paddingBottom: 28, gap: 16 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  settingsButton: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   brandMark: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   statusCard: { borderWidth: 1, borderRadius: 26, alignItems: "center", padding: 24 },
   statusIcon: { width: 64, height: 64, borderRadius: 22, alignItems: "center", justifyContent: "center" },
