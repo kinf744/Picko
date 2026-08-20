@@ -23,3 +23,33 @@ describe("validateConfig", () => {
     expect(Object.keys(errors).sort()).toEqual(["host", "obfs", "password", "port"]);
   });
 });
+
+import { createEmptyProfile } from "../lib/vpn/profiles";
+import { validateProfile } from "../lib/vpn/validation";
+
+describe("validateProfile", () => {
+  it("accepts a complete SSH SlowDNS profile", () => {
+    const profile = {
+      ...createEmptyProfile("ssh-slowdns"),
+      name: "DNS primaire",
+      sshHost: "ssh.example.test",
+      sshPort: "22",
+      sshUser: "alice",
+      password: "secret",
+      dnsServer: "8.8.8.8",
+      dnsPort: "53",
+      nameserver: "tunnel.example.test",
+      publicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    };
+    expect(validateProfile(profile)).toEqual({});
+  });
+
+  it("requires the SSH and DNSTT parameters for a SlowDNS profile", () => {
+    const errors = validateProfile(createEmptyProfile("ssh-slowdns"));
+    expect(errors.sshHost).toBeTruthy();
+    expect(errors.sshUser).toBeTruthy();
+    expect(errors.password).toBeTruthy();
+    expect(errors.nameserver).toBeTruthy();
+    expect(errors.publicKey).toBeTruthy();
+  });
+});
