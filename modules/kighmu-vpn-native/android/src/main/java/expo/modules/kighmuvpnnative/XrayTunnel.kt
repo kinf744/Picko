@@ -190,9 +190,17 @@ class XrayTunnel(
       val outbound = outbounds.optJSONObject(index) ?: continue
       val stream = outbound.optJSONObject("streamSettings") ?: continue
       if (stream.optString("security").equals("tls", ignoreCase = true)) {
-        // Xray 26.x ne doit pas recevoir cette option pour les profils
-        // compatibles avec le build n°132 ; son absence restaure le TLS attendu.
-        stream.optJSONObject("tlsSettings")?.remove("allowInsecure")
+        val tls = stream.optJSONObject("tlsSettings") ?: JSONObject()
+        val settings = outbound.optJSONObject("settings")
+        val destination = settings?.optJSONArray("vnext")?.optJSONObject(0)?.optString("address")
+          .orEmpty().ifBlank { settings?.optJSONArray("servers")?.optJSONObject(0)?.optString("address").orEmpty() }
+        // Xray 26.x has removed allowInsecure. For domain fronting, retain the
+        // supplied SNI but verify the certificate against the actual endpoint.
+        tls.remove("allowInsecure")
+        if (tls.optString("verifyPeerCertByName").isBlank() && destination.isNotBlank()) {
+          tls.put("verifyPeerCertByName", destination)
+        }
+        stream.put("tlsSettings", tls)
         outbound.put("streamSettings", stream)
       }
     }
@@ -257,7 +265,7 @@ class XrayTunnel(
       publicKey = source.optString("pbk"),
       shortId = source.optString("sid"),
       fingerprint = source.optString("fp", "chrome"),
-      allowInsecure = false,
+      verifyPeerCertByName = host,
       alpn = source.optString("alpn"),
     )
     return baseConfig("vmess", host, port, id, source.optString("scy").ifBlank { "auto" }, stream)
@@ -288,7 +296,7 @@ class XrayTunnel(
       publicKey = query["pbk"] ?: query["publicKey"] ?: "",
       shortId = query["sid"] ?: query["shortId"] ?: "",
       fingerprint = query["fp"] ?: "chrome",
-      allowInsecure = false,
+      verifyPeerCertByName = host,
       alpn = query["alpn"] ?: "",
     )
     val result = JSONObject(baseConfig(protocol, host, port, credential, "none", stream))
@@ -333,7 +341,7 @@ class XrayTunnel(
     publicKey: String,
     shortId: String,
     fingerprint: String,
-    allowInsecure: Boolean,
+    verifyPeerCertByName: String,
     alpn: String,
   ): JSONObject {
     val network = when (transport.trim().lowercase()) {
@@ -364,7 +372,7 @@ class XrayTunnel(
         val tls = JSONObject()
           .put("serverName", sni.ifBlank { host })
           .put("fingerprint", fingerprint.ifBlank { "chrome" })
-          .put("allowInsecure", allowInsecure)
+        if (verifyPeerCertByName.isNotBlank()) tls.put("verifyPeerCertByName", verifyPeerCertByName)
         val protocols = alpn.split(',').map { it.trim() }.filter { it.isNotBlank() }
         if (protocols.isNotEmpty()) tls.put("alpn", JSONArray(protocols))
         stream.put("tlsSettings", tls)
