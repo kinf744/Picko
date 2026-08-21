@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyProfile } from "../lib/vpn/profiles";
+import { createEmptyProfile, withFixedZiVpnObfs, ZIVPN_DEFAULT_OBFS } from "../lib/vpn/profiles";
 import { validateHysteriaConfig, validateProfile, validateVpnConfig, type VpnValidationConfig } from "../lib/vpn/validation";
 
 const valid: VpnValidationConfig = { host: "203.0.113.10", port: "6000-19999", obfs: "salamander-key", password: "secret" };
@@ -26,6 +26,11 @@ describe("validateVpnConfig", () => {
 });
 
 describe("validateProfile", () => {
+  it("assigns and preserves the fixed Obfs value for ZiVPN profiles", () => {
+    expect(createEmptyProfile("zivpn-udp").obfs).toBe(ZIVPN_DEFAULT_OBFS);
+    expect(withFixedZiVpnObfs({ ...createEmptyProfile("zivpn-udp"), obfs: "custom-obfs" }).obfs).toBe(ZIVPN_DEFAULT_OBFS);
+  });
+
   it("accepts a complete ZiVPN profile without an undefined-name error", () => {
     const profile = {
       ...createEmptyProfile("zivpn-udp"),

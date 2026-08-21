@@ -8,6 +8,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { KmuExportDialog } from "@/components/vpn/kmu-export-dialog";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
+import { useLanguage } from "@/lib/language-provider";
 import { useVpn } from "@/lib/vpn/vpn-context";
 import { useVpnSettings } from "@/lib/vpn/settings-context";
 import { parseConfigurationImport } from "@/lib/vpn/config-transfer";
@@ -18,6 +19,7 @@ const methodOptions: TunnelMethod[] = ["http-proxy-payload", "ssh-ssl-tls", "ssh
 
 export default function HomeScreen() {
   const colors = useColors();
+  const { t } = useLanguage();
   const { profiles, activeProfiles, status, connect, disconnect, importProfiles, resetProfiles, setMethodEnabled } = useVpn();
   const { settings, updateSettings, resetSettings } = useVpnSettings();
   const [menuVisible, setMenuVisible] = useState(false);
@@ -104,10 +106,10 @@ export default function HomeScreen() {
             <Text className="text-sm font-semibold text-primary">KIGHMU VPN</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel="Ouvrir le menu de configuration" style={({ pressed }) => [styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}>
+            <Pressable onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t("Ouvrir le menu de configuration")} style={({ pressed }) => [styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}>
               <IconSymbol name="ellipsis" size={22} color={colors.primary} />
             </Pressable>
-            <Pressable onPress={() => router.push("/settings")} accessibilityRole="button" accessibilityLabel="Ouvrir les paramètres VPN" style={({ pressed }) => [styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}>
+            <Pressable onPress={() => router.push("/settings")} accessibilityRole="button" accessibilityLabel={t("Ouvrir les paramètres VPN")} style={({ pressed }) => [styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}>
               <IconSymbol name="gearshape.fill" size={20} color={colors.primary} />
             </Pressable>
             <View style={[styles.brandMark, { backgroundColor: colors.primary }]}>
@@ -117,7 +119,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={[styles.methodSelector, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text className="text-base font-bold text-foreground">Choisir les tunnels</Text>
+          <Text className="text-base font-bold text-foreground">{t("Choisir les tunnels")}</Text>
           <View style={styles.methodGrid}>
             {methodOptions.map((method) => {
               const methodProfiles = profiles.filter((profile) => profile.method === method);
@@ -129,23 +131,23 @@ export default function HomeScreen() {
                 <View style={[styles.checkbox, { borderColor: selected || partial ? colors.success : colors.muted, backgroundColor: selected || partial ? colors.success : "transparent" }]}>
                   {selected ? <Text style={styles.checkboxMark}>✓</Text> : partial ? <Text style={styles.checkboxMark}>−</Text> : null}
                 </View>
-                <View style={styles.methodText}><Text className="text-base font-semibold text-foreground">{VpnMethodLabel[method]}</Text><Text className="mt-1 text-xs text-muted">{available ? `${enabledProfiles.length}/${methodProfiles.length} profil(s) sélectionné(s)` : "Créer un profil dans Configuration"}</Text></View>
+                <View style={styles.methodText}><Text className="text-base font-semibold text-foreground">{VpnMethodLabel[method]}</Text><Text className="mt-1 text-xs text-muted">{available ? t("{enabled}/{total} profil(s) sélectionné(s)", { enabled: enabledProfiles.length, total: methodProfiles.length }) : t("Créer un profil dans Configuration")}</Text></View>
               </Pressable>;
             })}
           </View>
           <Pressable disabled={selectedTunnelCount === 0 && !canDisconnect} onPress={toggleConnection} accessibilityRole="button" accessibilityLabel={canDisconnect ? "Déconnecter les tunnels sélectionnés" : "Connecter les tunnels sélectionnés"} style={({ pressed }) => [styles.connectButton, { borderColor: canDisconnect ? colors.error : colors.success, backgroundColor: "transparent" }, selectedTunnelCount === 0 && !canDisconnect && styles.connectDisabled, pressed && styles.pressed]}>
-            <Text style={{ color: canDisconnect ? colors.error : colors.success, fontSize: 17, fontWeight: "800" }}>{isConnecting ? "ANNULER" : canDisconnect ? "DÉCONNECTER" : "CONNECTER"}</Text>
+            <Text style={{ color: canDisconnect ? colors.error : colors.success, fontSize: 17, fontWeight: "800" }}>{isConnecting ? t("ANNULER") : canDisconnect ? t("DÉCONNECTER") : t("CONNECTER")}</Text>
           </Pressable>
-          <Pressable onPress={() => router.push("./configuration")} style={({ pressed }) => [styles.configurationLink, pressed && styles.pressed]}><Text style={{ color: colors.primary, fontWeight: "700" }}>Gérer les profils dans Configuration</Text></Pressable>
+          <Pressable onPress={() => router.push("./configuration")} style={({ pressed }) => [styles.configurationLink, pressed && styles.pressed]}><Text style={{ color: colors.primary, fontWeight: "700" }}>{t("Gérer les profils dans Configuration")}</Text></Pressable>
         </View>
       </ScrollView>
       <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
           <Pressable style={[styles.menu, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}>
-            <Text className="mb-2 text-sm font-bold text-primary">CONFIGURATION</Text>
-            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); importConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Importer config</Text><Text className="mt-1 text-xs text-muted">Fichier .kmu ou lien kighmu:// du presse-papiers</Text></Pressable>
-            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); setExportVisible(true); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Exporter config</Text><Text className="mt-1 text-xs text-muted">Créer un fichier .kmu ou copier un lien kighmu://</Text></Pressable>
-            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); resetConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text style={{ color: colors.error, fontSize: 16, fontWeight: "700" }}>Réinitialiser</Text><Text className="mt-1 text-xs text-muted">Supprimer tous les profils et réglages locaux</Text></Pressable>
+            <Text className="mb-2 text-sm font-bold text-primary">{t("CONFIGURATION")}</Text>
+            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); importConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">{t("Importer config")}</Text><Text className="mt-1 text-xs text-muted">{t("Fichier .kmu ou lien kighmu:// du presse-papiers")}</Text></Pressable>
+            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); setExportVisible(true); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">{t("Exporter config")}</Text><Text className="mt-1 text-xs text-muted">{t("Créer un fichier .kmu ou copier un lien kighmu://")}</Text></Pressable>
+            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); resetConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text style={{ color: colors.error, fontSize: 16, fontWeight: "700" }}>{t("Réinitialiser")}</Text><Text className="mt-1 text-xs text-muted">{t("Supprimer tous les profils et réglages locaux")}</Text></Pressable>
           </Pressable>
         </Pressable>
       </Modal>

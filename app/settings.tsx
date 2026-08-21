@@ -6,6 +6,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import { useThemeContext, type ThemePreference } from "@/lib/theme-provider";
+import { useLanguage, type LanguagePreference } from "@/lib/language-provider";
 import { useVpnSettings, type VpnRuntimeSettings } from "@/lib/vpn/settings-context";
 import { useVpn } from "@/lib/vpn/vpn-context";
 import { getNativeVpn } from "@/lib/vpn/native";
@@ -17,14 +18,15 @@ export default function SettingsScreen() {
   const colors = useColors();
   const { settings, updateSettings, resetSettings } = useVpnSettings();
   const { themePreference, setThemePreference } = useThemeContext();
+  const { languagePreference, setLanguagePreference, t } = useLanguage();
   const { status } = useVpn();
-  const [hardwareId, setHardwareId] = useState("Chargement…");
+  const [hardwareId, setHardwareId] = useState("");
   const connected = status === "connected" || status === "connecting";
 
   useEffect(() => {
-    try { setHardwareId(getNativeVpn()?.getHardwareId?.() || "Indisponible dans cet environnement"); }
-    catch { setHardwareId("Indisponible"); }
-  }, []);
+    try { setHardwareId(getNativeVpn()?.getHardwareId?.() || t("Indisponible dans cet environnement")); }
+    catch { setHardwareId(t("Indisponible")); }
+  }, [t]);
 
   const toggle = (key: BooleanSetting) => updateSettings({ [key]: !settings[key] });
   const setText = (key: TextSetting, value: string) => updateSettings({ [key]: value });
@@ -32,16 +34,21 @@ export default function SettingsScreen() {
   return <ScreenContainer className="px-5 pt-3" edges={["top", "left", "right", "bottom"]}>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Retour" style={({ pressed }) => [styles.iconButton, { borderColor: colors.border, backgroundColor: colors.surface }, pressed && styles.pressed]}>
+        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={t("Retour")} style={({ pressed }) => [styles.iconButton, { borderColor: colors.border, backgroundColor: colors.surface }, pressed && styles.pressed]}>
           <IconSymbol name="chevron.left" size={20} color={colors.foreground} />
         </Pressable>
-        <View style={styles.headerCopy}><Text className="text-2xl font-bold text-foreground">Paramètres</Text><Text className="mt-1 text-sm text-muted">Préférences de l’application et du moteur VPN</Text></View>
+        <View style={styles.headerCopy}><Text className="text-2xl font-bold text-foreground">{t("Paramètres")}</Text><Text className="mt-1 text-sm text-muted">{t("Préférences de l’application et du moteur VPN")}</Text></View>
       </View>
 
-      {connected ? <View style={[styles.notice, { borderColor: colors.warning, backgroundColor: colors.surface }]}><Text style={[styles.noticeTitle, { color: colors.warning }]}>Connexion en cours</Text><Text className="mt-1 text-sm leading-5 text-muted">Les réglages de service seront appliqués à la prochaine connexion VPN. L’apparence est appliquée immédiatement.</Text></View> : null}
+      {connected ? <View style={[styles.notice, { borderColor: colors.warning, backgroundColor: colors.surface }]}><Text style={[styles.noticeTitle, { color: colors.warning }]}>{t("Connexion en cours")}</Text><Text className="mt-1 text-sm leading-5 text-muted">{t("Les réglages de service seront appliqués à la prochaine connexion VPN. L’apparence est appliquée immédiatement.")}</Text></View> : null}
+
+      <Section title="Langue">
+        <Choice label="Langue de l’application" value={languagePreference} options={["system", "fr", "en"]} labels={{ system: t("Système"), fr: "Français", en: "English" }} onSelect={(value) => setLanguagePreference(value as LanguagePreference)} />
+        <Text className="-mt-1 text-sm leading-5 text-muted">{t("Utilise la langue définie sur votre appareil lorsque le choix Système est actif.")}</Text>
+      </Section>
 
       <Section title="Apparence">
-        <Choice label="Thème" value={themePreference} options={["system", "light", "dark"]} labels={{ system: "Système", light: "Clair", dark: "Sombre" }} onSelect={(value) => setThemePreference(value as ThemePreference)} />
+        <Choice label="Thème" value={themePreference} options={["system", "light", "dark"]} labels={{ system: t("Système"), light: t("Clair"), dark: t("Sombre") }} onSelect={(value) => setThemePreference(value as ThemePreference)} />
       </Section>
 
       <Section title="VPN">
@@ -72,40 +79,45 @@ export default function SettingsScreen() {
       </Section>
 
       <Section title="Appareil">
-        <InfoSetting label="Hardware ID" value={hardwareId} hint="Identifiant Android affiché localement pour cet appareil ; Picko ne le transmet à aucun serveur." />
+        <InfoSetting label="Hardware ID" value={hardwareId || t("Chargement…")} hint="Identifiant Android affiché localement pour cet appareil ; Picko ne le transmet à aucun serveur." />
       </Section>
 
       <View style={[styles.safetyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text className="text-base font-bold text-foreground">Fonctions de sécurité</Text>
-        <Text className="mt-2 text-sm leading-5 text-muted">Les commandes root, le partage automatique du VPN et l’exposition réseau local ne sont volontairement pas ajoutés : ils demandent des privilèges externes ou réduisent la sécurité de l’appareil. Les options présentées ici sont toutes prises en charge par Picko.</Text>
+        <Text className="text-base font-bold text-foreground">{t("Fonctions de sécurité")}</Text>
+        <Text className="mt-2 text-sm leading-5 text-muted">{t("Les commandes root, le partage automatique du VPN et l’exposition réseau local ne sont volontairement pas ajoutés : ils demandent des privilèges externes ou réduisent la sécurité de l’appareil. Les options présentées ici sont toutes prises en charge par Picko.")}</Text>
       </View>
 
-      <Pressable onPress={resetSettings} accessibilityRole="button" style={({ pressed }) => [styles.resetButton, { borderColor: colors.border, backgroundColor: colors.surface }, pressed && styles.pressed]}><Text style={{ color: colors.error, fontWeight: "700" }}>Restaurer les valeurs par défaut</Text></Pressable>
+      <Pressable onPress={resetSettings} accessibilityRole="button" accessibilityLabel={t("Restaurer les valeurs par défaut")} style={({ pressed }) => [styles.resetButton, { borderColor: colors.border, backgroundColor: colors.surface }, pressed && styles.pressed]}><Text style={{ color: colors.error, fontWeight: "700" }}>{t("Restaurer les valeurs par défaut")}</Text></Pressable>
     </ScrollView>
   </ScreenContainer>;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <View style={styles.section}><Text className="text-sm font-bold text-primary">{title.toUpperCase()}</Text><View style={styles.sectionRows}>{children}</View></View>;
+  const { t } = useLanguage();
+  return <View style={styles.section}><Text className="text-sm font-bold text-primary">{t(title).toUpperCase()}</Text><View style={styles.sectionRows}>{children}</View></View>;
 }
 
 function SwitchSetting({ label, hint, value, onValueChange }: { label: string; hint: string; value: boolean; onValueChange: () => void }) {
   const colors = useColors();
-  return <View style={styles.settingRow}><View style={styles.settingCopy}><Text className="text-lg font-semibold text-foreground">{label}</Text><Text className="mt-1 text-sm leading-5 text-muted">{hint}</Text></View><Switch value={value} onValueChange={onValueChange} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFFFFF" accessibilityLabel={label} /></View>;
+  const { t } = useLanguage();
+  return <View style={styles.settingRow}><View style={styles.settingCopy}><Text className="text-lg font-semibold text-foreground">{t(label)}</Text><Text className="mt-1 text-sm leading-5 text-muted">{t(hint)}</Text></View><Switch value={value} onValueChange={onValueChange} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFFFFF" accessibilityLabel={t(label)} /></View>;
 }
 
 function TextSettingRow({ label, hint, value, onChangeText, keyboardType, autoCapitalize = "sentences" }: { label: string; hint: string; value: string; onChangeText: (value: string) => void; keyboardType?: "default" | "numeric" | "url"; autoCapitalize?: "none" | "sentences" | "words" | "characters" }) {
   const colors = useColors();
-  return <View style={styles.textRow}><Text className="text-lg font-semibold text-foreground">{label}</Text><Text className="mt-1 text-sm leading-5 text-muted">{hint}</Text><TextInput value={value} onChangeText={onChangeText} keyboardType={keyboardType} autoCapitalize={autoCapitalize} autoCorrect={false} placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} /></View>;
+  const { t } = useLanguage();
+  return <View style={styles.textRow}><Text className="text-lg font-semibold text-foreground">{t(label)}</Text><Text className="mt-1 text-sm leading-5 text-muted">{t(hint)}</Text><TextInput value={value} onChangeText={onChangeText} keyboardType={keyboardType} autoCapitalize={autoCapitalize} autoCorrect={false} placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} /></View>;
 }
 
 function InfoSetting({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return <View style={styles.textRow}><Text className="text-lg font-semibold text-foreground">{label}</Text><Text className="mt-1 text-base text-foreground">{value}</Text><Text className="mt-1 text-sm leading-5 text-muted">{hint}</Text></View>;
+  const { t } = useLanguage();
+  return <View style={styles.textRow}><Text className="text-lg font-semibold text-foreground">{t(label)}</Text><Text className="mt-1 text-base text-foreground">{t(value)}</Text><Text className="mt-1 text-sm leading-5 text-muted">{t(hint)}</Text></View>;
 }
 
 function Choice({ label, value, options, labels, onSelect }: { label: string; value: string; options: string[]; labels: Record<string, string>; onSelect: (value: string) => void }) {
   const colors = useColors();
-  return <View style={styles.textRow}><Text className="text-lg font-semibold text-foreground">{label}</Text><View style={styles.choiceRow}>{options.map((option) => <Pressable key={option} onPress={() => onSelect(option)} style={[styles.choice, { borderColor: value === option ? colors.primary : colors.border, backgroundColor: value === option ? colors.primary : colors.background }]}><Text style={{ color: value === option ? "#FFFFFF" : colors.foreground, fontWeight: "700" }}>{labels[option]}</Text></Pressable>)}</View></View>;
+  const { t } = useLanguage();
+  return <View style={styles.textRow}><Text className="text-lg font-semibold text-foreground">{t(label)}</Text><View style={styles.choiceRow}>{options.map((option) => <Pressable key={option} onPress={() => onSelect(option)} style={[styles.choice, { borderColor: value === option ? colors.primary : colors.border, backgroundColor: value === option ? colors.primary : colors.background }]}><Text style={{ color: value === option ? "#FFFFFF" : colors.foreground, fontWeight: "700" }}>{labels[option]}</Text></Pressable>)}</View></View>;
 }
 
 const styles = StyleSheet.create({

@@ -36,6 +36,8 @@ export type VpnProfile = {
 export type VpnProfileSecrets = Pick<VpnProfile, "obfs" | "password" | "hysteriaAuth" | "hysteriaObfs" | "xrayLink" | "xrayJson">;
 export type StoredVpnProfile = Omit<VpnProfile, keyof VpnProfileSecrets>;
 
+export const ZIVPN_DEFAULT_OBFS = "hu``hqb`c";
+
 export const VpnMethodLabel: Record<TunnelMethod, string> = {
   "zivpn-udp": "ZiVPN UDP",
   "ssh-slowdns": "SSH SlowDNS",
@@ -50,6 +52,10 @@ function makeId() {
   return `profile-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export function withFixedZiVpnObfs(profile: VpnProfile): VpnProfile {
+  return profile.method === "zivpn-udp" ? { ...profile, obfs: ZIVPN_DEFAULT_OBFS } : profile;
+}
+
 export function createEmptyProfile(method: TunnelMethod): VpnProfile {
   return {
     id: makeId(),
@@ -58,7 +64,7 @@ export function createEmptyProfile(method: TunnelMethod): VpnProfile {
     enabled: true,
     host: "",
     port: "",
-    obfs: "",
+    obfs: method === "zivpn-udp" ? ZIVPN_DEFAULT_OBFS : "",
     password: "",
     sshHost: "",
     sshPort: method === "ssh-ssl-tls" ? "443" : "22",

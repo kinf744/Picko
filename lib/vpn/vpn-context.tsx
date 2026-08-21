@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
-import { createEmptyProfile, stripSecrets, type StoredVpnProfile, type TunnelMethod, type VpnProfile } from "./profiles";
+import { createEmptyProfile, stripSecrets, withFixedZiVpnObfs, type StoredVpnProfile, type TunnelMethod, type VpnProfile } from "./profiles";
 import { validateProfile } from "./validation";
 import { useVpnSettings } from "./settings-context";
 
@@ -22,7 +22,6 @@ export type DiagnosticLog = {
 const PROFILES_KEY = "kighmu.vpn.profiles.v2";
 const LEGACY_CONFIG_KEY = "kighmu.vpn.config.v1";
 const LEGACY_PASSWORD_KEY = "kighmu.vpn.password.v1";
-const LEGACY_OBFS_KEY = "kighmu.vpn.obfs.v1";
 const SECRET_PREFIX = "kighmu.vpn.profile.secret.";
 
 function secretKey(id: string) {
@@ -125,15 +124,14 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
         const stored = await AsyncStorage.getItem(PROFILES_KEY);
         if (stored) {
           const parsed = JSON.parse(stored) as StoredVpnProfile[];
-          const restored = await Promise.all(parsed.map(async (profile) => ({ ...createEmptyProfile(profile.method), ...profile, ...(await readSecret(profile.id)) })));
+          const restored = await Promise.all(parsed.map(async (profile) => withFixedZiVpnObfs({ ...createEmptyProfile(profile.method), ...profile, ...(await readSecret(profile.id)) })));
           if (mounted) setProfiles(restored);
         } else {
           const legacy = await AsyncStorage.getItem(LEGACY_CONFIG_KEY);
           const password = Platform.OS === "web" ? localStorage.getItem(LEGACY_PASSWORD_KEY) : await SecureStore.getItemAsync(LEGACY_PASSWORD_KEY);
-          const obfs = Platform.OS === "web" ? localStorage.getItem(LEGACY_OBFS_KEY) : await SecureStore.getItemAsync(LEGACY_OBFS_KEY);
           if (legacy) {
             const parsed = JSON.parse(legacy) as { host?: string; port?: string };
-            const migrated = { ...createEmptyProfile("zivpn-udp"), name: "Profil ZiVPN migré", host: parsed.host ?? "", port: parsed.port ?? "", password: password ?? "", obfs: obfs ?? "" };
+            const migrated = { ...createEmptyProfile("zivpn-udp"), name: "Profil ZiVPN migré", host: parsed.host ?? "", port: parsed.port ?? "", password: password ?? "" };
             if (mounted) setProfiles([migrated]);
             await persistProfiles([migrated]);
           }
@@ -161,18 +159,19 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   const createProfile = useCallback((method: TunnelMethod) => createEmptyProfile(method), []);
 
   const saveProfile = useCallback(async (profile: VpnProfile) => {
-    const errors = validateProfile(profile);
+    const normalizedProfile = withFixedZiVpnObfs(profile);
+    const errors = validateProfile(normalizedProfile);
     if (Object.keys(errors).length > 0) {
       addLog("warning", "VALIDATION", `Le profil « ${profile.name || "sans nom"} » contient des champs invalides.`);
       return false;
     }
     const next = profiles.some((current) => current.id === profile.id)
-      ? profiles.map((current) => current.id === profile.id ? profile : current)
-      : [...profiles, profile];
+      ? profiles.map((current) => current.id === normalizedProfile.id ? normalizedProfile : current)
+      : [...profiles, normalizedProfile];
     try {
       await persistProfiles(next);
       setProfiles(next);
-      addLog("info", "STORAGE", `Profil « ${profile.name} » enregistré.`);
+      addLog("info", "STORAGE", `Profil « ${normalizedProfile.name} » enregistré.`);
       return true;
     } catch {
       addLog("error", "STORAGE", "Échec d’enregistrement du profil sécurisé.");
@@ -189,7 +188,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
       copyName = `${baseName} (copie ${suffix})`;
       suffix += 1;
     }
-    const clone = { ...source, id: createEmptyProfile(source.method).id, name: copyName };
+    const clone = withFixedZiVpnObfs({ ...source, id: createEmptyProfile(source.method).id, name: copyName });
     try {
       const next = [...profiles, clone];
       await persistProfiles(next);
@@ -209,7 +208,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
         const fallback = createEmptyProfile(profile.method);
         const id = profile.id && !unique.has(profile.id) ? profile.id : fallback.id;
         unique.add(id);
-        return { ...fallback, ...profile, id, enabled: false };
+        return withFixedZiVpnObfs({ ...fallback, ...profile, id, enabled: false });
       });
       const invalid = normalized.find((profile) => Object.keys(validateProfile(profile)).length > 0);
       if (invalid) {
