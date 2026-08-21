@@ -84,7 +84,7 @@ export default function HomeScreen() {
   ]);
 
   return (
-    <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
+    <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]} swipeTabs>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View>

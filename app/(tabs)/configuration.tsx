@@ -52,7 +52,7 @@ export default function ConfigurationScreen() {
     { text: "Supprimer", style: "destructive", onPress: () => void deleteProfile(profile.id) },
   ]);
 
-  return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
+  return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]} swipeTabs>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <Text className="text-3xl font-bold text-foreground">Profils de tunnel</Text>
       <Text className="mt-2 text-sm leading-5 text-muted">Créez vos profils ZiVPN UDP, SSH SlowDNS, Hysteria UDP, Xray, V2Ray DNS, HTTP Proxy payload ou SSH SSL/TLS, puis activez ceux que vous souhaitez équilibrer. Les secrets restent uniquement sur l’appareil.</Text>

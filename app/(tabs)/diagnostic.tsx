@@ -24,7 +24,7 @@ export default function DiagnosticScreen() {
     await Share.share({ title: "Diagnostic KIGHMU VPN", message: `Rapport KIGHMU VPN\n\n${report}` });
   };
 
-  return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
+  return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]} swipeTabs>
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.header}><View><Text className="text-3xl font-bold text-foreground">Diagnostic</Text><Text className="mt-2 text-sm text-muted">Les secrets sont filtrés avant affichage et partage.</Text></View><Pressable onPress={shareReport} style={({ pressed }) => [styles.iconButton, { borderColor: colors.border }, pressed && styles.pressed]}><Text style={{ color: colors.primary, fontSize: 13, fontWeight: "700" }}>Partager</Text></Pressable></View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>{filters.map((item) => <Pressable key={item.key} onPress={() => setFilter(item.key)} style={[styles.filter, { backgroundColor: filter === item.key ? colors.primary : colors.surface, borderColor: filter === item.key ? colors.primary : colors.border }]}><Text style={{ color: filter === item.key ? "#FFFFFF" : colors.muted, fontSize: 12, fontWeight: "700" }}>{item.label}</Text></Pressable>)}</ScrollView>
