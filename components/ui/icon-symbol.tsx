@@ -26,6 +26,7 @@ const MAPPING = {
   "pencil": "edit",
   "doc.text": "description",
   "gearshape.fill": "settings",
+  "ellipsis": "more-vert",
 } as IconMapping;
 
 /**

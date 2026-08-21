@@ -2,6 +2,7 @@ package expo.modules.kighmuvpnnative
 
 import android.content.Intent
 import android.net.VpnService
+import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -30,6 +31,11 @@ class KighmuVpnNativeModule : Module() {
     }
 
     Function("getStatus") { KighmuVpnService.currentStatus }
+
+    Function("getHardwareId") {
+      val context = appContext.reactContext ?: return@Function "indisponible"
+      Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)?.uppercase() ?: "indisponible"
+    }
 
     AsyncFunction("prepareVpn") {
       val activity = appContext.currentActivity ?: return@AsyncFunction false

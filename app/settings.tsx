@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
+import { useEffect, useState } from "react";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
@@ -7,6 +8,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useThemeContext, type ThemePreference } from "@/lib/theme-provider";
 import { useVpnSettings, type VpnRuntimeSettings } from "@/lib/vpn/settings-context";
 import { useVpn } from "@/lib/vpn/vpn-context";
+import { getNativeVpn } from "@/lib/vpn/native";
 
 type BooleanSetting = "customDnsEnabled" | "wakeLockEnabled" | "profileNameInNotification" | "debugMode" | "httpPingEnabled" | "alwaysReconnect";
 type TextSetting = "dnsPrimary" | "dnsSecondary" | "mtu" | "httpPingUrl" | "httpPingIntervalMs" | "httpPingTimeoutMs" | "reconnectAfterFailures";
@@ -16,7 +18,13 @@ export default function SettingsScreen() {
   const { settings, updateSettings, resetSettings } = useVpnSettings();
   const { themePreference, setThemePreference } = useThemeContext();
   const { status } = useVpn();
+  const [hardwareId, setHardwareId] = useState("Chargement…");
   const connected = status === "connected" || status === "connecting";
+
+  useEffect(() => {
+    try { setHardwareId(getNativeVpn()?.getHardwareId?.() || "Indisponible dans cet environnement"); }
+    catch { setHardwareId("Indisponible"); }
+  }, []);
 
   const toggle = (key: BooleanSetting) => updateSettings({ [key]: !settings[key] });
   const setText = (key: TextSetting, value: string) => updateSettings({ [key]: value });
@@ -61,6 +69,10 @@ export default function SettingsScreen() {
 
       <Section title="Diagnostic">
         <SwitchSetting label="Mode diagnostic détaillé" hint="Ajoute les événements techniques non critiques dans l’écran Diagnostic. Les erreurs et changements de connexion restent toujours visibles." value={settings.debugMode} onValueChange={() => toggle("debugMode")} />
+      </Section>
+
+      <Section title="Appareil">
+        <InfoSetting label="Hardware ID" value={hardwareId} hint="Identifiant Android affiché localement pour cet appareil ; Picko ne le transmet à aucun serveur." />
       </Section>
 
       <View style={[styles.safetyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>

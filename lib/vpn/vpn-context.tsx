@@ -94,6 +94,8 @@ type VpnContextValue = {
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   clearLogs: () => void;
+  importProfiles: (nextProfiles: VpnProfile[]) => Promise<boolean>;
+  resetProfiles: () => Promise<void>;
 };
 
 const VpnContext = createContext<VpnContextValue | null>(null);
@@ -199,6 +201,39 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     }
   }, [addLog, persistProfiles, profiles]);
 
+  const importProfiles = useCallback(async (nextProfiles: VpnProfile[]) => {
+    try {
+      const unique = new Set<string>();
+      const normalized = nextProfiles.map((profile) => {
+        const fallback = createEmptyProfile(profile.method);
+        const id = profile.id && !unique.has(profile.id) ? profile.id : fallback.id;
+        unique.add(id);
+        return { ...fallback, ...profile, id, enabled: false };
+      });
+      const invalid = normalized.find((profile) => Object.keys(validateProfile(profile)).length > 0);
+      if (invalid) {
+        addLog("warning", "IMPORT", `Import refusé : le profil « ${invalid.name || "sans nom"} » est invalide.`);
+        return false;
+      }
+      await persistProfiles(normalized);
+      const importedIds = new Set(normalized.map((profile) => profile.id));
+      await Promise.all(profiles.filter((profile) => !importedIds.has(profile.id)).map((profile) => removeSecret(profile.id)));
+      setProfiles(normalized);
+      addLog("connection", "IMPORT", `${normalized.length} profil(s) importé(s). Ils sont désactivés par sécurité.`);
+      return true;
+    } catch {
+      addLog("error", "IMPORT", "Échec de l’importation des profils.");
+      return false;
+    }
+  }, [addLog, persistProfiles, profiles]);
+
+  const resetProfiles = useCallback(async () => {
+    await Promise.all(profiles.map((profile) => removeSecret(profile.id)));
+    await AsyncStorage.removeItem(PROFILES_KEY);
+    setProfiles([]);
+    addLog("connection", "STORAGE", "Configurations VPN réinitialisées sur cet appareil.");
+  }, [addLog, profiles]);
+
   const deleteProfile = useCallback(async (id: string) => {
     const next = profiles.filter((profile) => profile.id !== id);
     await persistProfiles(next);
@@ -273,7 +308,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     addLog("connection", "TUNNEL", "Déconnexion demandée.");
   }, [addLog]);
 
-  const value = useMemo(() => ({ profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, deleteProfile, setProfileEnabled, connect, disconnect, clearLogs: () => setLogs([]) }), [profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, deleteProfile, setProfileEnabled, connect, disconnect]);
+  const value = useMemo(() => ({ profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, importProfiles, resetProfiles, deleteProfile, setProfileEnabled, connect, disconnect, clearLogs: () => setLogs([]) }), [profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, importProfiles, resetProfiles, deleteProfile, setProfileEnabled, connect, disconnect]);
   return <VpnContext.Provider value={value}>{children}</VpnContext.Provider>;
 }
 

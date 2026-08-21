@@ -44,7 +44,7 @@ type VpnSettingsContextValue = {
 
 const VpnSettingsContext = createContext<VpnSettingsContextValue | null>(null);
 
-function sanitizeSettings(candidate: Partial<VpnRuntimeSettings>): VpnRuntimeSettings {
+export function normalizeVpnSettings(candidate: Partial<VpnRuntimeSettings>): VpnRuntimeSettings {
   const text = (value: unknown, fallback: string, max: number) => typeof value === "string" ? value.slice(0, max) : fallback;
   return {
     customDnsEnabled: Boolean(candidate.customDnsEnabled),
@@ -70,7 +70,7 @@ export function VpnSettingsProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     let active = true;
     AsyncStorage.getItem(SETTINGS_KEY).then((stored) => {
-      if (active && stored) setSettings(sanitizeSettings(JSON.parse(stored) as Partial<VpnRuntimeSettings>));
+      if (active && stored) setSettings(normalizeVpnSettings(JSON.parse(stored) as Partial<VpnRuntimeSettings>));
     }).catch(() => undefined).finally(() => { if (active) setHydrated(true); });
     return () => { active = false; };
   }, []);
@@ -82,7 +82,7 @@ export function VpnSettingsProvider({ children }: { children: React.ReactNode })
 
   const updateSettings = useCallback((patch: Partial<VpnRuntimeSettings>) => {
     setSettings((current) => {
-      const next = sanitizeSettings({ ...current, ...patch });
+      const next = normalizeVpnSettings({ ...current, ...patch });
       void AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
       return next;
     });

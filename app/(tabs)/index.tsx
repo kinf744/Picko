@@ -1,10 +1,16 @@
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
+import { useState } from "react";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { ScreenContainer } from "@/components/screen-container";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import { profileEndpoint, VpnMethodLabel } from "@/lib/vpn/profiles";
 import { useVpn } from "@/lib/vpn/vpn-context";
+import { useVpnSettings } from "@/lib/vpn/settings-context";
+import { parseConfigurationImport, stringifyConfigurationExport } from "@/lib/vpn/config-transfer";
 
 const statusCopy = {
   disconnected: { label: "Prêt à se connecter", hint: "Votre profil KIGHMU est en attente.", icon: "shield.fill" as const },
@@ -15,13 +21,67 @@ const statusCopy = {
 
 export default function HomeScreen() {
   const colors = useColors();
-  const { primaryProfile, activeProfiles, status, lastError, connect, disconnect } = useVpn();
+  const { profiles, primaryProfile, activeProfiles, status, lastError, connect, disconnect, importProfiles, resetProfiles } = useVpn();
+  const { settings, updateSettings, resetSettings } = useVpnSettings();
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [menuBusy, setMenuBusy] = useState(false);
   const copy = statusCopy[status];
   const isBusy = status === "connecting";
   const isConnected = status === "connected";
   const canDisconnect = isBusy || isConnected;
   const endpoint = primaryProfile ? profileEndpoint(primaryProfile) : "Aucun profil enregistré";
   const method = primaryProfile ? VpnMethodLabel[primaryProfile.method] : "—";
+
+  const exportConfiguration = async () => {
+    setMenuBusy(true);
+    try {
+      const directory = FileSystem.documentDirectory;
+      if (!directory) throw new Error("Stockage local indisponible");
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const uri = `${directory}picko-config-${stamp}.json`;
+      await FileSystem.writeAsStringAsync(uri, stringifyConfigurationExport(profiles, settings), { encoding: FileSystem.EncodingType.UTF8 });
+      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/json", dialogTitle: "Exporter la configuration Picko" });
+      else Alert.alert("Export créé", `Le fichier a été enregistré dans : ${uri}`);
+    } catch (error) {
+      Alert.alert("Export impossible", String(error).slice(0, 180));
+    } finally {
+      setMenuBusy(false);
+    }
+  };
+
+  const importConfiguration = async () => {
+    setMenuBusy(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: ["application/json", "text/json"], copyToCacheDirectory: true, multiple: false });
+      if (result.canceled || !result.assets?.[0]) return;
+      const contents = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 });
+      const imported = parseConfigurationImport(contents);
+      Alert.alert("Importer la configuration", `${imported.profiles.length} profil(s) seront importés et les profils actuels seront remplacés. Les profils importés resteront désactivés par sécurité.`, [
+        { text: "Annuler", style: "cancel" },
+        { text: "Importer", onPress: () => { void (async () => {
+          const accepted = await importProfiles(imported.profiles);
+          if (accepted) {
+            updateSettings(imported.settings);
+            Alert.alert("Import terminé", `${imported.profiles.length} profil(s) ont été importés. Activez ceux à utiliser.`);
+          } else Alert.alert("Import refusé", "La configuration contient au moins un profil invalide.");
+        })(); } },
+      ]);
+    } catch (error) {
+      Alert.alert("Import impossible", error instanceof Error ? error.message : "Le fichier ne peut pas être importé.");
+    } finally {
+      setMenuBusy(false);
+    }
+  };
+
+  const resetConfiguration = () => Alert.alert("Réinitialiser Picko", "Tous les profils, mots de passe protégés et réglages VPN seront supprimés de cet appareil. Cette action est irréversible.", [
+    { text: "Annuler", style: "cancel" },
+    { text: "Réinitialiser", style: "destructive", onPress: () => { void (async () => {
+      if (canDisconnect) await disconnect();
+      await resetProfiles();
+      resetSettings();
+      Alert.alert("Réinitialisation terminée", "Les profils et réglages Picko ont été supprimés.");
+    })(); } },
+  ]);
 
   return (
     <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}>
@@ -31,12 +91,10 @@ export default function HomeScreen() {
             <Text className="text-sm font-semibold text-primary">KIGHMU VPN</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable
-              onPress={() => router.push("/settings")}
-              accessibilityRole="button"
-              accessibilityLabel="Ouvrir les paramètres VPN"
-              style={({ pressed }) => [styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}
-            >
+            <Pressable onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel="Ouvrir le menu de configuration" style={({ pressed }) => [styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}>
+              <IconSymbol name="ellipsis" size={22} color={colors.primary} />
+            </Pressable>
+            <Pressable onPress={() => router.push("/settings")} accessibilityRole="button" accessibilityLabel="Ouvrir les paramètres VPN" style={({ pressed }) => [styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}>
               <IconSymbol name="gearshape.fill" size={20} color={colors.primary} />
             </Pressable>
             <View style={[styles.brandMark, { backgroundColor: colors.primary }]}>
@@ -81,6 +139,16 @@ export default function HomeScreen() {
           <IconSymbol name="chevron.right" size={20} color={colors.muted} />
         </Pressable>
       </ScrollView>
+      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+        <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
+          <Pressable style={[styles.menu, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}>
+            <Text className="mb-2 text-sm font-bold text-primary">CONFIGURATION</Text>
+            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); void importConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Importer config</Text><Text className="mt-1 text-xs text-muted">Choisir une sauvegarde Picko JSON</Text></Pressable>
+            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); Alert.alert("Exporter la configuration", "Le fichier exporté contient les profils, réglages, identifiants et mots de passe de tunnel. Partagez-le uniquement avec une personne de confiance.", [{ text: "Annuler", style: "cancel" }, { text: "Exporter", onPress: () => { void exportConfiguration(); } }]); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Exporter config</Text><Text className="mt-1 text-xs text-muted">Créer une sauvegarde JSON chiffrable hors de l’application</Text></Pressable>
+            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); resetConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text style={{ color: colors.error, fontSize: 16, fontWeight: "700" }}>Réinitialiser</Text><Text className="mt-1 text-xs text-muted">Supprimer tous les profils et réglages locaux</Text></Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -102,6 +170,9 @@ const styles = StyleSheet.create({
   diagnosticLink: { flexDirection: "row", alignItems: "center", borderRadius: 18, padding: 12 },
   diagnosticIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   diagnosticText: { flex: 1, marginHorizontal: 12 },
+  menuOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.48)", paddingTop: 76, paddingRight: 18, alignItems: "flex-end" },
+  menu: { width: 290, borderWidth: 1, borderRadius: 18, padding: 14, gap: 4 },
+  menuItem: { paddingVertical: 12, borderRadius: 12 },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
   disabled: { opacity: 0.65 },
 });
