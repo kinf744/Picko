@@ -328,23 +328,43 @@ class SshSslTlsTunnel(
 ) : SshTransportTunnel(context, profile, "SSH SSL/TLS", log) {
 
   override fun openTransport(): Socket {
+    val selected = profile.sslTlsVersion.ifBlank { "TLS" }
+    // Many SSH-over-TLS endpoints accept TLS 1.2 but reject a ClientHello that
+    // advertises newer protocol features. Only an automatic selection may fall
+    // back; an explicit profile choice is always respected.
+    val candidates = if (selected == "TLS") listOf("TLS", "TLSv1.2") else listOf(selected)
+    var lastError: Throwable? = null
+    for ((index, version) in candidates.withIndex()) {
+      try {
+        val socket = openTlsTransport(version)
+        if (index > 0) compactLog("connection", "SSH SSL/TLS rétabli avec le repli $version")
+        return socket
+      } catch (error: Throwable) {
+        lastError = error
+        val sni = profile.sslSni.ifBlank { "aucun SNI" }
+        compactLog("warning", "Handshake $version refusé par ${profile.sshHost}:${profile.sshPort} (SNI $sni) : ${error.message?.lineSequence()?.firstOrNull()?.take(120) ?: "erreur TLS"}")
+      }
+    }
+    throw lastError ?: error("échec de négociation SSL/TLS")
+  }
+
+  private fun openTlsTransport(version: String): SSLSocket {
     val raw = Socket()
     protect(raw)
     raw.tcpNoDelay = true
     raw.keepAlive = true
     raw.connect(InetSocketAddress(profile.sshHost, profile.sshPort.toInt()), TLS_CONNECT_TIMEOUT_MS)
     try {
-      val sslContext = SSLContext.getInstance(profile.sslTlsVersion.ifBlank { "TLS" }).apply {
-        init(null, TRUST_ALL, SecureRandom())
-      }
+      val sslContext = SSLContext.getInstance(version).apply { init(null, TRUST_ALL, SecureRandom()) }
       val tls = sslContext.socketFactory.createSocket(raw, profile.sshHost, profile.sshPort.toInt(), true) as SSLSocket
+      if (version == "TLSv1.2" || version == "TLSv1.3") tls.enabledProtocols = arrayOf(version)
       if (profile.sslSni.isNotBlank()) {
         tls.sslParameters = SSLParameters().apply { serverNames = listOf(SNIHostName(profile.sslSni)) }
       }
       tls.soTimeout = TLS_HANDSHAKE_TIMEOUT_MS
       tls.startHandshake()
       tls.soTimeout = 0
-      compactLog("info", "Handshake SSL/TLS réussi${if (profile.sslSni.isNotBlank()) " avec SNI ${profile.sslSni}" else ""}")
+      compactLog("info", "Handshake SSL/TLS ${tls.session.protocol} réussi${if (profile.sslSni.isNotBlank()) " avec SNI ${profile.sslSni}" else ""}")
       return tls
     } catch (error: Throwable) {
       try { raw.close() } catch (_: Throwable) {}
