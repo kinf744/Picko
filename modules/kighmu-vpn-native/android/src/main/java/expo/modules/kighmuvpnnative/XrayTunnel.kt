@@ -6,7 +6,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.ServerSocket
-import java.net.Socket
 import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -48,7 +47,7 @@ class XrayTunnel(
             val lower = line.lowercase()
             when {
               lower.contains("started") && lower.contains("xray") -> log("info", "XRAY", "Xray démarré pour ${profile.name}")
-              lower.contains("fatal") || lower.contains("panic") -> log("error", "XRAY", line.take(240))
+              lower.contains("fatal") || lower.contains("panic") || lower.contains("failed") || lower.contains("error") -> log("error", "XRAY", line.take(240))
             }
           }
         }
@@ -58,7 +57,7 @@ class XrayTunnel(
     repeat(30) {
       if (!ready) {
         Thread.sleep(200)
-        ready = canConnect()
+        ready = LocalSocksBalancer.hasSocksGreeting(socksPort)
       }
     }
     if (!ready) {
@@ -69,7 +68,7 @@ class XrayTunnel(
     log("info", "XRAY", "Proxy SOCKS Xray prêt pour ${profile.name}")
   }
 
-  override fun isHealthy(): Boolean = process?.isAlive == true && canConnect()
+  override fun isHealthy(): Boolean = process?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort)
 
   override fun stop() {
     try { process?.inputStream?.close() } catch (_: Throwable) {}
@@ -80,11 +79,6 @@ class XrayTunnel(
     socksPort = 0
   }
 
-  private fun canConnect(): Boolean = try {
-    Socket().use { socket -> socket.connect(java.net.InetSocketAddress("127.0.0.1", socksPort), 250) }
-    true
-  } catch (_: Throwable) { false }
-
   private fun freePort(): Int = try { ServerSocket(0).use { it.localPort } } catch (_: Throwable) { 10808 }
 
   private fun buildConfig(): String {
@@ -92,14 +86,8 @@ class XrayTunnel(
     val root = JSONObject(raw)
     normalizeInbounds(root)
     normalizeRouting(root)
-    root.optJSONArray("outbounds")?.let { outbounds ->
-      for (index in 0 until outbounds.length()) {
-        val outbound = outbounds.optJSONObject(index) ?: continue
-        val stream = outbound.optJSONObject("streamSettings") ?: continue
-        stream.optJSONObject("tlsSettings")?.remove("allowInsecure")
-        outbound.put("streamSettings", stream)
-      }
-    }
+    // Une configuration JSON peut explicitement demander allowInsecure pour un
+    // certificat privé. Cette préférence doit atteindre Xray au lieu d’être retirée.
     return root.toString()
   }
 
@@ -164,7 +152,16 @@ class XrayTunnel(
     val path = URLDecoder.decode(source.optString("path", "/"), "UTF-8")
     val sni = source.optString("sni").ifBlank { host }
     val streamHost = source.optString("host").ifBlank { host }
-    val stream = buildStream(transport, path, streamHost, source.optString("tls"), sni, "", "")
+    val stream = buildStream(
+      transport,
+      path,
+      streamHost,
+      source.optString("tls"),
+      sni,
+      "",
+      "",
+      allowInsecure = parseAllowInsecure(source.optString("allowInsecure")),
+    )
     return baseConfig(protocol, host, port, uuid, "auto", stream)
   }
 
@@ -178,7 +175,17 @@ class XrayTunnel(
     val streamPath = query["path"] ?: query["serviceName"] ?: "/"
     val sni = query["sni"] ?: query["host"] ?: host
     val streamHost = query["host"] ?: sni
-    val stream = buildStream(transport, streamPath, streamHost, security, sni, query["pbk"] ?: "", query["sid"] ?: "", query["fp"] ?: "chrome")
+    val stream = buildStream(
+      transport,
+      streamPath,
+      streamHost,
+      security,
+      sni,
+      query["pbk"] ?: "",
+      query["sid"] ?: "",
+      query["fp"] ?: "chrome",
+      parseAllowInsecure(query["allowInsecure"] ?: query["insecure"] ?: ""),
+    )
     val uuidOrPassword = if (protocol == "trojan") user else user.substringBefore(":")
     val flow = query["flow"].orEmpty()
     val result = JSONObject(baseConfig(protocol, host, port, uuidOrPassword, "none", stream))
@@ -193,6 +200,8 @@ class XrayTunnel(
     if (pieces.size == 2) URLDecoder.decode(pieces[0], "UTF-8") to URLDecoder.decode(pieces[1], "UTF-8") else null
   }.toMap()
 
+  private fun parseAllowInsecure(value: String): Boolean = value.trim().lowercase() in setOf("1", "true", "yes")
+
   private fun baseConfig(protocol: String, host: String, port: Int, credential: String, encryption: String, stream: JSONObject): String {
     val users = when (protocol) {
       "trojan" -> JSONObject().put("address", host).put("port", port).put("password", credential)
@@ -203,7 +212,17 @@ class XrayTunnel(
     return JSONObject().put("log", JSONObject().put("loglevel", "warning")).put("inbounds", JSONArray()).put("outbounds", JSONArray().put(outbound).put(JSONObject().put("protocol", "freedom").put("tag", "direct"))).put("routing", JSONObject().put("rules", JSONArray())).toString()
   }
 
-  private fun buildStream(transport: String, path: String, host: String, securityValue: String, sni: String, publicKey: String, shortId: String, fingerprint: String = "chrome"): JSONObject {
+  private fun buildStream(
+    transport: String,
+    path: String,
+    host: String,
+    securityValue: String,
+    sni: String,
+    publicKey: String,
+    shortId: String,
+    fingerprint: String = "chrome",
+    allowInsecure: Boolean = false,
+  ): JSONObject {
     val network = when (transport.lowercase()) {
       "websocket" -> "ws"
       "mkcp" -> "kcp"
@@ -227,7 +246,7 @@ class XrayTunnel(
       "tcp" -> stream.put("tcpSettings", JSONObject().put("header", JSONObject().put("type", "none")))
     }
     if (stream.optString("security") == "reality") stream.put("realitySettings", JSONObject().put("serverName", sni.ifBlank { host }).put("fingerprint", fingerprint).put("publicKey", publicKey).put("shortId", shortId))
-    else if (stream.optString("security") == "tls") stream.put("tlsSettings", JSONObject().put("serverName", sni.ifBlank { host }).put("fingerprint", fingerprint).put("allowInsecure", true))
+    else if (stream.optString("security") == "tls") stream.put("tlsSettings", JSONObject().put("serverName", sni.ifBlank { host }).put("fingerprint", fingerprint).put("allowInsecure", allowInsecure))
     return stream
   }
 }
