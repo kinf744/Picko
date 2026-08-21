@@ -91,6 +91,7 @@ type VpnContextValue = {
   duplicateProfile: (profile: VpnProfile) => Promise<boolean>;
   deleteProfile: (id: string) => Promise<void>;
   setProfileEnabled: (id: string, enabled: boolean) => Promise<void>;
+  setMethodEnabled: (method: TunnelMethod, enabled: boolean) => Promise<void>;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   clearLogs: () => void;
@@ -248,6 +249,14 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     setProfiles(next);
   }, [persistProfiles, profiles]);
 
+  const setMethodEnabled = useCallback(async (method: TunnelMethod, enabled: boolean) => {
+    const next = profiles.map((profile) => profile.method === method ? { ...profile, enabled } : profile);
+    await persistProfiles(next);
+    setProfiles(next);
+    const count = next.filter((profile) => profile.method === method).length;
+    addLog("info", "TUNNEL", `${count} profil(s) ${enabled ? "activé(s)" : "désactivé(s)"} pour la méthode ${method}.`);
+  }, [addLog, persistProfiles, profiles]);
+
   const activeProfiles = useMemo(() => profiles.filter((profile) => profile.enabled), [profiles]);
   const primaryProfile = activeProfiles[0] ?? profiles[0] ?? null;
 
@@ -308,7 +317,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     addLog("connection", "TUNNEL", "Déconnexion demandée.");
   }, [addLog]);
 
-  const value = useMemo(() => ({ profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, importProfiles, resetProfiles, deleteProfile, setProfileEnabled, connect, disconnect, clearLogs: () => setLogs([]) }), [profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, importProfiles, resetProfiles, deleteProfile, setProfileEnabled, connect, disconnect]);
+  const value = useMemo(() => ({ profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, importProfiles, resetProfiles, deleteProfile, setProfileEnabled, setMethodEnabled, connect, disconnect, clearLogs: () => setLogs([]) }), [profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, importProfiles, resetProfiles, deleteProfile, setProfileEnabled, setMethodEnabled, connect, disconnect]);
   return <VpnContext.Provider value={value}>{children}</VpnContext.Provider>;
 }
 

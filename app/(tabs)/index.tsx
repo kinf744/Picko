@@ -1,4 +1,4 @@
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useState } from "react";
 import * as DocumentPicker from "expo-document-picker";
@@ -8,32 +8,35 @@ import { ScreenContainer } from "@/components/screen-container";
 import { KmuExportDialog } from "@/components/vpn/kmu-export-dialog";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
-import { profileEndpoint, VpnMethodLabel } from "@/lib/vpn/profiles";
 import { useVpn } from "@/lib/vpn/vpn-context";
 import { useVpnSettings } from "@/lib/vpn/settings-context";
 import { parseConfigurationImport } from "@/lib/vpn/config-transfer";
 import { getNativeVpn } from "@/lib/vpn/native";
+import { VpnMethodLabel, type TunnelMethod } from "@/lib/vpn/profiles";
 
-const statusCopy = {
-  disconnected: { label: "Prêt à se connecter", hint: "Votre profil KIGHMU est en attente.", icon: "shield.fill" as const },
-  connecting: { label: "Connexion en cours", hint: "Préparation du tunnel sécurisé…", icon: "arrow.triangle.2.circlepath" as const },
-  connected: { label: "Tunnel actif", hint: "Le trafic passe par KIGHMU.", icon: "checkmark.shield.fill" as const },
-  error: { label: "Connexion interrompue", hint: "Consultez le diagnostic pour plus de détails.", icon: "exclamationmark.circle" as const },
-};
+const methodOptions: TunnelMethod[] = ["http-proxy-payload", "ssh-ssl-tls", "ssh-slowdns", "xray", "v2ray-dns", "hysteria-udp", "zivpn-udp"];
 
 export default function HomeScreen() {
   const colors = useColors();
-  const { profiles, primaryProfile, activeProfiles, status, lastError, connect, disconnect, importProfiles, resetProfiles } = useVpn();
+  const { profiles, activeProfiles, status, connect, disconnect, importProfiles, resetProfiles, setMethodEnabled } = useVpn();
   const { settings, updateSettings, resetSettings } = useVpnSettings();
   const [menuVisible, setMenuVisible] = useState(false);
   const [exportVisible, setExportVisible] = useState(false);
   const [menuBusy, setMenuBusy] = useState(false);
-  const copy = statusCopy[status];
-  const isBusy = status === "connecting";
-  const isConnected = status === "connected";
-  const canDisconnect = isBusy || isConnected;
-  const endpoint = primaryProfile ? profileEndpoint(primaryProfile) : "Aucun profil enregistré";
-  const method = primaryProfile ? VpnMethodLabel[primaryProfile.method] : "—";
+  const canDisconnect = status !== "disconnected";
+  const isConnecting = status === "connecting";
+  const selectedTunnelCount = activeProfiles.length;
+
+  const toggleMethod = (method: TunnelMethod) => {
+    const methodProfiles = profiles.filter((profile) => profile.method === method);
+    if (methodProfiles.length === 0) return;
+    void setMethodEnabled(method, !methodProfiles.every((profile) => profile.enabled));
+  };
+
+  const toggleConnection = () => {
+    if (canDisconnect) void disconnect();
+    else void connect();
+  };
 
   const applyImportedConfiguration = async (contents: string) => {
     const hardwareId = (() => { try { return getNativeVpn()?.getHardwareId?.(); } catch { return undefined; } })();
@@ -113,41 +116,28 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View style={[styles.statusCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={[styles.statusIcon, { backgroundColor: isConnected ? colors.success : status === "error" ? colors.error : colors.primary }]}>
-            {isBusy ? <ActivityIndicator color="#FFFFFF" /> : <IconSymbol name={copy.icon} size={28} color="#FFFFFF" />}
+        <View style={[styles.methodSelector, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text className="text-base font-bold text-foreground">Choisir les tunnels</Text>
+          <View style={styles.methodGrid}>
+            {methodOptions.map((method) => {
+              const methodProfiles = profiles.filter((profile) => profile.method === method);
+              const enabledProfiles = methodProfiles.filter((profile) => profile.enabled);
+              const available = methodProfiles.length > 0;
+              const selected = available && enabledProfiles.length === methodProfiles.length;
+              const partial = available && enabledProfiles.length > 0 && !selected;
+              return <Pressable key={method} disabled={!available} onPress={() => toggleMethod(method)} accessibilityRole="checkbox" accessibilityState={{ checked: selected, disabled: !available }} accessibilityLabel={`${VpnMethodLabel[method]} : ${available ? `${methodProfiles.length} profil(s) configuré(s)` : "aucun profil configuré"}`} style={({ pressed }) => [styles.methodOption, !available && styles.methodUnavailable, pressed && available && styles.pressed]}>
+                <View style={[styles.checkbox, { borderColor: selected || partial ? colors.success : colors.muted, backgroundColor: selected || partial ? colors.success : "transparent" }]}>
+                  {selected ? <Text style={styles.checkboxMark}>✓</Text> : partial ? <Text style={styles.checkboxMark}>−</Text> : null}
+                </View>
+                <View style={styles.methodText}><Text className="text-base font-semibold text-foreground">{VpnMethodLabel[method]}</Text><Text className="mt-1 text-xs text-muted">{available ? `${enabledProfiles.length}/${methodProfiles.length} profil(s) sélectionné(s)` : "Créer un profil dans Configuration"}</Text></View>
+              </Pressable>;
+            })}
           </View>
-          <Text className="mt-4 text-xl font-bold text-foreground">{copy.label}</Text>
-          <Text className="mt-1 text-center text-sm text-muted">{lastError ?? copy.hint}</Text>
-          <Pressable
-            onPress={canDisconnect ? disconnect : connect}
-            accessibilityRole="button"
-            accessibilityLabel={isBusy ? "Annuler la connexion VPN" : isConnected ? "Déconnecter le VPN" : "Connecter le VPN"}
-            style={({ pressed }) => [styles.primaryButton, { backgroundColor: canDisconnect ? colors.error : colors.primary }, pressed && styles.pressed]}
-          >
-            {isBusy ? <Text style={styles.primaryButtonText}>Annuler la connexion</Text> : <Text style={styles.primaryButtonText}>{isConnected ? "Déconnecter" : "Se connecter"}</Text>}
+          <Pressable disabled={selectedTunnelCount === 0 && !canDisconnect} onPress={toggleConnection} accessibilityRole="button" accessibilityLabel={canDisconnect ? "Déconnecter les tunnels sélectionnés" : "Connecter les tunnels sélectionnés"} style={({ pressed }) => [styles.connectButton, { borderColor: canDisconnect ? colors.error : colors.success, backgroundColor: "transparent" }, selectedTunnelCount === 0 && !canDisconnect && styles.connectDisabled, pressed && styles.pressed]}>
+            <Text style={{ color: canDisconnect ? colors.error : colors.success, fontSize: 17, fontWeight: "800" }}>{isConnecting ? "ANNULER" : canDisconnect ? "DÉCONNECTER" : "CONNECTER"}</Text>
           </Pressable>
-          <Pressable onPress={() => router.push("./configuration")} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
-            <Text className="text-sm font-semibold text-primary">Modifier la configuration</Text>
-          </Pressable>
+          <Pressable onPress={() => router.push("./configuration")} style={({ pressed }) => [styles.configurationLink, pressed && styles.pressed]}><Text style={{ color: colors.primary, fontWeight: "700" }}>Gérer les profils dans Configuration</Text></Pressable>
         </View>
-
-        <View style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.cardHeader}>
-            <Text className="text-base font-bold text-foreground">Profil actif</Text>
-            <Pressable onPress={() => router.push("./configuration")}><IconSymbol name="pencil" size={20} color={colors.primary} /></Pressable>
-          </View>
-          <View style={styles.row}><Text className="text-sm text-muted">Méthode</Text><Text className="max-w-[62%] text-right text-sm font-semibold text-foreground">{method}</Text></View>
-          <View style={styles.row}><Text className="text-sm text-muted">Serveur</Text><Text className="max-w-[62%] text-right text-sm font-semibold text-foreground">{endpoint}</Text></View>
-          <View style={styles.row}><Text className="text-sm text-muted">Équilibrage</Text><Text className="text-sm font-semibold text-foreground">{activeProfiles.length} tunnel(s) actif(s)</Text></View>
-          <View style={styles.row}><Text className="text-sm text-muted">Secrets</Text><Text className="text-sm font-semibold text-foreground">{primaryProfile?.password ? "Protégés" : "Non configurés"}</Text></View>
-        </View>
-
-        <Pressable onPress={() => router.push("./diagnostic")} style={({ pressed }) => [styles.diagnosticLink, pressed && styles.pressed]}>
-          <View style={[styles.diagnosticIcon, { backgroundColor: colors.background, borderColor: colors.border }]}><IconSymbol name="doc.text" size={20} color={colors.primary} /></View>
-          <View style={styles.diagnosticText}><Text className="text-sm font-bold text-foreground">Ouvrir le diagnostic</Text><Text className="mt-1 text-xs text-muted">Voir les événements détaillés et les erreurs</Text></View>
-          <IconSymbol name="chevron.right" size={20} color={colors.muted} />
-        </Pressable>
       </ScrollView>
       <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
@@ -170,17 +160,16 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
   settingsButton: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   brandMark: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  statusCard: { borderWidth: 1, borderRadius: 26, alignItems: "center", padding: 24 },
-  statusIcon: { width: 64, height: 64, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  primaryButton: { width: "100%", minHeight: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", marginTop: 22 },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
-  secondaryButton: { minHeight: 44, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
-  profileCard: { borderWidth: 1, borderRadius: 22, padding: 18 },
-  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 9 },
-  diagnosticLink: { flexDirection: "row", alignItems: "center", borderRadius: 18, padding: 12 },
-  diagnosticIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1 },
-  diagnosticText: { flex: 1, marginHorizontal: 12 },
+  methodSelector: { borderWidth: 1, borderRadius: 24, padding: 18, gap: 16 },
+  methodGrid: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 12 },
+  methodOption: { width: "47%", flexDirection: "row", alignItems: "center", minHeight: 54 },
+  methodUnavailable: { opacity: 0.46 },
+  checkbox: { width: 28, height: 28, borderWidth: 2, borderRadius: 6, alignItems: "center", justifyContent: "center", marginRight: 10 },
+  checkboxMark: { color: "#FFFFFF", fontWeight: "900", fontSize: 20, lineHeight: 21 },
+  methodText: { flex: 1 },
+  connectButton: { minHeight: 56, borderRadius: 12, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  connectDisabled: { opacity: 0.4 },
+  configurationLink: { minHeight: 34, alignItems: "center", justifyContent: "center" },
   menuOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.48)", paddingTop: 76, paddingRight: 18, alignItems: "flex-end" },
   menu: { width: 290, borderWidth: 1, borderRadius: 18, padding: 14, gap: 4 },
   menuItem: { paddingVertical: 12, borderRadius: 12 },
