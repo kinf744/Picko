@@ -14,7 +14,7 @@ react {
     hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
     codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
-    enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
+    enableBundleCompression = (findProperty('android.enableBundleCompression') ?: true).toBoolean()
     // Use Expo CLI to bundle the app, this ensures the Metro config
     // works correctly with Expo projects.
     cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
@@ -66,7 +66,7 @@ react {
 /**
  * Set this to true in release builds to optimize the app using [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
  */
-def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()
+def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: true).toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -80,6 +80,16 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+
+def releaseStorePath = (findProperty('PICKO_RELEASE_STORE_FILE') ?: System.getenv('PICKO_RELEASE_STORE_FILE'))?.toString()
+def releaseStorePassword = (findProperty('PICKO_RELEASE_STORE_PASSWORD') ?: System.getenv('PICKO_RELEASE_STORE_PASSWORD'))?.toString()
+def releaseKeyAlias = (findProperty('PICKO_RELEASE_KEY_ALIAS') ?: System.getenv('PICKO_RELEASE_KEY_ALIAS'))?.toString()
+def releaseKeyPassword = (findProperty('PICKO_RELEASE_KEY_PASSWORD') ?: System.getenv('PICKO_RELEASE_KEY_PASSWORD'))?.toString()
+def hasReleaseSigning = [releaseStorePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it }
+def releaseCertSha256 = (findProperty('PICKO_RELEASE_CERT_SHA256') ?: System.getenv('PICKO_RELEASE_CERT_SHA256') ?: '')
+  .toString().replaceAll('[^A-Fa-f0-9]', '').toUpperCase()
+def integrityEnforced = hasReleaseSigning && !releaseCertSha256.isBlank()
+
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -96,6 +106,8 @@ android {
         versionName "1.0.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+        buildConfigField "String", "PICKO_RELEASE_CERT_SHA256", "\"${releaseCertSha256}\""
+        buildConfigField "boolean", "PICKO_INTEGRITY_ENFORCED", integrityEnforced.toString()
     }
     signingConfigs {
         debug {
@@ -104,19 +116,27 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(releaseStorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
-            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
+            // CI uses a dedicated release keystore when its four PICKO_RELEASE_* values are provided.
+            // The debug key fallback is kept only for local development builds and must never be distributed.
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'true'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
         }

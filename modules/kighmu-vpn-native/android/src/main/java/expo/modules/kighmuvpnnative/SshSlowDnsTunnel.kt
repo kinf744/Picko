@@ -68,12 +68,13 @@ class SshSlowDnsTunnel(
   private fun startDnstt() {
     val binary = File(context.applicationInfo.nativeLibraryDir, "libdnstt.so")
     require(binary.exists() && binary.length() > 0L) { "libdnstt.so absent de l’APK" }
+    val plan = OpolNative.dnsttPlan(profile, dnsttPort)
     val process = ProcessBuilder(
       binary.absolutePath,
-      "-udp", "${profile.dnsServer}:${profile.dnsPort}",
-      "-pubkey", profile.normalizedPublicKey(),
-      profile.nameserver,
-      "127.0.0.1:$dnsttPort",
+      "-udp", plan.resolver,
+      "-pubkey", plan.publicKey,
+      plan.nameserver,
+      plan.localEndpoint,
     )
       .directory(context.filesDir)
       .apply {

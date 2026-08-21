@@ -54,6 +54,7 @@ class KighmuVpnService : VpnService() {
 
   private fun startTunnels(intent: Intent, generation: Long) {
     try {
+      AppIntegrity.requireTrustedRelease(this)
       val profilesJson = intent.getStringExtra(EXTRA_PROFILES_JSON).orEmpty()
       val payload = JSONObject(profilesJson)
       runtimeSettings = VpnRuntimeSettings.parse(payload)

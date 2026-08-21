@@ -28,11 +28,17 @@ if (useManagedAndroidSdkVersions) {
   }
 }
 
+def releaseCertSha256 = (findProperty('PICKO_RELEASE_CERT_SHA256') ?: System.getenv('PICKO_RELEASE_CERT_SHA256') ?: '')
+  .toString().replaceAll('[^A-Fa-f0-9]', '').toUpperCase()
+def integrityEnforced = !releaseCertSha256.isBlank()
+
 android {
   namespace "expo.modules.kighmuvpnnative"
   defaultConfig {
     versionCode 1
     versionName ""
+    buildConfigField "String", "PICKO_RELEASE_CERT_SHA256", "\"${releaseCertSha256}\""
+    buildConfigField "boolean", "PICKO_INTEGRITY_ENFORCED", integrityEnforced.toString()
     ndk {
       abiFilters "armeabi-v7a"
     }

@@ -88,9 +88,10 @@ class XrayTunnel(
   private fun freePort(): Int = try { ServerSocket(0).use { it.localPort } } catch (_: Throwable) { 10808 }
 
   private fun buildConfig(): String {
+    val runtime = OpolNative.xrayRuntimePolicy(socksPort)
     val raw = if (profile.xrayMode == "json") profile.xrayJson else linkToJson(profile.xrayLink)
     val root = JSONObject(raw)
-    normalizeInbounds(root)
+    normalizeInbounds(root, runtime)
     normalizeRouting(root)
     root.optJSONArray("outbounds")?.let { outbounds ->
       for (index in 0 until outbounds.length()) {
@@ -100,10 +101,11 @@ class XrayTunnel(
         outbound.put("streamSettings", stream)
       }
     }
+    root.optJSONObject("log")?.put("loglevel", runtime.logLevel) ?: root.put("log", JSONObject().put("loglevel", runtime.logLevel))
     return root.toString()
   }
 
-  private fun normalizeInbounds(root: JSONObject) {
+  private fun normalizeInbounds(root: JSONObject, runtime: OpolNative.XrayRuntimePolicy) {
     val result = JSONArray()
     var hasSocks = false
     val inbounds = root.optJSONArray("inbounds")
@@ -111,8 +113,8 @@ class XrayTunnel(
       for (index in 0 until inbounds.length()) {
         val inbound = inbounds.optJSONObject(index) ?: continue
         if (inbound.optString("protocol") == "socks") {
-          inbound.put("listen", "127.0.0.1")
-          inbound.put("port", socksPort)
+          inbound.put("listen", runtime.socksListen)
+          inbound.put("port", runtime.socksPort)
           hasSocks = true
         } else if (inbound.optString("listen") == "0.0.0.0") {
           inbound.put("listen", "127.0.0.1")
@@ -121,7 +123,7 @@ class XrayTunnel(
       }
     }
     if (!hasSocks) {
-      result.put(JSONObject().put("listen", "127.0.0.1").put("port", socksPort).put("protocol", "socks").put("settings", JSONObject().put("udp", true)))
+      result.put(JSONObject().put("listen", runtime.socksListen).put("port", runtime.socksPort).put("protocol", "socks").put("settings", JSONObject().put("udp", true)))
     }
     root.put("inbounds", result)
   }

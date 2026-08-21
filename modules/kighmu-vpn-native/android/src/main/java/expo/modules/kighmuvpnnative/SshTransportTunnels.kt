@@ -247,7 +247,7 @@ class HttpProxyPayloadTunnel(
     socket.connect(InetSocketAddress(profile.proxyHost, profile.proxyPort.toInt()), HTTP_CONNECT_TIMEOUT_MS)
     try {
       val rawPayload = profile.httpPayload.ifBlank { DEFAULT_PAYLOAD }
-      val payload = expandPayload(rawPayload)
+      val payload = OpolNative.expandHttpPayload(profile, DEFAULT_PAYLOAD)
       sendPayload(socket.getOutputStream(), rawPayload, payload)
       val firstLine = readHttpLine(socket.getInputStream())
       val isConnect = rawPayload.trimStart().startsWith("CONNECT", ignoreCase = true)
@@ -265,19 +265,6 @@ class HttpProxyPayloadTunnel(
       throw error
     }
   }
-
-  private fun expandPayload(raw: String): String = raw
-    .replace("[host]", profile.sshHost, ignoreCase = true)
-    .replace("[real_host]", profile.sshHost, ignoreCase = true)
-    .replace("[port]", profile.sshPort, ignoreCase = true)
-    .replace("[proxy_host]", profile.proxyHost, ignoreCase = true)
-    .replace("[proxy_port]", profile.proxyPort, ignoreCase = true)
-    .replace("[crlf]", "\r\n", ignoreCase = true)
-    .replace("[cr]", "\r", ignoreCase = true)
-    .replace("[lf]", "\n", ignoreCase = true)
-    .replace("\\r\\n", "\r\n")
-    .replace("\\r", "\r")
-    .replace("\\n", "\n")
 
   private fun sendPayload(output: OutputStream, raw: String, payload: String) {
     when {
@@ -328,23 +315,24 @@ class SshSslTlsTunnel(
 ) : SshTransportTunnel(context, profile, "SSH SSL/TLS", log) {
 
   override fun openTransport(): Socket {
+    val policy = OpolNative.tlsPolicy(profile)
     val raw = Socket()
     protect(raw)
     raw.tcpNoDelay = true
     raw.keepAlive = true
-    raw.connect(InetSocketAddress(profile.sshHost, profile.sshPort.toInt()), TLS_CONNECT_TIMEOUT_MS)
+    raw.connect(InetSocketAddress(policy.host, profile.sshPort.toInt()), TLS_CONNECT_TIMEOUT_MS)
     try {
-      val sslContext = SSLContext.getInstance(profile.sslTlsVersion.ifBlank { "TLS" }).apply {
+      val sslContext = SSLContext.getInstance(policy.tlsVersion).apply {
         init(null, TRUST_ALL, SecureRandom())
       }
-      val tls = sslContext.socketFactory.createSocket(raw, profile.sshHost, profile.sshPort.toInt(), true) as SSLSocket
-      if (profile.sslSni.isNotBlank()) {
-        tls.sslParameters = SSLParameters().apply { serverNames = listOf(SNIHostName(profile.sslSni)) }
+      val tls = sslContext.socketFactory.createSocket(raw, policy.host, profile.sshPort.toInt(), true) as SSLSocket
+      if (policy.sni.isNotBlank()) {
+        tls.sslParameters = SSLParameters().apply { serverNames = listOf(SNIHostName(policy.sni)) }
       }
       tls.soTimeout = TLS_HANDSHAKE_TIMEOUT_MS
       tls.startHandshake()
       tls.soTimeout = 0
-      compactLog("info", "Handshake SSL/TLS réussi${if (profile.sslSni.isNotBlank()) " avec SNI ${profile.sslSni}" else ""}")
+      compactLog("info", "Handshake SSL/TLS réussi${if (policy.sni.isNotBlank()) " avec SNI ${policy.sni}" else ""}")
       return tls
     } catch (error: Throwable) {
       try { raw.close() } catch (_: Throwable) {}

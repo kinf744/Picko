@@ -58,11 +58,24 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x android/gradlew
 
+      - name: Materialize release signing key
+        if: ${{ secrets.PICKO_RELEASE_KEYSTORE_BASE64 != '' }}
+        env:
+          PICKO_RELEASE_KEYSTORE_BASE64: ${{ secrets.PICKO_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$PICKO_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/picko-release.keystore"
+          chmod 600 "$RUNNER_TEMP/picko-release.keystore"
+
       - name: Build standalone release APK
         working-directory: android
         env:
           NODE_ENV: production
           GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+          PICKO_RELEASE_STORE_FILE: ${{ runner.temp }}/picko-release.keystore
+          PICKO_RELEASE_STORE_PASSWORD: ${{ secrets.PICKO_RELEASE_STORE_PASSWORD }}
+          PICKO_RELEASE_KEY_ALIAS: ${{ secrets.PICKO_RELEASE_KEY_ALIAS }}
+          PICKO_RELEASE_KEY_PASSWORD: ${{ secrets.PICKO_RELEASE_KEY_PASSWORD }}
+          PICKO_RELEASE_CERT_SHA256: ${{ secrets.PICKO_RELEASE_CERT_SHA256 }}
         run: ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode all
 
       - name: Upload APK

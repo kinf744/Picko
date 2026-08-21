@@ -29,11 +29,11 @@ function withoutEmptyErrors<T extends Record<string, string | undefined>>(errors
   return Object.fromEntries(Object.entries(errors).filter(([, value]) => Boolean(value))) as Partial<T>;
 }
 
-export function validateVpnConfig(config: VpnValidationConfig) {
+export function validateVpnConfig(config: VpnValidationConfig, requireObfs = true) {
   const errors: Partial<Record<keyof VpnValidationConfig, string>> = {};
   if (!config.host.trim()) errors.host = "Saisissez un Host ou une adresse IP.";
   if (!isValidPort(config.port, true)) errors.port = "Utilisez un port ou une plage, par exemple 6000-19999.";
-  if (!config.obfs.trim()) errors.obfs = "La clé Obfs est requise pour ce profil.";
+  if (requireObfs && !config.obfs.trim()) errors.obfs = "La clé Obfs est requise pour ce profil.";
   if (!config.password.trim()) errors.password = "Le mot de passe est requis.";
   return errors;
 }
@@ -100,7 +100,8 @@ export function validateProfile(profile: VpnProfile): ProfileValidationErrors {
   };
 
   if (profile.method === "zivpn-udp") {
-    Object.assign(errors, validateVpnConfig(profile));
+    // ZiVPN Obfs is supplied by the native Android tunnel and is not accepted from the UI.
+    Object.assign(errors, validateVpnConfig(profile, false));
   } else if (profile.method === "ssh-slowdns") {
     errors.sshHost = required(profile.sshHost, "Saisissez le serveur SSH.");
     if (!isValidPort(profile.sshPort)) errors.sshPort = "Utilisez un port SSH valide.";

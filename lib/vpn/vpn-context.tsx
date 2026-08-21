@@ -59,7 +59,8 @@ async function readSecret(id: string) {
 
 async function writeSecret(profile: VpnProfile) {
   const value = JSON.stringify({
-    obfs: profile.obfs,
+    // ZiVPN Obfs is native-only; do not duplicate it in the JavaScript secure store.
+    obfs: profile.method === "zivpn-udp" ? "" : profile.obfs,
     password: profile.password,
     hysteriaAuth: profile.hysteriaAuth,
     hysteriaObfs: profile.hysteriaObfs,

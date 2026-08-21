@@ -1,7 +1,6 @@
 package expo.modules.kighmuvpnnative
 
 import android.content.Context
-import org.json.JSONObject
 import java.io.File
 import java.net.ServerSocket
 import java.util.concurrent.TimeUnit
@@ -168,20 +167,7 @@ class HysteriaTunnel(
   private fun writeConfig(): File {
     val safeId = profile.id.replace(Regex("[^A-Za-z0-9._-]"), "_")
     return File(context.cacheDir, "hysteria-$safeId.json").also { file ->
-      val config = JSONObject().apply {
-        put("server", "${profile.hysteriaHost}:${profile.hysteriaPort}")
-        put("auth_str", profile.hysteriaAuth)
-        put("up_mbps", profile.hysteriaUpMbps.toDouble())
-        put("down_mbps", profile.hysteriaDownMbps.toDouble())
-        put("retry", 3)
-        put("retry_interval", 1)
-        put("insecure", true)
-        put("recv_window_conn", 4_194_304)
-        put("recv_window", 16_777_216)
-        put("socks5", JSONObject().put("listen", "127.0.0.1:$socksPort"))
-        if (profile.hysteriaObfs.isNotBlank()) put("obfs", profile.hysteriaObfs)
-      }
-      file.writeText(config.toString())
+      file.writeText(OpolNative.buildHysteriaConfig(profile, socksPort))
       configFile = file
     }
   }

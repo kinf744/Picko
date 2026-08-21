@@ -1,7 +1,6 @@
 package expo.modules.kighmuvpnnative
 
 import android.content.Context
-import org.json.JSONObject
 import java.io.File
 import java.net.ServerSocket
 import java.net.Socket
@@ -21,19 +20,11 @@ class ZivpnTunnel(
     val binary = File(context.applicationInfo.nativeLibraryDir, "libuz_core.so")
     require(binary.exists() && binary.length() > 0L) { "libuz_core.so absent de l’APK" }
     val config = File(context.cacheDir, "zivpn-${safeToken(profile.id)}.json")
-    config.writeText(JSONObject()
-      .put("server", "${profile.host}:${profile.port}")
-      .put("obfs", profile.obfs)
-      .put("auth", profile.password)
-      .put("socks5", JSONObject().put("listen", "127.0.0.1:$socksPort"))
-      .put("insecure", true)
-      .put("recvwindowconn", 65536)
-      .put("recvwindow", 262144)
-      .put("disable_mtu_discovery", true)
-      .toString())
+    val serializedConfig = OpolNative.buildZiVpnConfig(profile, socksPort)
+    config.writeText(serializedConfig)
     configFile = config
     val nativeDir = context.applicationInfo.nativeLibraryDir
-    process = ProcessBuilder(binary.absolutePath, "-s", profile.obfs, "--config", config.readText())
+    process = ProcessBuilder(binary.absolutePath, "-s", OpolNative.ziVpnObfs(), "--config", serializedConfig)
       .directory(context.filesDir)
       .apply {
         environment()["LD_LIBRARY_PATH"] = nativeDir

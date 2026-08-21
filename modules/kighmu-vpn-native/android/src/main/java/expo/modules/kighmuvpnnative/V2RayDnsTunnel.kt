@@ -86,12 +86,13 @@ class V2RayDnsTunnel(
   }
 
   private fun startDnstt(binary: File) {
+    val plan = OpolNative.dnsttPlan(profile, dnsttPort)
     val process = ProcessBuilder(
       binary.absolutePath,
-      "-udp", "${profile.dnsServer}:${profile.dnsPort}",
-      "-pubkey", profile.normalizedPublicKey(),
-      profile.nameserver,
-      "127.0.0.1:$dnsttPort",
+      "-udp", plan.resolver,
+      "-pubkey", plan.publicKey,
+      plan.nameserver,
+      plan.localEndpoint,
     )
       .directory(context.filesDir)
       .redirectErrorStream(true)
@@ -237,15 +238,16 @@ class V2RayDnsTunnel(
   }
 
   private fun buildConfig(): String {
+    val runtime = OpolNative.xrayRuntimePolicy(socksPort, dnsttPort, true)
     val root = JSONObject(if (profile.xrayMode == "json") profile.xrayJson else linkToJson(profile.xrayLink))
-    normalizeInbounds(root)
-    redirectOutboundsThroughDnstt(root)
+    normalizeInbounds(root, runtime)
+    redirectOutboundsThroughDnstt(root, runtime)
     normalizeRouting(root)
-    root.optJSONObject("log")?.put("loglevel", "warning") ?: root.put("log", JSONObject().put("loglevel", "warning"))
+    root.optJSONObject("log")?.put("loglevel", runtime.logLevel) ?: root.put("log", JSONObject().put("loglevel", runtime.logLevel))
     return root.toString()
   }
 
-  private fun normalizeInbounds(root: JSONObject) {
+  private fun normalizeInbounds(root: JSONObject, runtime: OpolNative.XrayRuntimePolicy) {
     val normalized = JSONArray()
     var hasSocks = false
     val inbounds = root.optJSONArray("inbounds")
@@ -253,8 +255,8 @@ class V2RayDnsTunnel(
       for (index in 0 until inbounds.length()) {
         val inbound = inbounds.optJSONObject(index) ?: continue
         if (inbound.optString("protocol") == "socks") {
-          inbound.put("listen", "127.0.0.1")
-          inbound.put("port", socksPort)
+          inbound.put("listen", runtime.socksListen)
+          inbound.put("port", runtime.socksPort)
           inbound.optJSONObject("settings")?.put("udp", true)
           hasSocks = true
         } else if (inbound.optString("listen") == "0.0.0.0") {
@@ -265,8 +267,8 @@ class V2RayDnsTunnel(
     }
     if (!hasSocks) normalized.put(
       JSONObject()
-        .put("listen", "127.0.0.1")
-        .put("port", socksPort)
+        .put("listen", runtime.socksListen)
+        .put("port", runtime.socksPort)
         .put("protocol", "socks")
         .put("settings", JSONObject().put("udp", true))
     )
@@ -274,7 +276,7 @@ class V2RayDnsTunnel(
   }
 
   /** Le serveur réel est atteint au travers de DNSTT local; TLS/Reality ne s’appliquent plus au hop local. */
-  private fun redirectOutboundsThroughDnstt(root: JSONObject) {
+  private fun redirectOutboundsThroughDnstt(root: JSONObject, runtime: OpolNative.XrayRuntimePolicy) {
     val outbounds = root.optJSONArray("outbounds") ?: return
     for (index in 0 until outbounds.length()) {
       val outbound = outbounds.optJSONObject(index) ?: continue
@@ -284,11 +286,11 @@ class V2RayDnsTunnel(
       val settings = outbound.optJSONObject("settings")
       settings?.optJSONArray("vnext")?.optJSONObject(0)?.apply {
         put("address", "127.0.0.1")
-        put("port", dnsttPort)
+        put("port", runtime.dnsttPort)
       }
       settings?.optJSONArray("servers")?.optJSONObject(0)?.apply {
         put("address", "127.0.0.1")
-        put("port", dnsttPort)
+        put("port", runtime.dnsttPort)
       }
       outbound.optJSONObject("streamSettings")?.apply {
         put("security", "none")
