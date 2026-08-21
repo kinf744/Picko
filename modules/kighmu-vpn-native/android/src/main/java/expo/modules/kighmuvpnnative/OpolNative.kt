@@ -12,7 +12,6 @@ internal object OpolNative {
     val socksPort: Int,
     val logLevel: String,
     val domainStrategy: String,
-    val allowInsecure: Boolean,
   )
 
   private val available: Boolean = try {
@@ -40,7 +39,6 @@ internal object OpolNative {
       socksPort = port,
       logLevel = logLevel,
       domainStrategy = domainStrategy,
-      allowInsecure = source.optBoolean("allowInsecure", false),
     )
   }
 

@@ -18,8 +18,7 @@ static jstring native_build_xray_runtime_policy(JNIEnv* env, jobject, jint socks
       "\"socksListen\":\"127.0.0.1\","
       "\"socksPort\":" + std::to_string(socks_port) + ","
       "\"logLevel\":\"warning\","
-      "\"domainStrategy\":\"AsIs\","
-      "\"allowInsecure\":true"
+      "\"domainStrategy\":\"AsIs\""
       "}";
   return new_string(env, policy);
 }
