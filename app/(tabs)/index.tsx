@@ -53,7 +53,7 @@ export default function HomeScreen() {
   const importFromFile = async () => {
     setMenuBusy(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: ["application/json", "application/octet-stream", "text/plain"], copyToCacheDirectory: true, multiple: false });
+      const result = await DocumentPicker.getDocumentAsync({ type: ["application/vnd.kighmu.config", "application/octet-stream", "text/plain"], copyToCacheDirectory: true, multiple: false });
       if (result.canceled || !result.assets?.[0]) return;
       const contents = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 });
       await applyImportedConfiguration(contents);
@@ -77,7 +77,7 @@ export default function HomeScreen() {
     }
   };
 
-  const importConfiguration = () => Alert.alert("Importer une configuration", "Choisissez un fichier .kmu / JSON ou un lien kighmu:// déjà copié dans le presse-papiers.", [
+  const importConfiguration = () => Alert.alert("Importer une configuration", "Choisissez un fichier .kmu ou un lien kighmu:// déjà copié dans le presse-papiers.", [
     { text: "Annuler", style: "cancel" },
     { text: "Fichier .kmu", onPress: () => { void importFromFile(); } },
     { text: "Presse-papiers", onPress: () => { void importFromClipboard(); } },
@@ -153,7 +153,7 @@ export default function HomeScreen() {
         <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
           <Pressable style={[styles.menu, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}>
             <Text className="mb-2 text-sm font-bold text-primary">CONFIGURATION</Text>
-            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); importConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Importer config</Text><Text className="mt-1 text-xs text-muted">Fichier .kmu / JSON ou lien kighmu:// du presse-papiers</Text></Pressable>
+            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); importConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Importer config</Text><Text className="mt-1 text-xs text-muted">Fichier .kmu ou lien kighmu:// du presse-papiers</Text></Pressable>
             <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); setExportVisible(true); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Exporter config</Text><Text className="mt-1 text-xs text-muted">Créer un fichier .kmu ou copier un lien kighmu://</Text></Pressable>
             <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); resetConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text style={{ color: colors.error, fontSize: 16, fontWeight: "700" }}>Réinitialiser</Text><Text className="mt-1 text-xs text-muted">Supprimer tous les profils et réglages locaux</Text></Pressable>
           </Pressable>

@@ -47,9 +47,9 @@ describe("sauvegarde de configuration Kighmu", () => {
     expect(parseConfigurationImport(JSON.stringify(exported), { hardwareId: "android-abc" }).profiles).toHaveLength(1);
   });
 
-  it("reste compatible avec les sauvegardes Picko JSON v1", () => {
+  it("rejette les sauvegardes Picko JSON historiques", () => {
     const legacy = { format: "picko-vpn-config", version: 1, profiles: [profile], settings };
-    expect(parseConfigurationImport(JSON.stringify(legacy)).source).toBe("legacy");
+    expect(() => parseConfigurationImport(JSON.stringify(legacy))).toThrow(".kmu");
   });
 
   it("rejette les méthodes de tunnel inconnues", () => {

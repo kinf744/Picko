@@ -131,7 +131,7 @@ export type ParsedKighmuConfiguration = {
   profiles: VpnProfile[];
   settings: VpnRuntimeSettings;
   policy: KighmuDistributionPolicy;
-  source: "kmu" | "legacy" | "uri";
+  source: "kmu" | "uri";
 };
 
 export function parseConfigurationImport(contents: string, options: { hardwareId?: string; now?: Date } = {}): ParsedKighmuConfiguration {
@@ -140,14 +140,13 @@ export function parseConfigurationImport(contents: string, options: { hardwareId
   const raw = isUri ? fromBase64Url(trimmed.slice(KIGHMU_URI_PREFIX.length)) : trimmed;
   let parsed: unknown;
   try { parsed = JSON.parse(raw); }
-  catch { throw new Error(isUri ? "Le lien kighmu:// ne contient pas une configuration lisible." : "Le fichier ne contient pas un JSON valide."); }
-  if (!isRecord(parsed)) throw new Error("La configuration importée est invalide.");
+  catch { throw new Error(isUri ? "Le lien kighmu:// ne contient pas une configuration lisible." : "Le fichier .kmu ne contient pas une configuration lisible."); }
+  if (!isRecord(parsed)) throw new Error("La configuration .kmu importée est invalide.");
 
-  const isLegacy = parsed.format === "picko-vpn-config" && parsed.version === 1;
   const isKmu = parsed.format === "kighmu-kmu" && parsed.version === 2;
-  if (!isLegacy && !isKmu) throw new Error("Ce fichier n’est pas une sauvegarde Picko ou Kighmu compatible.");
+  if (!isKmu) throw new Error("Seuls les fichiers .kmu et les liens kighmu:// sont acceptés.");
 
-  const policy = isKmu && isRecord(parsed.policy) ? normalizeDistributionPolicy(parsed.policy) : DEFAULT_DISTRIBUTION_POLICY;
+  const policy = isRecord(parsed.policy) ? normalizeDistributionPolicy(parsed.policy) : DEFAULT_DISTRIBUTION_POLICY;
   const currentTime = options.now?.getTime() ?? Date.now();
   if (policy.expiresAt && Date.parse(policy.expiresAt) <= currentTime) throw new Error("Cette configuration Kighmu est expirée.");
   if (policy.lockDeviceId) {
@@ -159,6 +158,6 @@ export function parseConfigurationImport(contents: string, options: { hardwareId
     profiles: parseProfiles(parsed.profiles),
     settings: normalizeVpnSettings(isRecord(parsed.settings) ? parsed.settings : {}),
     policy,
-    source: isUri ? "uri" : isLegacy ? "legacy" : "kmu",
+    source: isUri ? "uri" : "kmu",
   };
 }
