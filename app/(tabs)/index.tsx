@@ -3,14 +3,16 @@ import { router } from "expo-router";
 import { useState } from "react";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import * as Sharing from "expo-sharing";
+import * as Clipboard from "expo-clipboard";
 import { ScreenContainer } from "@/components/screen-container";
+import { KmuExportDialog } from "@/components/vpn/kmu-export-dialog";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
 import { profileEndpoint, VpnMethodLabel } from "@/lib/vpn/profiles";
 import { useVpn } from "@/lib/vpn/vpn-context";
 import { useVpnSettings } from "@/lib/vpn/settings-context";
-import { parseConfigurationImport, stringifyConfigurationExport } from "@/lib/vpn/config-transfer";
+import { parseConfigurationImport } from "@/lib/vpn/config-transfer";
+import { getNativeVpn } from "@/lib/vpn/native";
 
 const statusCopy = {
   disconnected: { label: "Prêt à se connecter", hint: "Votre profil KIGHMU est en attente.", icon: "shield.fill" as const },
@@ -24,6 +26,7 @@ export default function HomeScreen() {
   const { profiles, primaryProfile, activeProfiles, status, lastError, connect, disconnect, importProfiles, resetProfiles } = useVpn();
   const { settings, updateSettings, resetSettings } = useVpnSettings();
   const [menuVisible, setMenuVisible] = useState(false);
+  const [exportVisible, setExportVisible] = useState(false);
   const [menuBusy, setMenuBusy] = useState(false);
   const copy = statusCopy[status];
   const isBusy = status === "connecting";
@@ -32,46 +35,53 @@ export default function HomeScreen() {
   const endpoint = primaryProfile ? profileEndpoint(primaryProfile) : "Aucun profil enregistré";
   const method = primaryProfile ? VpnMethodLabel[primaryProfile.method] : "—";
 
-  const exportConfiguration = async () => {
-    setMenuBusy(true);
-    try {
-      const directory = FileSystem.documentDirectory;
-      if (!directory) throw new Error("Stockage local indisponible");
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const uri = `${directory}picko-config-${stamp}.json`;
-      await FileSystem.writeAsStringAsync(uri, stringifyConfigurationExport(profiles, settings), { encoding: FileSystem.EncodingType.UTF8 });
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/json", dialogTitle: "Exporter la configuration Picko" });
-      else Alert.alert("Export créé", `Le fichier a été enregistré dans : ${uri}`);
-    } catch (error) {
-      Alert.alert("Export impossible", String(error).slice(0, 180));
-    } finally {
-      setMenuBusy(false);
-    }
+  const applyImportedConfiguration = async (contents: string) => {
+    const hardwareId = (() => { try { return getNativeVpn()?.getHardwareId?.(); } catch { return undefined; } })();
+    const imported = parseConfigurationImport(contents, { hardwareId });
+    Alert.alert("Importer la configuration", `${imported.profiles.length} profil(s) seront importés et les profils actuels seront remplacés. Les profils importés resteront désactivés par sécurité.`, [
+      { text: "Annuler", style: "cancel" },
+      { text: "Importer", onPress: () => { void (async () => {
+        const accepted = await importProfiles(imported.profiles);
+        if (accepted) {
+          updateSettings(imported.settings);
+          Alert.alert("Import terminé", `${imported.profiles.length} profil(s) ont été importés. Activez ceux à utiliser.`);
+        } else Alert.alert("Import refusé", "La configuration contient au moins un profil invalide.");
+      })(); } },
+    ]);
   };
 
-  const importConfiguration = async () => {
+  const importFromFile = async () => {
     setMenuBusy(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: ["application/json", "text/json"], copyToCacheDirectory: true, multiple: false });
+      const result = await DocumentPicker.getDocumentAsync({ type: ["application/json", "application/octet-stream", "text/plain"], copyToCacheDirectory: true, multiple: false });
       if (result.canceled || !result.assets?.[0]) return;
       const contents = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 });
-      const imported = parseConfigurationImport(contents);
-      Alert.alert("Importer la configuration", `${imported.profiles.length} profil(s) seront importés et les profils actuels seront remplacés. Les profils importés resteront désactivés par sécurité.`, [
-        { text: "Annuler", style: "cancel" },
-        { text: "Importer", onPress: () => { void (async () => {
-          const accepted = await importProfiles(imported.profiles);
-          if (accepted) {
-            updateSettings(imported.settings);
-            Alert.alert("Import terminé", `${imported.profiles.length} profil(s) ont été importés. Activez ceux à utiliser.`);
-          } else Alert.alert("Import refusé", "La configuration contient au moins un profil invalide.");
-        })(); } },
-      ]);
+      await applyImportedConfiguration(contents);
     } catch (error) {
       Alert.alert("Import impossible", error instanceof Error ? error.message : "Le fichier ne peut pas être importé.");
     } finally {
       setMenuBusy(false);
     }
   };
+
+  const importFromClipboard = async () => {
+    setMenuBusy(true);
+    try {
+      const contents = await Clipboard.getStringAsync();
+      if (!contents.trim()) throw new Error("Le presse-papiers ne contient aucune configuration.");
+      await applyImportedConfiguration(contents);
+    } catch (error) {
+      Alert.alert("Import impossible", error instanceof Error ? error.message : "Le lien ne peut pas être importé.");
+    } finally {
+      setMenuBusy(false);
+    }
+  };
+
+  const importConfiguration = () => Alert.alert("Importer une configuration", "Choisissez un fichier .kmu / JSON ou un lien kighmu:// déjà copié dans le presse-papiers.", [
+    { text: "Annuler", style: "cancel" },
+    { text: "Fichier .kmu", onPress: () => { void importFromFile(); } },
+    { text: "Presse-papiers", onPress: () => { void importFromClipboard(); } },
+  ]);
 
   const resetConfiguration = () => Alert.alert("Réinitialiser Picko", "Tous les profils, mots de passe protégés et réglages VPN seront supprimés de cet appareil. Cette action est irréversible.", [
     { text: "Annuler", style: "cancel" },
@@ -143,12 +153,13 @@ export default function HomeScreen() {
         <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
           <Pressable style={[styles.menu, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={(event) => event.stopPropagation()}>
             <Text className="mb-2 text-sm font-bold text-primary">CONFIGURATION</Text>
-            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); void importConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Importer config</Text><Text className="mt-1 text-xs text-muted">Choisir une sauvegarde Picko JSON</Text></Pressable>
-            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); Alert.alert("Exporter la configuration", "Le fichier exporté contient les profils, réglages, identifiants et mots de passe de tunnel. Partagez-le uniquement avec une personne de confiance.", [{ text: "Annuler", style: "cancel" }, { text: "Exporter", onPress: () => { void exportConfiguration(); } }]); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Exporter config</Text><Text className="mt-1 text-xs text-muted">Créer une sauvegarde JSON chiffrable hors de l’application</Text></Pressable>
+            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); importConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Importer config</Text><Text className="mt-1 text-xs text-muted">Fichier .kmu / JSON ou lien kighmu:// du presse-papiers</Text></Pressable>
+            <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); setExportVisible(true); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text className="text-base font-semibold text-foreground">Exporter config</Text><Text className="mt-1 text-xs text-muted">Créer un fichier .kmu ou copier un lien kighmu://</Text></Pressable>
             <Pressable disabled={menuBusy} onPress={() => { setMenuVisible(false); resetConfiguration(); }} style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}><Text style={{ color: colors.error, fontSize: 16, fontWeight: "700" }}>Réinitialiser</Text><Text className="mt-1 text-xs text-muted">Supprimer tous les profils et réglages locaux</Text></Pressable>
           </Pressable>
         </Pressable>
       </Modal>
+      <KmuExportDialog visible={exportVisible} profiles={profiles} settings={settings} onClose={() => setExportVisible(false)} />
     </ScreenContainer>
   );
 }
