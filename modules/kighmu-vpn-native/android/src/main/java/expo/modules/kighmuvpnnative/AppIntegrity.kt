@@ -1,14 +1,17 @@
 package expo.modules.kighmuvpnnative
 
 import android.content.Context
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.os.Build
 import java.security.MessageDigest
 
 /**
  * Local anti-tampering control. It is deliberately fail-open for local/debug
- * builds and becomes mandatory only when CI provides both a release signer and
- * its expected public certificate SHA-256 fingerprint.
+ * builds and becomes mandatory only when CI provides a release certificate
+ * fingerprint. Every Android version supported by Picko uses its matching
+ * PackageManager signature API.
  */
 internal object AppIntegrity {
   fun requireTrustedRelease(context: Context) {
@@ -21,29 +24,38 @@ internal object AppIntegrity {
       .toSet()
     if (expected.isEmpty()) return
 
-    val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-      context.packageManager.getPackageInfo(
-        context.packageName,
-        PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()),
-      )
-    } else {
-      @Suppress("DEPRECATION")
-      context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
-    }
-
-    val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-      packageInfo.signingInfo?.apkContentsSigners.orEmpty()
-    } else {
-      @Suppress("DEPRECATION")
-      packageInfo.signatures.orEmpty()
-    }
-
-    val actual = signatures.map { signature ->
+    val actual = signingCertificates(context).map { signature ->
       MessageDigest.getInstance("SHA-256")
         .digest(signature.toByteArray())
         .joinToString(separator = "") { byte -> "%02X".format(byte) }
     }.toSet()
 
     check(actual.any { it in expected }) { "Validation de l’intégrité de l’application impossible" }
+  }
+
+  private fun signingCertificates(context: Context): Array<Signature> {
+    val packageManager = context.packageManager
+    val packageInfo: PackageInfo = when {
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> packageManager.getPackageInfo(
+        context.packageName,
+        PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()),
+      )
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.P -> {
+        @Suppress("DEPRECATION")
+        packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+      }
+      else -> {
+        @Suppress("DEPRECATION")
+        packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+      }
+    }
+
+    val signatures: Array<Signature> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      packageInfo.signingInfo?.apkContentsSigners?.copyOf() ?: emptyArray()
+    } else {
+      @Suppress("DEPRECATION")
+      packageInfo.signatures?.copyOf() ?: emptyArray()
+    }
+    return signatures
   }
 }
