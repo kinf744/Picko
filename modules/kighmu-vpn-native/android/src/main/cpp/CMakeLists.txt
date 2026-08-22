@@ -4,6 +4,18 @@ project("zivpn_test_native")
 add_library(hev_jni SHARED hev_jni.cpp)
 target_compile_options(hev_jni PRIVATE -O2 -fvisibility=hidden)
 
+# libopol is deliberately isolated from the tunnel executables. It only builds
+# Xray configuration material and cannot replace or intercept libxray itself.
+add_library(opol SHARED opol_jni.cpp)
+target_compile_options(opol PRIVATE
+  -O2
+  -fvisibility=hidden
+  -fvisibility-inlines-hidden
+  -fdata-sections
+  -ffunction-sections
+)
+target_link_options(opol PRIVATE -Wl,--gc-sections)
+
 if(ANDROID_ABI STREQUAL "armeabi-v7a")
   add_library(hev_core SHARED IMPORTED)
   set_target_properties(hev_core PROPERTIES

@@ -3,8 +3,9 @@ import type { KighmuVpnNativeModuleEvents, NativeVpnStatus } from "./KighmuVpnNa
 
 declare class KighmuVpnNativeModule extends NativeModule<KighmuVpnNativeModuleEvents> {
   getStatus(): NativeVpnStatus;
+  getHardwareId(): string;
   prepareVpn(): Promise<boolean>;
-  startVpn(host: string, port: string, obfs: string, password: string): Promise<boolean>;
+  startVpn(profilesJson: string): Promise<boolean>;
   stopVpn(): Promise<boolean>;
 }
 
