@@ -235,6 +235,7 @@ class HttpProxyPayloadTunnel(
   profile: TunnelProfile,
   log: (String, String, String) -> Unit,
 ) : SshTransportTunnel(context, profile, "HTTP PROXY", log) {
+  private val runtime by lazy { OpolNative.httpProxyPayloadRuntimePolicy(profile) }
 
   override fun openTransport(): Socket {
     val socket = Socket()
@@ -243,14 +244,12 @@ class HttpProxyPayloadTunnel(
     socket.keepAlive = true
     socket.receiveBufferSize = 128 * 1024
     socket.sendBufferSize = 128 * 1024
-    socket.soTimeout = HTTP_RESPONSE_TIMEOUT_MS
-    socket.connect(InetSocketAddress(profile.proxyHost, profile.proxyPort.toInt()), HTTP_CONNECT_TIMEOUT_MS)
+    socket.soTimeout = runtime.responseTimeoutMs
+    socket.connect(InetSocketAddress(profile.proxyHost, profile.proxyPort.toInt()), runtime.connectTimeoutMs)
     try {
-      val rawPayload = profile.httpPayload.ifBlank { DEFAULT_PAYLOAD }
-      val payload = expandPayload(rawPayload)
-      sendPayload(socket.getOutputStream(), rawPayload, payload)
+      sendPayload(socket.getOutputStream(), runtime.payload, runtime.split, runtime.delay)
       val firstLine = readHttpLine(socket.getInputStream())
-      val isConnect = rawPayload.trimStart().startsWith("CONNECT", ignoreCase = true)
+      val isConnect = runtime.payload.trimStart().startsWith("CONNECT", ignoreCase = true)
       val isError = listOf(" 400", " 403", " 404", " 407", " 500", " 502").any { firstLine.contains(it) }
       if ((isConnect && !firstLine.contains(" 200") && !firstLine.contains(" 101")) || isError) {
         consumeHeaders(socket.getInputStream())
@@ -266,26 +265,13 @@ class HttpProxyPayloadTunnel(
     }
   }
 
-  private fun expandPayload(raw: String): String = raw
-    .replace("[host]", profile.sshHost, ignoreCase = true)
-    .replace("[real_host]", profile.sshHost, ignoreCase = true)
-    .replace("[port]", profile.sshPort, ignoreCase = true)
-    .replace("[proxy_host]", profile.proxyHost, ignoreCase = true)
-    .replace("[proxy_port]", profile.proxyPort, ignoreCase = true)
-    .replace("[crlf]", "\r\n", ignoreCase = true)
-    .replace("[cr]", "\r", ignoreCase = true)
-    .replace("[lf]", "\n", ignoreCase = true)
-    .replace("\\r\\n", "\r\n")
-    .replace("\\r", "\r")
-    .replace("\\n", "\n")
-
-  private fun sendPayload(output: OutputStream, raw: String, payload: String) {
+  private fun sendPayload(output: OutputStream, payload: String, split: Boolean, delay: Boolean) {
     when {
-      raw.contains("[split]", ignoreCase = true) -> payload.split(Regex("\\[split]", RegexOption.IGNORE_CASE)).forEachIndexed { index, part ->
+      split -> payload.split(Regex("\\[split]", RegexOption.IGNORE_CASE)).forEachIndexed { index, part ->
         output.write(part.toByteArray(HTTP_CHARSET)); output.flush()
         if (index < payload.split(Regex("\\[split]", RegexOption.IGNORE_CASE)).lastIndex) Thread.sleep(30)
       }
-      raw.contains("[delay]", ignoreCase = true) -> payload.split("\r\n").forEach { line ->
+      delay -> payload.split("\r\n").forEach { line ->
         output.write((line + "\r\n").toByteArray(HTTP_CHARSET)); output.flush(); Thread.sleep(20)
       }
       else -> { output.write(payload.toByteArray(HTTP_CHARSET)); output.flush() }
@@ -314,10 +300,7 @@ class HttpProxyPayloadTunnel(
   }
 
   companion object {
-    private const val HTTP_CONNECT_TIMEOUT_MS = 15_000
-    private const val HTTP_RESPONSE_TIMEOUT_MS = 15_000
     private val HTTP_CHARSET: Charset = Charsets.ISO_8859_1
-    private const val DEFAULT_PAYLOAD = "CONNECT [host]:[port] HTTP/1.1[crlf]Host: [host]:[port][crlf]Proxy-Connection: Keep-Alive[crlf][crlf]"
   }
 }
 
@@ -326,13 +309,10 @@ class SshSslTlsTunnel(
   profile: TunnelProfile,
   log: (String, String, String) -> Unit,
 ) : SshTransportTunnel(context, profile, "SSH SSL/TLS", log) {
+  private val runtime by lazy { OpolNative.sshSslTlsRuntimePolicy(profile) }
 
   override fun openTransport(): Socket {
-    val selected = profile.sslTlsVersion.ifBlank { "TLS" }
-    // Many SSH-over-TLS endpoints accept TLS 1.2 but reject a ClientHello that
-    // advertises newer protocol features. Only an automatic selection may fall
-    // back; an explicit profile choice is always respected.
-    val candidates = if (selected == "TLS") listOf("TLS", "TLSv1.2") else listOf(selected)
+    val candidates = runtime.candidates
     var lastError: Throwable? = null
     for ((index, version) in candidates.withIndex()) {
       try {
@@ -341,7 +321,7 @@ class SshSslTlsTunnel(
         return socket
       } catch (error: Throwable) {
         lastError = error
-        val sni = profile.sslSni.ifBlank { "aucun SNI" }
+        val sni = runtime.sni.ifBlank { "aucun SNI" }
         compactLog("warning", "Handshake $version refusé par ${profile.sshHost}:${profile.sshPort} (SNI $sni) : ${error.message?.lineSequence()?.firstOrNull()?.take(120) ?: "erreur TLS"}")
       }
     }
@@ -353,18 +333,18 @@ class SshSslTlsTunnel(
     protect(raw)
     raw.tcpNoDelay = true
     raw.keepAlive = true
-    raw.connect(InetSocketAddress(profile.sshHost, profile.sshPort.toInt()), TLS_CONNECT_TIMEOUT_MS)
+    raw.connect(InetSocketAddress(profile.sshHost, profile.sshPort.toInt()), runtime.connectTimeoutMs)
     try {
       val sslContext = SSLContext.getInstance(version).apply { init(null, TRUST_ALL, SecureRandom()) }
       val tls = sslContext.socketFactory.createSocket(raw, profile.sshHost, profile.sshPort.toInt(), true) as SSLSocket
       if (version == "TLSv1.2" || version == "TLSv1.3") tls.enabledProtocols = arrayOf(version)
-      if (profile.sslSni.isNotBlank()) {
-        tls.sslParameters = SSLParameters().apply { serverNames = listOf(SNIHostName(profile.sslSni)) }
+      if (runtime.sni.isNotBlank()) {
+        tls.sslParameters = SSLParameters().apply { serverNames = listOf(SNIHostName(runtime.sni)) }
       }
-      tls.soTimeout = TLS_HANDSHAKE_TIMEOUT_MS
+      tls.soTimeout = runtime.handshakeTimeoutMs
       tls.startHandshake()
       tls.soTimeout = 0
-      compactLog("info", "Handshake SSL/TLS ${tls.session.protocol} réussi${if (profile.sslSni.isNotBlank()) " avec SNI ${profile.sslSni}" else ""}")
+      compactLog("info", "Handshake SSL/TLS ${tls.session.protocol} réussi${if (runtime.sni.isNotBlank()) " avec SNI ${runtime.sni}" else ""}")
       return tls
     } catch (error: Throwable) {
       try { raw.close() } catch (_: Throwable) {}
@@ -373,8 +353,6 @@ class SshSslTlsTunnel(
   }
 
   companion object {
-    private const val TLS_CONNECT_TIMEOUT_MS = 15_000
-    private const val TLS_HANDSHAKE_TIMEOUT_MS = 20_000
     private val TRUST_ALL = arrayOf<TrustManager>(object : X509TrustManager {
       override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
       override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) = Unit

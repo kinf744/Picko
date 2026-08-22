@@ -24,15 +24,16 @@ class SshSlowDnsTunnel(
 
   override fun start() {
     profile.validate()?.let { throw IllegalArgumentException(it) }
-    startDnstt()
-    if (!waitForTcp(dnsttPort, 8_000L)) {
+    val runtime = OpolNative.slowDnsRuntimePolicy(profile, dnsttPort, socksPort)
+    startDnstt(runtime)
+    if (!waitForTcp(dnsttPort, runtime.dnsttReadyTimeoutMs, runtime.probeIntervalMs)) {
       stop()
       error("DNSTT n’a pas ouvert son flux local")
     }
-    val bridgePort = startBannerBridge()
+    val bridgePort = startBannerBridge(runtime)
     val ssh = Connection("127.0.0.1", bridgePort)
     try {
-      ssh.connect(null, 6_000, 15_000)
+      ssh.connect(null, runtime.sshConnectTimeoutMs, runtime.sshKexTimeoutMs)
       if (!ssh.authenticateWithPassword(profile.sshUser, profile.password)) error("authentification SSH refusée")
       ssh.createDynamicPortForwarder(java.net.InetSocketAddress("127.0.0.1", socksPort))
       connection = ssh
@@ -41,7 +42,7 @@ class SshSlowDnsTunnel(
       stop()
       throw error
     }
-    if (!waitForSocks(socksPort, 4_000L)) {
+    if (!waitForSocks(socksPort, runtime.sshSocksTimeoutMs, runtime.probeIntervalMs)) {
       stop()
       error("SSH SlowDNS n’a pas ouvert le proxy SOCKS local")
     }
@@ -65,16 +66,10 @@ class SshSlowDnsTunnel(
     dnsttProcess = null
   }
 
-  private fun startDnstt() {
+  private fun startDnstt(runtime: OpolNative.SlowDnsRuntimePolicy) {
     val binary = File(context.applicationInfo.nativeLibraryDir, "libdnstt.so")
     require(binary.exists() && binary.length() > 0L) { "libdnstt.so absent de l’APK" }
-    val process = ProcessBuilder(
-      binary.absolutePath,
-      "-udp", "${profile.dnsServer}:${profile.dnsPort}",
-      "-pubkey", profile.normalizedPublicKey(),
-      profile.nameserver,
-      "127.0.0.1:$dnsttPort",
-    )
+    val process = ProcessBuilder(listOf(binary.absolutePath) + runtime.argumentPrefix)
       .directory(context.filesDir)
       .apply {
         environment()["HOME"] = context.filesDir.absolutePath
@@ -87,14 +82,17 @@ class SshSlowDnsTunnel(
       try {
         process.inputStream.bufferedReader().useLines { lines ->
           lines.forEach { line ->
-            if (line.isNotBlank() && !line.contains("keepalive", ignoreCase = true)) log("info", "SLOWDNS", line.take(500))
+            when (OpolNative.classifySlowDnsOutput(line)) {
+              "ignore" -> Unit
+              else -> log("info", "SLOWDNS", line.take(runtime.logLineMaxChars))
+            }
           }
         }
       } catch (_: Throwable) {}
     }.apply { isDaemon = true; name = "dnstt-log-$dnsttPort" }.start()
   }
 
-  private fun startBannerBridge(): Int {
+  private fun startBannerBridge(runtime: OpolNative.SlowDnsRuntimePolicy): Int {
     val listener = ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))
     bridgeServer = listener
     val ready = CountDownLatch(1)
@@ -112,7 +110,7 @@ class SshSlowDnsTunnel(
           if (next < 0) error("bannière SSH absente")
           banner.append(next.toChar())
           if (next == '\n'.code) break
-          if (banner.length > 1_024) error("bannière SSH trop longue")
+          if (banner.length > runtime.bannerMaxBytes) error("bannière SSH trop longue")
         }
         client.getOutputStream().apply { write(banner.toString().toByteArray()); flush() }
         log("info", "SLOWDNS", banner.toString().trim().take(180))
@@ -126,19 +124,19 @@ class SshSlowDnsTunnel(
     return listener.localPort
   }
 
-  private fun waitForTcp(port: Int, timeoutMs: Long): Boolean {
+  private fun waitForTcp(port: Int, timeoutMs: Long, probeIntervalMs: Long): Boolean {
     val deadline = System.currentTimeMillis() + timeoutMs
     while (System.currentTimeMillis() < deadline && dnsttProcess?.isAlive == true) {
-      try { Socket("127.0.0.1", port).use { return true } } catch (_: Throwable) { Thread.sleep(100) }
+      try { Socket("127.0.0.1", port).use { return true } } catch (_: Throwable) { Thread.sleep(probeIntervalMs) }
     }
     return false
   }
 
-  private fun waitForSocks(port: Int, timeoutMs: Long): Boolean {
+  private fun waitForSocks(port: Int, timeoutMs: Long, probeIntervalMs: Long): Boolean {
     val deadline = System.currentTimeMillis() + timeoutMs
     while (System.currentTimeMillis() < deadline) {
       if (LocalSocksBalancer.hasSocksGreeting(port)) return true
-      Thread.sleep(80)
+      Thread.sleep(probeIntervalMs)
     }
     return false
   }

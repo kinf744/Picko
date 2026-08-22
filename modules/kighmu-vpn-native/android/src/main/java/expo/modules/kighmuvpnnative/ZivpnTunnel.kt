@@ -1,7 +1,6 @@
 package expo.modules.kighmuvpnnative
 
 import android.content.Context
-import org.json.JSONObject
 import java.io.File
 import java.net.ServerSocket
 import java.net.Socket
@@ -20,20 +19,13 @@ class ZivpnTunnel(
     profile.validate()?.let { throw IllegalArgumentException(it) }
     val binary = File(context.applicationInfo.nativeLibraryDir, "libuz_core.so")
     require(binary.exists() && binary.length() > 0L) { "libuz_core.so absent de l’APK" }
+    val runtime = OpolNative.ziVpnRuntimePolicy(profile.obfs)
     val config = File(context.cacheDir, "zivpn-${safeToken(profile.id)}.json")
-    config.writeText(JSONObject()
-      .put("server", "${profile.host}:${profile.port}")
-      .put("obfs", profile.obfs)
-      .put("auth", profile.password)
-      .put("socks5", JSONObject().put("listen", "127.0.0.1:$socksPort"))
-      .put("insecure", true)
-      .put("recvwindowconn", 65536)
-      .put("recvwindow", 262144)
-      .put("disable_mtu_discovery", true)
-      .toString())
+    // The complete ZiVPN JSON is generated and validated in libopol.
+    config.writeText(OpolNative.buildZiVpnConfig(profile, socksPort))
     configFile = config
     val nativeDir = context.applicationInfo.nativeLibraryDir
-    process = ProcessBuilder(binary.absolutePath, "-s", profile.obfs, "--config", config.readText())
+    process = ProcessBuilder(listOf(binary.absolutePath) + runtime.argumentPrefix + config.readText())
       .directory(context.filesDir)
       .apply {
         environment()["LD_LIBRARY_PATH"] = nativeDir
@@ -46,11 +38,11 @@ class ZivpnTunnel(
     Thread {
       try {
         started.inputStream.bufferedReader().useLines { lines ->
-          lines.forEach { line -> if (line.isNotBlank()) log("info", "ZIVPN", line.take(500)) }
+          lines.forEach { line -> if (line.isNotBlank()) log("info", "ZIVPN", line.take(runtime.logLineMaxChars)) }
         }
       } catch (_: Throwable) {}
     }.apply { isDaemon = true; name = "zivpn-log-$socksPort" }.start()
-    if (!waitForPort(socksPort, 5_000L)) {
+    if (!waitForPort(socksPort, runtime.startupTimeoutMs)) {
       stop()
       error("ZiVPN n’a pas ouvert le proxy SOCKS local")
     }

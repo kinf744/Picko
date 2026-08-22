@@ -1,7 +1,6 @@
 package expo.modules.kighmuvpnnative
 
 import android.content.Context
-import org.json.JSONObject
 import java.io.File
 import java.net.ServerSocket
 import java.util.concurrent.TimeUnit
@@ -22,18 +21,21 @@ class HysteriaTunnel(
   private var recoveryThread: Thread? = null
   @Volatile private var lastDiagnostic = ""
   @Volatile private var lastDiagnosticAt = 0L
+  @Volatile private var runtimePolicy: OpolNative.HysteriaRuntimePolicy? = null
 
   override fun start() {
     profile.validate()?.let { error(it) }
     stopRequested.set(false)
     recovering = false
+    val policy = OpolNative.hysteriaRuntimePolicy()
+    runtimePolicy = policy
     val config = writeConfig()
     val binary = File(context.applicationInfo.nativeLibraryDir, "libhysteria.so")
     require(binary.isFile) { "client Hysteria armeabi-v7a introuvable" }
 
     try {
-      launchProcess(binary, config)
-      waitForSocks(30_000)
+      launchProcess(binary, config, policy)
+      waitForSocks(policy.startupTimeoutMs)
       compactLog("info", "Hysteria connecté; proxy SOCKS prêt sur 127.0.0.1:$socksPort")
     } catch (error: Throwable) {
       stop()
@@ -55,9 +57,10 @@ class HysteriaTunnel(
     process = null
     try { configFile?.delete() } catch (_: Throwable) {}
     configFile = null
+    runtimePolicy = null
   }
 
-  private fun launchProcess(binary: File, config: File) {
+  private fun launchProcess(binary: File, config: File, policy: OpolNative.HysteriaRuntimePolicy) {
     destroyProcess(process)
     val started = ProcessBuilder(binary.absolutePath, "client", "--config", config.absolutePath)
       .directory(context.filesDir)
@@ -68,32 +71,32 @@ class HysteriaTunnel(
       }
       .start()
     process = started
-    observeOutput(started, binary, config)
+    observeOutput(started, binary, config, policy)
   }
 
-  private fun scheduleRecovery(binary: File, config: File) {
+  private fun scheduleRecovery(binary: File, config: File, policy: OpolNative.HysteriaRuntimePolicy) {
     if (stopRequested.get() || recovering) return
     recovering = true
     compactLog("warning", "Connexion Hysteria perdue; reconnexion automatique")
     recoveryThread = Thread {
       try {
-        repeat(MAX_RECOVERY_ATTEMPTS) { index ->
+        repeat(policy.maxRecoveryAttempts) { index ->
           if (stopRequested.get()) return@Thread
-          compactLog("info", "Reconnexion Hysteria ${index + 1}/$MAX_RECOVERY_ATTEMPTS")
+          compactLog("info", "Reconnexion Hysteria ${index + 1}/${policy.maxRecoveryAttempts}")
           try {
-            launchProcess(binary, config)
-            waitForSocks(RECOVERY_SOCKS_TIMEOUT_MS)
+            launchProcess(binary, config, policy)
+            waitForSocks(policy.recoveryTimeoutMs)
             recovering = false
             compactLog("info", "Hysteria reconnecté; trafic rétabli")
             return@Thread
           } catch (_: Throwable) {
             destroyProcess(process)
             process = null
-            if (!stopRequested.get()) Thread.sleep(RECOVERY_DELAY_MS)
+            if (!stopRequested.get()) Thread.sleep(policy.recoveryDelayMs)
           }
         }
         recovering = false
-        compactLog("error", "Reconnexion Hysteria impossible après $MAX_RECOVERY_ATTEMPTS tentatives")
+        compactLog("error", "Reconnexion Hysteria impossible après ${policy.maxRecoveryAttempts} tentatives")
       } catch (_: InterruptedException) {
         // Arrêt volontaire ou nouveau cycle de reconnexion.
       } finally {
@@ -114,28 +117,21 @@ class HysteriaTunnel(
     error("Hysteria n’a pas ouvert son proxy SOCKS dans le délai imparti")
   }
 
-  private fun observeOutput(running: Process, binary: File, config: File) {
+  private fun observeOutput(running: Process, binary: File, config: File, policy: OpolNative.HysteriaRuntimePolicy) {
     Thread {
       try {
         running.inputStream.bufferedReader().useLines { lines ->
           lines.forEach { rawLine ->
             if (stopRequested.get() || process !== running) return@forEach
-            val normalized = rawLine.lowercase()
-            when {
-              normalized.contains("connected") ||
-                normalized.contains("socks5") && normalized.contains("127.0.0.1") ->
-                compactLog("info", "Hysteria connecté; proxy SOCKS prêt")
-              normalized.contains("no recent network activity") ||
-                normalized.contains("connection lost") ||
-                normalized.contains("disconnected") ||
-                normalized.contains("timeout") -> {
+            when (OpolNative.classifyHysteriaOutput(rawLine)) {
+              "ready" -> compactLog("info", "Hysteria connecté; proxy SOCKS prêt")
+              "retry" -> {
                 compactLog("warning", "Perte réseau Hysteria détectée; reconnexion en cours")
-                scheduleRecovery(binary, config)
+                scheduleRecovery(binary, config, policy)
               }
-              normalized.contains("fatal") || normalized.contains("failed to initialize") ||
-                normalized.contains("panic") -> {
+              "fatal" -> {
                 compactLog("error", "Erreur critique Hysteria; reconnexion en cours")
-                scheduleRecovery(binary, config)
+                scheduleRecovery(binary, config, policy)
               }
             }
           }
@@ -143,14 +139,15 @@ class HysteriaTunnel(
       } catch (_: Throwable) {
         // La fermeture du processus termine normalement l’observation.
       } finally {
-        if (!stopRequested.get() && process === running) scheduleRecovery(binary, config)
+        if (!stopRequested.get() && process === running) scheduleRecovery(binary, config, policy)
       }
     }.apply { isDaemon = true; name = "picko-hysteria-${profile.id.takeLast(8)}" }.start()
   }
 
   private fun compactLog(level: String, message: String) {
     val now = System.currentTimeMillis()
-    if (message == lastDiagnostic && now - lastDiagnosticAt < LOG_DEDUP_MS) return
+    val dedupMs = runtimePolicy?.logDedupMs ?: 0L
+    if (message == lastDiagnostic && now - lastDiagnosticAt < dedupMs) return
     lastDiagnostic = message
     lastDiagnosticAt = now
     log(level, "HYSTERIA", message.take(180))
@@ -168,28 +165,10 @@ class HysteriaTunnel(
   private fun writeConfig(): File {
     val safeId = profile.id.replace(Regex("[^A-Za-z0-9._-]"), "_")
     return File(context.cacheDir, "hysteria-$safeId.json").also { file ->
-      val config = JSONObject().apply {
-        put("server", "${profile.hysteriaHost}:${profile.hysteriaPort}")
-        put("auth_str", profile.hysteriaAuth)
-        put("up_mbps", profile.hysteriaUpMbps.toDouble())
-        put("down_mbps", profile.hysteriaDownMbps.toDouble())
-        put("retry", 3)
-        put("retry_interval", 1)
-        put("insecure", true)
-        put("recv_window_conn", 4_194_304)
-        put("recv_window", 16_777_216)
-        put("socks5", JSONObject().put("listen", "127.0.0.1:$socksPort"))
-        if (profile.hysteriaObfs.isNotBlank()) put("obfs", profile.hysteriaObfs)
-      }
-      file.writeText(config.toString())
+      // The complete Hysteria JSON is generated and validated in libopol.
+      file.writeText(OpolNative.buildHysteriaConfig(profile, socksPort))
       configFile = file
     }
   }
 
-  companion object {
-    private const val MAX_RECOVERY_ATTEMPTS = 20
-    private const val RECOVERY_DELAY_MS = 2_000L
-    private const val RECOVERY_SOCKS_TIMEOUT_MS = 35_000L
-    private const val LOG_DEDUP_MS = 5_000L
-  }
 }
