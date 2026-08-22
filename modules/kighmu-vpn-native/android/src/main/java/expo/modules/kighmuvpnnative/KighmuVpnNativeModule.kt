@@ -2,6 +2,7 @@ package expo.modules.kighmuvpnnative
 
 import android.content.Intent
 import android.net.VpnService
+import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -29,29 +30,27 @@ class KighmuVpnNativeModule : Module() {
       KighmuVpnService.stateSink = null
     }
 
-    Function("getStatus") {
-      KighmuVpnService.currentStatus
+    Function("getStatus") { KighmuVpnService.currentStatus }
+
+    Function("getHardwareId") {
+      val context = appContext.reactContext ?: return@Function "indisponible"
+      Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)?.uppercase() ?: "indisponible"
     }
 
     AsyncFunction("prepareVpn") {
       val activity = appContext.currentActivity ?: return@AsyncFunction false
       val intent = VpnService.prepare(activity)
-      if (intent == null) {
-        true
-      } else {
+      if (intent == null) true else {
         activity.startActivityForResult(intent, KighmuVpnService.PREPARE_REQUEST_CODE)
         false
       }
     }
 
-    AsyncFunction("startVpn") { host: String, port: String, obfs: String, password: String ->
+    AsyncFunction("startVpn") { profilesJson: String ->
       val context = appContext.reactContext ?: throw IllegalStateException("Contexte Android indisponible")
       val intent = Intent(context, KighmuVpnService::class.java).apply {
         action = KighmuVpnService.ACTION_START
-        putExtra(KighmuVpnService.EXTRA_HOST, host)
-        putExtra(KighmuVpnService.EXTRA_PORT, port)
-        putExtra(KighmuVpnService.EXTRA_OBFS, obfs)
-        putExtra(KighmuVpnService.EXTRA_PASSWORD, password)
+        putExtra(KighmuVpnService.EXTRA_PROFILES_JSON, profilesJson)
       }
       context.startForegroundService(intent)
       sendEvent("onStateChanged", mapOf("status" to KighmuVpnService.STATUS_CONNECTING))
@@ -60,10 +59,7 @@ class KighmuVpnNativeModule : Module() {
 
     AsyncFunction("stopVpn") {
       val context = appContext.reactContext ?: return@AsyncFunction false
-      context.startService(Intent(context, KighmuVpnService::class.java).apply {
-        action = KighmuVpnService.ACTION_STOP
-      })
-      // The service emits DISCONNECTED after process/TUN/network cleanup.
+      context.startService(Intent(context, KighmuVpnService::class.java).apply { action = KighmuVpnService.ACTION_STOP })
       true
     }
   }

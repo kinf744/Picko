@@ -3,8 +3,9 @@ import { Platform } from "react-native";
 type NativeSubscription = { remove: () => void };
 type NativeVpnModule = {
   getStatus: () => string;
+  getHardwareId?: () => string;
   prepareVpn: () => Promise<boolean>;
-  startVpn: (host: string, port: string, obfs: string, password: string) => Promise<boolean>;
+  startVpn: (profilesJson: string) => Promise<boolean>;
   stopVpn: () => Promise<boolean>;
   addListener?: (event: "onLog" | "onStateChanged", listener: (payload: any) => void) => NativeSubscription;
 };
