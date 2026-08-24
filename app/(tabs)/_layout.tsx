@@ -1,65 +1,120 @@
-import { Tabs } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Tabs, usePathname, useRouter } from "expo-router";
+import { BottomTabBar, type BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { View, Dimensions } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { runOnJS } from "react-native-reanimated";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
-import { Platform } from "react-native";
 import { useColors } from "@/hooks/use-colors";
+
+const TAB_ORDER = ["index", "configuration", "diagnostic"] as const;
+
+function CustomTabBar(props: BottomTabBarProps) {
+  const colors = useColors();
+  const activeIndex = props.state.index;
+  const width = Dimensions.get("window").width;
+  const tabWidth = width / props.state.routes.length;
+
+  return (
+    <View style={{ position: "relative" }}>
+      {/* Ligne horizontale 3px au-dessus de l'onglet actif */}
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: activeIndex * tabWidth,
+          width: tabWidth,
+          height: 3,
+          backgroundColor: colors.primary,
+          borderRadius: 2,
+          zIndex: 10,
+        }}
+      />
+      <BottomTabBar {...props} />
+    </View>
+  );
+}
+
+function SwipeWrapper({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const getIndex = () => {
+    if (pathname.includes("configuration")) return 1;
+    if (pathname.includes("diagnostic")) return 2;
+    return 0;
+  };
+
+  const navigateTo = (index: number) => {
+    const target = TAB_ORDER[index];
+    if (target === "index") router.push("/(tabs)" as any);
+    else router.push(`/(tabs)/${target}` as any);
+  };
+
+  const pan = Gesture.Pan()
+    .activeOffsetX([-20, 20])
+    .failOffsetY([-15, 15])
+    .onEnd((e) => {
+      const dx = e.translationX;
+      const idx = getIndex();
+      if (dx < -50 && idx < TAB_ORDER.length - 1) {
+        runOnJS(navigateTo)(idx + 1);
+      } else if (dx > 50 && idx > 0) {
+        runOnJS(navigateTo)(idx - 1);
+      }
+    });
+
+  return (
+    <GestureDetector gesture={pan}>
+      <View style={{ flex: 1 }}>{children}</View>
+    </GestureDetector>
+  );
+}
 
 export default function TabLayout() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
-  const tabBarHeight = 62 + bottomPadding;
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: colors.tint,
-        tabBarInactiveTintColor: colors.muted,
-        headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: "700",
-          marginTop: 1,
-        },
-        tabBarItemStyle: {
-          paddingTop: 3,
-        },
-        tabBarStyle: {
-          paddingTop: 7,
-          paddingBottom: bottomPadding,
-          height: tabBarHeight,
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Tunnel",
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+    <SwipeWrapper>
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: colors.tint,
+          tabBarInactiveTintColor: colors.muted,
+          headerShown: false,
+          tabBarButton: HapticTab,
+          tabBarLabelStyle: { fontSize: 11, fontWeight: "700", marginTop: 1 },
+          tabBarItemStyle: { paddingTop: 3 },
+          tabBarStyle: {
+            borderTopWidth: 1,
+            elevation: 0,
+            shadowOpacity: 0,
+          },
         }}
-      />
-      <Tabs.Screen
-        name="configuration"
-        options={{
-          title: "Configuration",
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="pencil" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="diagnostic"
-        options={{
-          title: "Diagnostic",
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="doc.text" color={color} />,
-        }}
-      />
-    </Tabs>
+        tabBar={(props) => <CustomTabBar {...props} />}
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "Tunnel",
+            tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="configuration"
+          options={{
+            title: "Configuration",
+            tabBarIcon: ({ color }) => <IconSymbol size={28} name="pencil" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="diagnostic"
+          options={{
+            title: "Diagnostic",
+            tabBarIcon: ({ color }) => <IconSymbol size={28} name="doc.text" color={color} />,
+          }}
+        />
+      </Tabs>
+    </SwipeWrapper>
   );
 }

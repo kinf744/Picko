@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
 import { isNavigationDiagnostic, sanitizeDiagnosticMessage } from "./diagnostic-format";
@@ -179,6 +179,17 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted = false; };
   }, [addLog, migrateLegacyProfile, persistKind]);
 
+  // Resynchronise l'état natif quand l'app revient au premier plan (notif encore présente mais JS en "disconnected")
+  const syncNativeStatus = useCallback(() => {
+    try {
+      const native = getNativeVpn();
+      const raw = native?.getStatus?.();
+      if (typeof raw === "string" && ["connected", "connecting", "disconnected", "error"].includes(raw)) {
+        setStatus((prev) => (prev !== raw ? (raw as TunnelStatus) : prev));
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => subscribeNativeVpn(
     (payload) => {
       const component = payload.component || "NATIVE";
@@ -188,6 +199,20 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     },
     (payload) => { if (["connected", "connecting", "disconnected", "error"].includes(payload.status)) setStatus(payload.status as TunnelStatus); },
   ), []);
+
+  // Sync initial + à chaque retour foreground (bug: notif présente mais UI déconnectée après background)
+  useEffect(() => {
+    syncNativeStatus();
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") syncNativeStatus();
+    });
+    return () => sub.remove();
+  }, [syncNativeStatus]);
+
+  // Re-sync aussi une fois hydraté (SecureStore peut avoir retardé le premier rendu)
+  useEffect(() => {
+    if (hydrated) syncNativeStatus();
+  }, [hydrated, syncNativeStatus]);
 
   const selectTunnel = useCallback((kind: TunnelKind) => {
     setActiveKind(kind);
