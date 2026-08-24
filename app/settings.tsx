@@ -1,42 +1,141 @@
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import * as Clipboard from "expo-clipboard";
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { Panel, SectionLabel } from "@/components/kighmu-ui";
+import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
-import { DEFAULT_APP_SETTINGS, loadAppSettings, saveAppSettings, type AppSettings } from "@/lib/app-settings";
-import { getNativeVpn, type DeviceSecurityInfo } from "@/lib/vpn/native";
+import { useThemeContext, type ThemePreference } from "@/lib/theme-provider";
+import { useLanguage, type LanguagePreference } from "@/lib/language-provider";
+import { useVpnSettings, type VpnRuntimeSettings } from "@/lib/vpn/settings-context";
+import { useVpn } from "@/lib/vpn/vpn-context";
+import { getNativeVpn } from "@/lib/vpn/native";
 
-function ToggleRow({ icon, title, description, value, onChange }: { icon: React.ComponentProps<typeof MaterialIcons>["name"]; title: string; description: string; value: boolean; onChange: (value: boolean) => void }) {
-  const colors = useColors();
-  return <View style={[styles.row, { borderTopColor: colors.border }]}><View style={[styles.icon, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name={icon} size={18} color={colors.primary} /></View><View style={styles.copy}><Text style={[styles.rowTitle, { color: colors.foreground }]}>{title}</Text><Text style={[styles.description, { color: colors.muted }]}>{description}</Text></View><Switch value={value} onValueChange={onChange} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFFFFF" /></View>;
-}
-
-const unavailableDevice: DeviceSecurityInfo = { hardwareId: "Disponible après installation Android", mobileOperator: "—", rooted: false };
+type BooleanSetting = "customDnsEnabled" | "wakeLockEnabled" | "profileNameInNotification" | "debugMode" | "httpPingEnabled" | "alwaysReconnect";
+type TextSetting = "dnsPrimary" | "dnsSecondary" | "mtu" | "httpPingUrl" | "httpPingIntervalMs" | "httpPingTimeoutMs" | "reconnectAfterFailures";
 
 export default function SettingsScreen() {
   const colors = useColors();
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
-  const [device, setDevice] = useState<DeviceSecurityInfo>(unavailableDevice);
-  useEffect(() => {
-    loadAppSettings().then(setSettings);
-    const native = getNativeVpn();
-    if (native) native.getDeviceSecurityInfo().then(setDevice).catch(() => setDevice(unavailableDevice));
-  }, []);
-  const update = (patch: Partial<AppSettings>) => { const next = { ...settings, ...patch }; setSettings(next); void saveAppSettings(next); };
-  const copyHardwareId = async () => {
-    if (!/^[A-F0-9]{32}$/.test(device.hardwareId)) { Alert.alert("Hardware ID indisponible", "Installez l’APK Android KIGHMU VPN pour lire l’identifiant matériel local."); return; }
-    await Clipboard.setStringAsync(device.hardwareId);
-    Alert.alert("Hardware ID copié", "Collez cet identifiant dans la liste autorisée lors de l’export d’une configuration verrouillée.");
-  };
-  const reset = () => Alert.alert("Réinitialiser les paramètres ?", "Les profils, secrets et tunnels resteront intacts.", [{ text: "Annuler", style: "cancel" }, { text: "Réinitialiser", style: "destructive", onPress: () => { setSettings(DEFAULT_APP_SETTINGS); void saveAppSettings(DEFAULT_APP_SETTINGS); } }]);
+  const { settings, updateSettings, resetSettings } = useVpnSettings();
+  const { themePreference, setThemePreference } = useThemeContext();
+  const { languagePreference, setLanguagePreference, t } = useLanguage();
+  const { status } = useVpn();
+  const [hardwareId, setHardwareId] = useState("");
+  const connected = status === "connected" || status === "connecting";
 
-  return <ScreenContainer edges={["top", "bottom", "left", "right"]} className="px-5"><View style={styles.top}><Pressable onPress={() => router.back()} style={({ pressed }) => [styles.back, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="arrow-back" size={20} color={colors.foreground} /></Pressable><Text style={[styles.headerTitle, { color: colors.foreground }]}>Paramètres</Text><View style={styles.back} /></View><ScrollView contentContainerStyle={styles.content}><Text style={[styles.intro, { color: colors.muted }]}>Réglez le comportement de KIGHMU VPN. Ces préférences sont locales et n’altèrent pas les profils ni les moteurs de tunnel.</Text><SectionLabel>Identité de l’appareil</SectionLabel><Panel style={styles.devicePanel}><View style={[styles.deviceIcon, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name="fingerprint" size={22} color={colors.primary} /></View><View style={styles.deviceCopy}><Text style={[styles.rowTitle, { color: colors.foreground }]}>Hardware ID</Text><Text numberOfLines={2} style={[styles.hardwareId, { color: colors.foreground }]}>{device.hardwareId}</Text><Text style={[styles.description, { color: colors.muted }]}>Opérateur : {device.mobileOperator || "indisponible"} · Intégrité : {device.rooted ? "root détecté" : "aucun root détecté"}</Text></View><Pressable onPress={() => void copyHardwareId()} style={({ pressed }) => [styles.copyButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><MaterialIcons name="content-copy" size={18} color="#FFFFFF" /></Pressable></Panel><Text style={[styles.deviceHint, { color: colors.muted }]}>Copiez cet ID pour l’ajouter à une liste autorisée dans Exporter.</Text><SectionLabel>Sécurité réseau</SectionLabel><Panel style={styles.panel}><ToggleRow icon="dns" title="Protection DNS" description="Réduire le risque de résolution DNS hors tunnel." value={settings.dnsProtection} onChange={(value) => update({ dnsProtection: value })} /><ToggleRow icon="signal-wifi-off" title="Arrêter sur perte réseau" description="Arrêter proprement le VPN si le réseau disparaît." value={settings.stopOnNetworkLoss} onChange={(value) => update({ stopOnNetworkLoss: value })} /></Panel><SectionLabel>Reconnexion</SectionLabel><Panel style={styles.panel}><ToggleRow icon="sync" title="Reconnexion automatique" description="Réessayer après une déconnexion inattendue." value={settings.autoReconnect} onChange={(value) => update({ autoReconnect: value })} /><ToggleRow icon="power-settings-new" title="Démarrer au lancement" description="Préparer le dernier tunnel au lancement, désactivé par défaut." value={settings.launchOnBoot} onChange={(value) => update({ launchOnBoot: value })} /><View style={[styles.delay, { borderTopColor: colors.border }]}><View style={[styles.icon, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name="timer" size={18} color={colors.primary} /></View><View style={styles.copy}><Text style={[styles.rowTitle, { color: colors.foreground }]}>Délai de reconnexion</Text><Text style={[styles.description, { color: colors.muted }]}>{settings.reconnectDelaySeconds} secondes avant un nouvel essai.</Text></View><View style={styles.stepper}><Pressable onPress={() => update({ reconnectDelaySeconds: Math.max(1, settings.reconnectDelaySeconds - 1) })} style={[styles.step, { borderColor: colors.border }]}><Text style={[styles.stepText, { color: colors.primary }]}>−</Text></Pressable><Pressable onPress={() => update({ reconnectDelaySeconds: Math.min(60, settings.reconnectDelaySeconds + 1) })} style={[styles.step, { borderColor: colors.border }]}><Text style={[styles.stepText, { color: colors.primary }]}>+</Text></Pressable></View></View></Panel><SectionLabel>Diagnostic</SectionLabel><Panel style={styles.panel}><ToggleRow icon="article" title="Diagnostic détaillé" description="Conserver les événements de transport et de cycle de vie." value={settings.verboseDiagnostics} onChange={(value) => update({ verboseDiagnostics: value })} /><ToggleRow icon="help-outline" title="Confirmer la déconnexion" description="Demander une confirmation avant d’arrêter un tunnel actif." value={settings.confirmDisconnect} onChange={(value) => update({ confirmDisconnect: value })} /></Panel><Pressable onPress={reset} style={({ pressed }) => [styles.reset, pressed && styles.pressed]}><MaterialIcons name="restart-alt" size={18} color={colors.error} /><Text style={[styles.resetText, { color: colors.error }]}>Réinitialiser les paramètres</Text></Pressable></ScrollView></ScreenContainer>;
+  useEffect(() => {
+    try { setHardwareId(getNativeVpn()?.getHardwareId?.() || t("Indisponible dans cet environnement")); }
+    catch { setHardwareId(t("Indisponible")); }
+  }, [t]);
+
+  const toggle = (key: BooleanSetting) => updateSettings({ [key]: !settings[key] });
+  const setText = (key: TextSetting, value: string) => updateSettings({ [key]: value });
+
+  return <ScreenContainer className="px-5 pt-3" edges={["top", "left", "right", "bottom"]}>
+    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel={t("Retour")} style={({ pressed }) => [styles.iconButton, { borderColor: colors.border, backgroundColor: colors.surface }, pressed && styles.pressed]}>
+          <IconSymbol name="chevron.left" size={20} color={colors.foreground} />
+        </Pressable>
+        <View style={styles.headerCopy}><Text className="text-2xl font-bold text-foreground">{t("Paramètres")}</Text><Text className="mt-1 text-sm text-muted">{t("Préférences de l’application et du moteur VPN")}</Text></View>
+      </View>
+
+      {connected ? <View style={[styles.notice, { borderColor: colors.warning, backgroundColor: colors.surface }]}><Text style={[styles.noticeTitle, { color: colors.warning }]}>{t("Connexion en cours")}</Text><Text className="mt-1 text-sm leading-5 text-muted">{t("Les réglages de service seront appliqués à la prochaine connexion VPN. L’apparence est appliquée immédiatement.")}</Text></View> : null}
+
+      <Section title="Langue">
+        <Choice label="Langue de l’application" value={languagePreference} options={["system", "fr", "en"]} labels={{ system: t("Système"), fr: "Français", en: "English" }} onSelect={(value) => setLanguagePreference(value as LanguagePreference)} />
+        <Text className="-mt-1 text-sm leading-5 text-muted">{t("Utilise la langue définie sur votre appareil lorsque le choix Système est actif.")}</Text>
+      </Section>
+
+      <Section title="Apparence">
+        <Choice label="Thème" value={themePreference} options={["system", "light", "dark"]} labels={{ system: t("Système"), light: t("Clair"), dark: t("Sombre") }} onSelect={(value) => setThemePreference(value as ThemePreference)} />
+      </Section>
+
+      <Section title="VPN">
+        <TextSettingRow label="MTU" hint="Taille maximale des paquets VPN, de 1280 à 1500." value={settings.mtu} onChangeText={(value) => setText("mtu", value)} keyboardType="numeric" />
+        <SwitchSetting label="WakeLock" hint="Maintient le processeur actif tant que le VPN est connecté." value={settings.wakeLockEnabled} onValueChange={() => toggle("wakeLockEnabled")} />
+        <SwitchSetting label="Nom du profil dans la notification" hint="Affiche le premier profil actif dans la notification Android." value={settings.profileNameInNotification} onValueChange={() => toggle("profileNameInNotification")} />
+        <InfoSetting label="Proxy et ports locaux" value="Automatiques par profil" hint="Les ports SOCKS et DNSTT sont attribués dynamiquement pour préserver le multi-profil et éviter les collisions." />
+        <InfoSetting label="Accès depuis le réseau local" value="Désactivé" hint="Les proxys locaux restent privés sur l’appareil ; aucune ouverture LAN non authentifiée n’est exposée." />
+      </Section>
+
+      <Section title="DNS">
+        <SwitchSetting label="DNS personnalisé" hint="Remplace les DNS du VPN par les deux adresses ci-dessous." value={settings.customDnsEnabled} onValueChange={() => toggle("customDnsEnabled")} />
+        <TextSettingRow label="DNS primaire" hint="Adresse IP ou nom de serveur DNS." value={settings.dnsPrimary} onChangeText={(value) => setText("dnsPrimary", value)} />
+        <TextSettingRow label="DNS secondaire" hint="Utilisé comme secours si le DNS primaire échoue." value={settings.dnsSecondary} onChangeText={(value) => setText("dnsSecondary", value)} />
+      </Section>
+
+      <Section title="Vérification HTTP et reconnexion">
+        <SwitchSetting label="Vérification HTTP" hint="Teste l’URL via le balancier SOCKS après la connexion VPN." value={settings.httpPingEnabled} onValueChange={() => toggle("httpPingEnabled")} />
+        <TextSettingRow label="URL de vérification" hint="Adresse HTTP ou HTTPS attendue par le contrôle de connectivité." value={settings.httpPingUrl} onChangeText={(value) => setText("httpPingUrl", value)} autoCapitalize="none" />
+        <TextSettingRow label="Intervalle (ms)" hint="De 1000 à 120000 ms." value={settings.httpPingIntervalMs} onChangeText={(value) => setText("httpPingIntervalMs", value)} keyboardType="numeric" />
+        <TextSettingRow label="Délai maximal (ms)" hint="De 1000 à 60000 ms par vérification." value={settings.httpPingTimeoutMs} onChangeText={(value) => setText("httpPingTimeoutMs", value)} keyboardType="numeric" />
+        <TextSettingRow label="Échecs avant reconnexion" hint="0 désactive la relance par vérification ; maximum 20." value={settings.reconnectAfterFailures} onChangeText={(value) => setText("reconnectAfterFailures", value)} keyboardType="numeric" />
+        <SwitchSetting label="Toujours tenter de reconnecter" hint="Conserve le VPN actif et relance les tunnels récupérables après une perte de connectivité." value={settings.alwaysReconnect} onValueChange={() => toggle("alwaysReconnect")} />
+      </Section>
+
+      <Section title="Diagnostic">
+        <SwitchSetting label="Mode diagnostic détaillé" hint="Ajoute les événements techniques non critiques dans l’écran Diagnostic. Les erreurs et changements de connexion restent toujours visibles." value={settings.debugMode} onValueChange={() => toggle("debugMode")} />
+      </Section>
+
+      <Section title="Appareil">
+        <InfoSetting label="Hardware ID" value={hardwareId || t("Chargement…")} hint="Identifiant Android affiché localement pour cet appareil ; Picko ne le transmet à aucun serveur." />
+      </Section>
+
+      <View style={[styles.safetyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text className="text-base font-bold text-foreground">{t("Fonctions de sécurité")}</Text>
+        <Text className="mt-2 text-sm leading-5 text-muted">{t("Les commandes root, le partage automatique du VPN et l’exposition réseau local ne sont volontairement pas ajoutés : ils demandent des privilèges externes ou réduisent la sécurité de l’appareil. Les options présentées ici sont toutes prises en charge par Picko.")}</Text>
+      </View>
+
+      <Pressable onPress={resetSettings} accessibilityRole="button" accessibilityLabel={t("Restaurer les valeurs par défaut")} style={({ pressed }) => [styles.resetButton, { borderColor: colors.border, backgroundColor: colors.surface }, pressed && styles.pressed]}><Text style={{ color: colors.error, fontWeight: "700" }}>{t("Restaurer les valeurs par défaut")}</Text></Pressable>
+    </ScrollView>
+  </ScreenContainer>;
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const { t } = useLanguage();
+  return <View style={styles.section}><Text className="text-sm font-bold text-primary">{t(title).toUpperCase()}</Text><View style={styles.sectionRows}>{children}</View></View>;
+}
+
+function SwitchSetting({ label, hint, value, onValueChange }: { label: string; hint: string; value: boolean; onValueChange: () => void }) {
+  const colors = useColors();
+  const { t } = useLanguage();
+  return <View style={styles.settingRow}><View style={styles.settingCopy}><Text className="text-lg font-semibold text-foreground">{t(label)}</Text><Text className="mt-1 text-sm leading-5 text-muted">{t(hint)}</Text></View><Switch value={value} onValueChange={onValueChange} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFFFFF" accessibilityLabel={t(label)} /></View>;
+}
+
+function TextSettingRow({ label, hint, value, onChangeText, keyboardType, autoCapitalize = "sentences" }: { label: string; hint: string; value: string; onChangeText: (value: string) => void; keyboardType?: "default" | "numeric" | "url"; autoCapitalize?: "none" | "sentences" | "words" | "characters" }) {
+  const colors = useColors();
+  const { t } = useLanguage();
+  return <View style={styles.textRow}><Text className="text-lg font-semibold text-foreground">{t(label)}</Text><Text className="mt-1 text-sm leading-5 text-muted">{t(hint)}</Text><TextInput value={value} onChangeText={onChangeText} keyboardType={keyboardType} autoCapitalize={autoCapitalize} autoCorrect={false} placeholderTextColor={colors.muted} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]} /></View>;
+}
+
+function InfoSetting({ label, value, hint }: { label: string; value: string; hint: string }) {
+  const { t } = useLanguage();
+  return <View style={styles.textRow}><Text className="text-lg font-semibold text-foreground">{t(label)}</Text><Text className="mt-1 text-base text-foreground">{t(value)}</Text><Text className="mt-1 text-sm leading-5 text-muted">{t(hint)}</Text></View>;
+}
+
+function Choice({ label, value, options, labels, onSelect }: { label: string; value: string; options: string[]; labels: Record<string, string>; onSelect: (value: string) => void }) {
+  const colors = useColors();
+  const { t } = useLanguage();
+  return <View style={styles.textRow}><Text className="text-lg font-semibold text-foreground">{t(label)}</Text><View style={styles.choiceRow}>{options.map((option) => <Pressable key={option} onPress={() => onSelect(option)} style={[styles.choice, { borderColor: value === option ? colors.primary : colors.border, backgroundColor: value === option ? colors.primary : colors.background }]}><Text style={{ color: value === option ? "#FFFFFF" : colors.foreground, fontWeight: "700" }}>{labels[option]}</Text></Pressable>)}</View></View>;
 }
 
 const styles = StyleSheet.create({
-  top: { height: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, back: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" }, headerTitle: { fontSize: 17, fontWeight: "900" }, content: { paddingTop: 14, paddingBottom: 32, gap: 12 }, intro: { fontSize: 14, lineHeight: 20, marginBottom: 8 }, panel: { padding: 16 }, devicePanel: { padding: 15, flexDirection: "row", alignItems: "center", gap: 11 }, deviceIcon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" }, deviceCopy: { flex: 1 }, hardwareId: { marginTop: 5, fontSize: 13, lineHeight: 18, fontWeight: "900", letterSpacing: 0.3 }, copyButton: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" }, deviceHint: { marginTop: -6, fontSize: 11, lineHeight: 16 }, row: { minHeight: 72, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 14, marginTop: 14, flexDirection: "row", alignItems: "center", gap: 11 }, icon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" }, copy: { flex: 1 }, rowTitle: { fontSize: 14, fontWeight: "900" }, description: { marginTop: 4, fontSize: 11, lineHeight: 16 }, delay: { minHeight: 72, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 14, marginTop: 14, flexDirection: "row", alignItems: "center", gap: 11 }, stepper: { flexDirection: "row", gap: 6 }, step: { width: 34, height: 34, borderWidth: 1, borderRadius: 10, alignItems: "center", justifyContent: "center" }, stepText: { fontSize: 20, fontWeight: "800" }, reset: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, resetText: { fontSize: 13, fontWeight: "900" }, pressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },
+  content: { paddingBottom: 32, gap: 24 },
+  header: { flexDirection: "row", alignItems: "center", gap: 14 },
+  headerCopy: { flex: 1 },
+  iconButton: { width: 44, height: 44, borderRadius: 14, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  notice: { borderWidth: 1, borderRadius: 16, padding: 14 },
+  noticeTitle: { fontSize: 14, fontWeight: "800" },
+  section: { gap: 12 },
+  sectionRows: { gap: 12 },
+  settingRow: { flexDirection: "row", alignItems: "center", gap: 16, paddingVertical: 8 },
+  settingCopy: { flex: 1 },
+  textRow: { paddingVertical: 8 },
+  input: { marginTop: 10, minHeight: 48, borderWidth: 1, borderRadius: 13, paddingHorizontal: 13, fontSize: 16 },
+  choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  choice: { minHeight: 40, borderWidth: 1, borderRadius: 12, paddingHorizontal: 13, justifyContent: "center" },
+  safetyCard: { borderWidth: 1, borderRadius: 18, padding: 16 },
+  resetButton: { minHeight: 50, borderRadius: 15, borderWidth: 1, justifyContent: "center", alignItems: "center" },
+  pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
 });
