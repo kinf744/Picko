@@ -12,7 +12,7 @@ import { Platform } from "react-native";
 import type { Metrics } from "react-native-safe-area-context";
 
 // Debug logging with timestamps
-const DEBUG = true;
+const DEBUG = false;
 const log = (msg: string) => {
   if (!DEBUG) return;
   const ts = new Date().toISOString();
