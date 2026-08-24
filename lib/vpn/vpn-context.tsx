@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
 import { createEmptyProfile, stripSecrets, withFixedZiVpnObfs, type StoredVpnProfile, type TunnelMethod, type VpnProfile } from "./profiles";
@@ -155,6 +155,31 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
       if (payload.status === "connected" || payload.status === "connecting" || payload.status === "disconnected" || payload.status === "error") setStatus(payload.status);
     },
   ), []);
+
+  const syncNativeStatus = useCallback(() => {
+    try {
+      const native = getNativeVpn();
+      const raw = native?.getStatus?.();
+      if (typeof raw === "string" && ["connected", "connecting", "disconnected", "error"].includes(raw)) {
+        setStatus((prev) => (prev !== raw ? (raw as TunnelStatus) : prev));
+      }
+    } catch {}
+  }, []);
+
+  // Resync du status natif au montage, à l'hydratation et au retour au premier plan.
+  // Corrige le bug "VPN affiché déconnecté" alors que le service tourne encore :
+  // les events natifs manqués pendant le background ne re-signalent pas l'état.
+  useEffect(() => {
+    syncNativeStatus();
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") syncNativeStatus();
+    });
+    return () => sub.remove();
+  }, [syncNativeStatus]);
+
+  useEffect(() => {
+    if (hydrated) syncNativeStatus();
+  }, [hydrated, syncNativeStatus]);
 
   const createProfile = useCallback((method: TunnelMethod) => createEmptyProfile(method), []);
 
