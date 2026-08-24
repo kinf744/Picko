@@ -22,6 +22,8 @@ class SocksProfileBalancer(
   private val upstreamPorts = ports.distinct().filter { it in 1..65535 }
   private val running = AtomicBoolean(false)
   private val cursor = AtomicInteger(0)
+  private val lastFailureMs = mutableMapOf<Int, Long>()
+  private val failureLock = Any()
   private val workers = Executors.newCachedThreadPool { runnable -> Thread(runnable, "kighmu-socks-balancer").apply { isDaemon = true } }
   private var server: ServerSocket? = null
   var port: Int = -1
@@ -61,9 +63,19 @@ class SocksProfileBalancer(
     try {
       LocalTunnelIo.configure(client)
       val baseIndex = cursor.getAndIncrement().and(Int.MAX_VALUE)
-      for (offset in upstreamPorts.indices) {
-        val profileIndex = (baseIndex + offset) % upstreamPorts.size
+      val now = System.currentTimeMillis()
+      // Construit l'ordre round-robin en sautant les ports en échec <10s
+      val orderedIndices = (0 until upstreamPorts.size).map { (baseIndex + it) % upstreamPorts.size }
+        .sortedWith(compareBy { idx ->
+          val port = upstreamPorts[idx]
+          val lastFail = synchronized(failureLock) { lastFailureMs[port] ?: 0L }
+          if (now - lastFail < 10_000) 1 else 0
+        })
+      for (profileIndex in orderedIndices) {
         val upstreamPort = upstreamPorts[profileIndex]
+        // Skip temporairement un port en cooldown 10s sauf si tous sont en cooldown
+        val inCooldown = synchronized(failureLock) { now - (lastFailureMs[upstreamPort] ?: 0L) < 10_000 }
+        if (inCooldown && orderedIndices.any { idx -> System.currentTimeMillis() - (synchronized(failureLock){lastFailureMs[upstreamPorts[idx]] ?: 0L}) >= 10_000 }) continue
         var candidate: Socket? = null
         try {
           candidate = Socket()
@@ -71,13 +83,15 @@ class SocksProfileBalancer(
           candidate.connect(InetSocketAddress("127.0.0.1", upstreamPort), 1_500)
           LocalTunnelIo.configure(candidate)
           upstream = candidate
+          synchronized(failureLock) { lastFailureMs.remove(upstreamPort) }
           if (upstreamPorts.size > 1) {
-            emit("connection", "BALANCER", "Round-robin : connexion ${baseIndex + 1} vers profil ${profileIndex + 1}/${upstreamPorts.size} (SOCKS $upstreamPort)")
+            emit("connection", "BALANCER", "Round-robin : connexion ${baseIndex + 1} vers profil ${profileIndex + 1}/${upstreamPorts.size} (SOCKS $upstreamPort) — débit agrégé via ${upstreamPorts.size} profils")
           }
           break
         } catch (_: Throwable) {
           try { candidate?.close() } catch (_: Throwable) {}
-          emit("warning", "BALANCER", "Profil SOCKS local indisponible sur le port $upstreamPort")
+          synchronized(failureLock) { lastFailureMs[upstreamPort] = System.currentTimeMillis() }
+          emit("warning", "BALANCER", "Profil SOCKS local indisponible sur le port $upstreamPort (exclu 10s)")
         }
       }
       val target = upstream ?: throw IllegalStateException("Aucune sortie SOCKS locale disponible")

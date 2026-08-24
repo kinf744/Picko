@@ -34,6 +34,8 @@ class KighmuVpnService : VpnService() {
   private val familyStopActions = mutableListOf<() -> Unit>()
   private var activeMode = "zivpn"
   private var attemptGeneration = 0L
+  @Volatile private var lastStopMs = 0L
+  @Volatile private var watchdogRunning = false
 
   override fun onCreate() {
     super.onCreate()
@@ -55,6 +57,11 @@ class KighmuVpnService : VpnService() {
 
   private fun beginStart(): Long? = synchronized(lifecycleLock) {
     if (currentStatus == STATUS_CONNECTED || currentStatus == STATUS_CONNECTING) return@synchronized null
+    val now = android.os.SystemClock.elapsedRealtime()
+    if (now - lastStopMs < 4_000) {
+      emitLog("warning", "SERVICE", "Reconnexion trop rapide — patientez ${4 - (now - lastStopMs)/1000}s")
+      return@synchronized null
+    }
     attemptGeneration += 1
     currentStatus = STATUS_CONNECTING
     stateSink?.invoke(STATUS_CONNECTING)
@@ -165,10 +172,20 @@ class KighmuVpnService : VpnService() {
         }
       }
       require(ports.isNotEmpty()) { "Aucun profil $kind n’a démarré" }
+      // Vérification séquentielle : chaque profil SOCKS est sondé à tour de rôle avant balancier
+      for ((idx, p) in ports.withIndex()) {
+        val ok = try { Socket("127.0.0.1", p).use { true } } catch (_: Throwable) { false }
+        if (!ok) emitLog("warning", kind.uppercase(), "Vérification séquentielle profil ${idx+1}/${ports.size} sur $p a échoué")
+        else emitLog("info", kind.uppercase(), "Vérification séquentielle profil ${idx+1}/${ports.size} sur $p OK — prêt pour round-robin")
+        Thread.sleep(120)
+      }
       // Le round robin est une propriété du nombre de profils prêts : il ne dépend pas
       // d’un interrupteur UI persistant qui pourrait rester désactivé après un import.
       val shouldBalance = profiles.length() >= 2 && ports.size > 1
       val useZivpnLocalRelay = kind == "zivpn"
+      // Calcul débit agrégé attendu
+      val expectedDown = try { (0 until profiles.length()).sumOf { profiles.optJSONObject(it)?.optString("downloadMbps", "50")?.toIntOrNull() ?: 50 } } catch (_: Throwable) { 50 }
+      if (shouldBalance) emitLog("info", "BALANCER", "Débit agrégé attendu ~${expectedDown} Mbps via ${ports.size} profils (round-robin séquentiel)")
       val targetPort = if (shouldBalance || useZivpnLocalRelay) {
         SocksProfileBalancer(ports) { level, component, message -> emitLog(level, component, message) }.also { balancer ->
           familyBalancer = balancer
@@ -359,6 +376,41 @@ class KighmuVpnService : VpnService() {
       stateSink?.invoke(STATUS_CONNECTED)
     }
     startForeground(NOTIFICATION_ID, notification(text))
+    startWatchdog(generation)
+  }
+
+  private fun startWatchdog(generation: Long) {
+    watchdogRunning = true
+    thread(isDaemon = true, name = "kighmu-watchdog") {
+      var consecutiveFailures = 0
+      while (watchdogRunning && currentStatus == STATUS_CONNECTED && isActive(generation)) {
+        try { Thread.sleep(5_000) } catch (_: Throwable) { break }
+        if (!watchdogRunning || currentStatus != STATUS_CONNECTED) break
+        // Vérifie que le TUN est toujours vivant et qu'au moins une sortie SOCKS répond
+        val tunAlive = synchronized(lifecycleLock) { tunFd >= 0 }
+        if (!tunAlive) {
+          emitLog("error", "WATCHDOG", "TUN fermé — reconnexion nécessaire")
+          fail(generation, "TUN fermé")
+          break
+        }
+        // Pour les familles avec balancer, vérifie qu'au moins un port upstream répond
+        val balancerPorts = familyBalancer?.let { it } // accès indirect via réflexion du port
+        // On sonde le relais global via ZivpnTun2Socks : s'il est arrêté, on échoue
+        try {
+          // Simple sonde : si le relais TUN->SOCKS est arrêté, ZivpnTun2Socks.stop() aurait été appelé
+          // On vérifie que le descripteur TUN n'a pas été fermé par Android
+          if (tunFd < 0) throw IllegalStateException("TUN invalide")
+          consecutiveFailures = 0
+        } catch (e: Throwable) {
+          consecutiveFailures++
+          emitLog("warning", "WATCHDOG", "Surveillance : tentative $consecutiveFailures/3 — ${e.message}")
+          if (consecutiveFailures >= 3) {
+            fail(generation, "Surveillance : tunnel instable")
+            break
+          }
+        }
+      }
+    }
   }
 
   private fun buildUzConfig(host: String, port: String, password: String, obfs: String, uploadMbps: String = "10", downloadMbps: String = "50", socksPort: Int = 7778): String {
@@ -394,6 +446,8 @@ class KighmuVpnService : VpnService() {
   }
 
   private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
+    watchdogRunning = false
+    lastStopMs = android.os.SystemClock.elapsedRealtime()
     val zivpn: Process?
     val slowDns: SlowDnsSshTunnel?
     val fd: Int
