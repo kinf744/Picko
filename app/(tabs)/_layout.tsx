@@ -1,8 +1,6 @@
 import { Tabs, usePathname, useRouter } from "expo-router";
 import { BottomTabBar, type BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import { View, Dimensions } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { runOnJS } from "react-native-reanimated";
+import { View, Dimensions, PanResponder } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
@@ -52,24 +50,19 @@ function SwipeWrapper({ children }: { children: React.ReactNode }) {
     else router.push(`/(tabs)/${target}` as any);
   };
 
-  const pan = Gesture.Pan()
-    .activeOffsetX([-20, 20])
-    .failOffsetY([-15, 15])
-    .onEnd((e) => {
-      const dx = e.translationX;
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 20 && Math.abs(gs.dy) < 15,
+    onPanResponderRelease: (_, gs) => {
       const idx = getIndex();
-      if (dx < -50 && idx < TAB_ORDER.length - 1) {
-        runOnJS(navigateTo)(idx + 1);
-      } else if (dx > 50 && idx > 0) {
-        runOnJS(navigateTo)(idx - 1);
+      if (gs.dx < -50 && idx < TAB_ORDER.length - 1) {
+        navigateTo(idx + 1);
+      } else if (gs.dx > 50 && idx > 0) {
+        navigateTo(idx - 1);
       }
-    });
+    },
+  });
 
-  return (
-    <GestureDetector gesture={pan}>
-      <View style={{ flex: 1 }}>{children}</View>
-    </GestureDetector>
-  );
+  return <View style={{ flex: 1 }} {...panResponder.panHandlers}>{children}</View>;
 }
 
 export default function TabLayout() {

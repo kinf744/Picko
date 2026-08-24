@@ -1,24 +1,19 @@
-export type TunnelMode = "zivpn" | "slowdns";
+import { hasXrayInput, xrayLinkScheme, type VpnProfile } from "./profiles";
 
-export type VpnValidationConfig = {
-  mode: TunnelMode;
-  host: string;
-  port: string;
-  password: string;
-  slowDnsUsername: string;
-  slowDnsPassword: string;
-  slowDnsServer: string;
-  slowDnsPort: string;
-  slowDnsNameserver: string;
-  slowDnsPublicKey: string;
-};
+export type VpnValidationConfig = Pick<VpnProfile, "host" | "port" | "obfs" | "password">;
+export type HysteriaValidationConfig = Pick<VpnProfile, "hysteriaHost" | "hysteriaPort" | "hysteriaAuth" | "hysteriaUpMbps" | "hysteriaDownMbps">;
+export type XrayValidationConfig = Pick<VpnProfile, "xrayMode" | "xrayLink" | "xrayJson">;
+export type HttpProxyValidationConfig = Pick<VpnProfile, "sshHost" | "sshPort" | "sshUser" | "password" | "proxyHost" | "proxyPort" | "httpPayload">;
+export type SshSslValidationConfig = Pick<VpnProfile, "sshHost" | "sshPort" | "sshUser" | "password" | "sslTlsVersion">;
+export type ProfileValidationErrors = Partial<Record<keyof VpnProfile, string>>;
 
-export function isValidPort(port: string) {
+export function isValidPort(port: string, allowRange = false) {
   const value = port.trim();
   if (/^\d+$/.test(value)) {
     const number = Number(value);
     return number >= 1 && number <= 65535;
   }
+  if (!allowRange) return false;
   const range = value.match(/^(\d+)\s*-\s*(\d+)$/);
   if (!range) return false;
   const start = Number(range[1]);
@@ -26,87 +21,110 @@ export function isValidPort(port: string) {
   return start >= 1 && end <= 65535 && start <= end;
 }
 
+function required(value: string, message: string) {
+  return value.trim() ? undefined : message;
+}
+
+function withoutEmptyErrors<T extends Record<string, string | undefined>>(errors: T) {
+  return Object.fromEntries(Object.entries(errors).filter(([, value]) => Boolean(value))) as Partial<T>;
+}
+
 export function validateVpnConfig(config: VpnValidationConfig) {
   const errors: Partial<Record<keyof VpnValidationConfig, string>> = {};
-  if (config.mode === "zivpn") {
-    if (!config.host.trim()) errors.host = "Saisissez un Host ou une adresse IP.";
-    if (!isValidPort(config.port)) errors.port = "Utilisez un port ou une plage, par exemple 6000-19999.";
-    if (!config.password.trim()) errors.password = "Le mot de passe est requis.";
-    return errors;
-  }
-  if (!config.slowDnsUsername.trim()) errors.slowDnsUsername = "L’identifiant SSH est requis.";
-  if (!config.slowDnsPassword.trim()) errors.slowDnsPassword = "Le mot de passe SSH est requis.";
-  if (!config.slowDnsServer.trim()) errors.slowDnsServer = "Le serveur DNS/UDP est requis.";
-  if (!isValidPort(config.slowDnsPort)) errors.slowDnsPort = "Utilisez un port DNS valide, généralement 53.";
-  if (!config.slowDnsNameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(config.slowDnsNameserver.trim())) errors.slowDnsNameserver = "Le nameserver DNS est invalide.";
-  if (!config.slowDnsPublicKey.trim()) errors.slowDnsPublicKey = "La clé publique dnstt est requise.";
+  if (!config.host.trim()) errors.host = "Saisissez un Host ou une adresse IP.";
+  if (!isValidPort(config.port, true)) errors.port = "Utilisez un port ou une plage, par exemple 6000-19999.";
+  if (!config.obfs.trim()) errors.obfs = "La clé Obfs est requise pour ce profil.";
+  if (!config.password.trim()) errors.password = "Le mot de passe est requis.";
   return errors;
 }
 
-import type { ProfileFieldErrors, TunnelProfile } from "./tunnel-profiles";
+function isValidMbps(value: string) {
+  const number = Number(value.trim());
+  return Number.isFinite(number) && number > 0 && number <= 100000;
+}
 
-const isJsonObject = (value: string) => {
-  try { return typeof JSON.parse(value) === "object" && value.trim().startsWith("{"); } catch { return false; }
-};
-const isSupportedV2RayLink = (value: string) => /^(vmess|vless|trojan):\/\//i.test(value.trim());
+export function validateHysteriaConfig(config: HysteriaValidationConfig) {
+  const errors: Partial<Record<keyof HysteriaValidationConfig, string>> = {};
+  if (!config.hysteriaHost.trim()) errors.hysteriaHost = "Saisissez le serveur Hysteria.";
+  if (!isValidPort(config.hysteriaPort, true)) errors.hysteriaPort = "Utilisez un port ou une plage Hysteria valide.";
+  if (!config.hysteriaAuth.trim()) errors.hysteriaAuth = "Le mot de passe Hysteria est requis.";
+  if (!isValidMbps(config.hysteriaUpMbps)) errors.hysteriaUpMbps = "Utilisez un débit montant positif en Mbps.";
+  if (!isValidMbps(config.hysteriaDownMbps)) errors.hysteriaDownMbps = "Utilisez un débit descendant positif en Mbps.";
+  return errors;
+}
 
-const required = (errors: ProfileFieldErrors, field: string, value: string, label: string) => {
-  if (!value.trim()) errors[field] = `${label} est requis.`;
-};
+export function validateHttpProxyConfig(config: HttpProxyValidationConfig) {
+  const errors: Partial<Record<keyof HttpProxyValidationConfig, string>> = {};
+  errors.sshHost = required(config.sshHost, "Saisissez le serveur SSH.");
+  if (!isValidPort(config.sshPort)) errors.sshPort = "Utilisez un port SSH valide.";
+  errors.sshUser = required(config.sshUser, "Saisissez l’utilisateur SSH.");
+  errors.password = required(config.password, "Le mot de passe SSH est requis.");
+  errors.proxyHost = required(config.proxyHost, "Saisissez le serveur du proxy HTTP.");
+  if (!isValidPort(config.proxyPort)) errors.proxyPort = "Utilisez un port de proxy HTTP valide.";
+  errors.httpPayload = required(config.httpPayload, "Saisissez le payload HTTP à envoyer au proxy.");
+  return withoutEmptyErrors(errors);
+}
 
-export function validateTunnelProfile(profile: TunnelProfile): ProfileFieldErrors {
-  const errors: ProfileFieldErrors = {};
-  required(errors, "name", profile.name, "Le nom du profil");
-  switch (profile.kind) {
-    case "zivpn":
-      required(errors, "host", profile.host, "Le Host ou l’adresse IP");
-      if (!isValidPort(profile.port)) errors.port = "Utilisez un port ou une plage valide.";
-      required(errors, "password", profile.password, "Le mot de passe");
-      if (!/^\d+$/.test(profile.uploadMbps) || Number(profile.uploadMbps) < 1) errors.uploadMbps = "Le débit montant doit être supérieur à zéro.";
-      if (!/^\d+$/.test(profile.downloadMbps) || Number(profile.downloadMbps) < 1) errors.downloadMbps = "Le débit descendant doit être supérieur à zéro.";
-      break;
-    case "slowdns":
-      required(errors, "dnsServer", profile.dnsServer, "Le serveur DNS/UDP");
-      if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Le port DNS est invalide.";
-      if (!profile.nameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(profile.nameserver.trim())) errors.nameserver = "Le nameserver DNS est invalide.";
-      required(errors, "publicKey", profile.publicKey, "La clé publique dnstt");
-      required(errors, "sshUsername", profile.sshUsername, "L’identifiant SSH");
-      required(errors, "sshPassword", profile.sshPassword, "Le mot de passe SSH");
-      break;
-    case "hysteria":
-      required(errors, "host", profile.host, "Le Host ou l’adresse IP");
-      if (!isValidPort(profile.port)) errors.port = "Utilisez un port ou une plage valide.";
-      required(errors, "auth", profile.auth, "L’authentification Hysteria");
-      if (!/^\d+$/.test(profile.uploadMbps) || Number(profile.uploadMbps) < 1) errors.uploadMbps = "Le débit montant doit être supérieur à zéro.";
-      if (!/^\d+$/.test(profile.downloadMbps) || Number(profile.downloadMbps) < 1) errors.downloadMbps = "Le débit descendant doit être supérieur à zéro.";
-      break;
-    case "http-payload":
-      required(errors, "proxyHost", profile.proxyHost, "L’hôte du proxy HTTP");
-      if (!isValidPort(profile.proxyPort)) errors.proxyPort = "Le port du proxy HTTP est invalide.";
-      required(errors, "payload", profile.payload, "Le payload HTTP");
-      required(errors, "sshHost", profile.sshHost, "L’hôte SSH cible");
-      if (!isValidPort(profile.sshPort)) errors.sshPort = "Le port SSH est invalide.";
-      required(errors, "sshUsername", profile.sshUsername, "L’identifiant SSH");
-      required(errors, "sshPassword", profile.sshPassword, "Le mot de passe SSH");
-      break;
-    case "ssh-tls":
-      required(errors, "tlsHost", profile.tlsHost, "L’hôte SSL/TLS");
-      if (!isValidPort(profile.tlsPort)) errors.tlsPort = "Le port SSL/TLS est invalide.";
-      if (profile.sni.trim() && !/^[A-Za-z0-9.-]+$/.test(profile.sni.trim())) errors.sni = "Le SNI est invalide.";
-      required(errors, "sshUsername", profile.sshUsername, "L’identifiant SSH");
-      required(errors, "sshPassword", profile.sshPassword, "Le mot de passe SSH");
-      break;
-    case "xray-v2ray":
-      if (profile.inputMode === "link") required(errors, "link", profile.link, "Le lien Xray/V2Ray");
-      else if (!isJsonObject(profile.json)) errors.json = "La configuration Xray/V2Ray doit être un objet JSON valide.";
-      break;
-    case "v2ray-slowdns":
-      required(errors, "dnsServer", profile.dnsServer, "Le serveur DNS/UDP");
-      if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Le port DNS est invalide.";
-      if (!profile.nameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(profile.nameserver.trim())) errors.nameserver = "Le nameserver DNS est invalide.";
-      required(errors, "publicKey", profile.publicKey, "La clé publique dnstt");
-      if (!isSupportedV2RayLink(profile.link)) errors.link = "Utilisez un lien VMess, VLESS ou Trojan valide.";
-      break;
+export function validateSshSslConfig(config: SshSslValidationConfig) {
+  const errors: Partial<Record<keyof SshSslValidationConfig, string>> = {};
+  errors.sshHost = required(config.sshHost, "Saisissez le serveur SSL/TLS.");
+  if (!isValidPort(config.sshPort)) errors.sshPort = "Utilisez un port SSL/TLS valide.";
+  errors.sshUser = required(config.sshUser, "Saisissez l’utilisateur SSH.");
+  errors.password = required(config.password, "Le mot de passe SSH est requis.");
+  if (!["TLS", "TLSv1.2", "TLSv1.3"].includes(config.sslTlsVersion.trim() || "TLS")) errors.sslTlsVersion = "Choisissez TLS, TLSv1.2 ou TLSv1.3.";
+  return withoutEmptyErrors(errors);
+}
+
+export function validateXrayConfig(config: XrayValidationConfig) {
+  const errors: Partial<Record<keyof XrayValidationConfig, string>> = {};
+  if (!hasXrayInput(config as VpnProfile)) {
+    if (config.xrayMode === "json") errors.xrayJson = "Collez une configuration JSON Xray valide.";
+    else errors.xrayLink = "Collez un lien vmess://, vless:// ou trojan://.";
+  } else if (config.xrayMode === "link" && !["vmess", "vless", "trojan"].includes(xrayLinkScheme(config.xrayLink))) {
+    errors.xrayLink = "Le lien doit commencer par vmess://, vless:// ou trojan://.";
+  }
+  if (config.xrayMode === "json" && config.xrayJson.trim()) {
+    try {
+      const parsed = JSON.parse(config.xrayJson) as { outbounds?: unknown };
+      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.outbounds)) errors.xrayJson = "Le JSON doit contenir un tableau outbounds.";
+    } catch {
+      errors.xrayJson = "Le JSON Xray est invalide.";
+    }
   }
   return errors;
+}
+
+export function validateProfile(profile: VpnProfile): ProfileValidationErrors {
+  const errors: ProfileValidationErrors = {
+    name: required(profile.name, "Donnez un nom à ce profil."),
+  };
+
+  if (profile.method === "zivpn-udp") {
+    Object.assign(errors, validateVpnConfig(profile));
+  } else if (profile.method === "ssh-slowdns") {
+    errors.sshHost = required(profile.sshHost, "Saisissez le serveur SSH.");
+    if (!isValidPort(profile.sshPort)) errors.sshPort = "Utilisez un port SSH valide.";
+    errors.sshUser = required(profile.sshUser, "Saisissez l’utilisateur SSH.");
+    errors.password = required(profile.password, "Le mot de passe SSH est requis.");
+    errors.dnsServer = required(profile.dnsServer, "Saisissez le résolveur DNS à utiliser.");
+    if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Utilisez un port DNS valide.";
+    errors.nameserver = required(profile.nameserver, "Saisissez le domaine SlowDNS.");
+    errors.publicKey = required(profile.publicKey, "Saisissez la clé publique DNSTT.");
+  } else if (profile.method === "hysteria-udp") {
+    Object.assign(errors, validateHysteriaConfig(profile));
+  } else if (profile.method === "v2ray-dns") {
+    Object.assign(errors, validateXrayConfig(profile));
+    errors.dnsServer = required(profile.dnsServer, "Saisissez le résolveur DNS à utiliser.");
+    if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Utilisez un port DNS valide.";
+    errors.nameserver = required(profile.nameserver, "Saisissez le domaine SlowDNS.");
+    errors.publicKey = required(profile.publicKey, "Saisissez la clé publique DNSTT.");
+  } else if (profile.method === "http-proxy-payload") {
+    Object.assign(errors, validateHttpProxyConfig(profile));
+  } else if (profile.method === "ssh-ssl-tls") {
+    Object.assign(errors, validateSshSslConfig(profile));
+  } else {
+    Object.assign(errors, validateXrayConfig(profile));
+  }
+
+  return withoutEmptyErrors(errors) as ProfileValidationErrors;
 }

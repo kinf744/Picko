@@ -1,13 +1,12 @@
 import { Platform } from "react-native";
 
 type NativeSubscription = { remove: () => void };
-export type DeviceSecurityInfo = { hardwareId: string; mobileOperator: string; rooted: boolean };
 type NativeVpnModule = {
   getStatus: () => string;
+  getHardwareId?: () => string;
   prepareVpn: () => Promise<boolean>;
-  startVpn: (configJson: string) => Promise<boolean>;
+  startVpn: (profilesJson: string) => Promise<boolean>;
   stopVpn: () => Promise<boolean>;
-  getDeviceSecurityInfo: () => Promise<DeviceSecurityInfo>;
   addListener?: (event: "onLog" | "onStateChanged", listener: (payload: any) => void) => NativeSubscription;
 };
 

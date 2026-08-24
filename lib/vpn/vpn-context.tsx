@@ -3,183 +3,149 @@ import * as SecureStore from "expo-secure-store";
 import { AppState, Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
-import { isNavigationDiagnostic, sanitizeDiagnosticMessage } from "./diagnostic-format";
-import { buildConfigExport, parseConfigImport, type ConfigExport, type ImportResult } from "./config-transfer";
-import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, type ExportRestrictions } from "./export-restrictions";
-import {
-  TUNNEL_CATALOG,
-  TUNNEL_KINDS,
-  cloneTunnelProfile,
-  createProfile as makeProfile,
-  defaultBalancer,
-  omitSecrets,
-  secretFields,
-  shouldUseRoundRobin,
-  withSecrets,
-  type ProfileFieldErrors,
-  type TunnelBalancer,
-  type TunnelKind,
-  type TunnelProfile,
-} from "./tunnel-profiles";
-import { validateTunnelProfile } from "./validation";
+import { createEmptyProfile, stripSecrets, withFixedZiVpnObfs, type StoredVpnProfile, type TunnelMethod, type VpnProfile } from "./profiles";
+import { validateProfile } from "./validation";
+import { useVpnSettings } from "./settings-context";
 
 export type TunnelStatus = "disconnected" | "connecting" | "connected" | "error";
 export type LogLevel = "info" | "connection" | "warning" | "error";
-export type DiagnosticLog = { id: string; timestamp: string; level: LogLevel; component: string; message: string };
-export type ProfilesByKind = Record<TunnelKind, TunnelProfile[]>;
-export type BalancersByKind = Record<TunnelKind, TunnelBalancer>;
+export type { VpnProfile } from "./profiles";
 
-const LEGACY_CONFIG_KEY = "kighmu.vpn.config.v2";
-const LEGACY_PASSWORD_KEY = "kighmu.vpn.zivpn.password.v1";
-const LEGACY_SLOWDNS_PASSWORD_KEY = "kighmu.vpn.slowdns.ssh-password.v1";
-const ACTIVE_TUNNEL_KEY = "kighmu.vpn.catalog.active.v1";
-const REMOVED_V2RAY_DNS_PROFILE_KEY = "kighmu.vpn.v2ray-dns.profiles.v1";
-const REMOVED_V2RAY_DNS_SECRET_KEY = "kighmu.vpn.v2ray-dns.secrets.v1";
-const REMOVED_V2RAY_DNS_BALANCER_KEY = "kighmu.vpn.v2ray-dns.balancer.v1";
-const ACTIVE_RESTRICTIONS_KEY = "kighmu.vpn.imported-restrictions.v1";
-const profileStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.profiles.v1`;
-const secretStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.secrets.v1`;
-const balancerStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.balancer.v1`;
+export type DiagnosticLog = {
+  id: string;
+  timestamp: string;
+  level: LogLevel;
+  component: string;
+  message: string;
+};
 
-const emptyProfiles = (): ProfilesByKind => ({
-  zivpn: [], slowdns: [], hysteria: [], "http-payload": [], "ssh-tls": [], "v2ray-slowdns": [], "xray-v2ray": [],
-});
-const emptyBalancers = (): BalancersByKind => ({
-  zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "http-payload": defaultBalancer(), "ssh-tls": defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(),
-});
-const redact = (value: string) => value ? "••••••" : "non défini";
-const makeLog = (level: LogLevel, component: string, message: string): DiagnosticLog => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), level, component, message: sanitizeDiagnosticMessage(component, message) });
-const secretGet = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.getItem(key)) : SecureStore.getItemAsync(key);
-const secretSet = (key: string, value: string) => Platform.OS === "web" ? Promise.resolve(localStorage.setItem(key, value)) : SecureStore.setItemAsync(key, value);
-const secretDelete = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.removeItem(key)) : SecureStore.deleteItemAsync(key);
+const PROFILES_KEY = "kighmu.vpn.profiles.v2";
+const LEGACY_CONFIG_KEY = "kighmu.vpn.config.v1";
+const LEGACY_PASSWORD_KEY = "kighmu.vpn.password.v1";
+const SECRET_PREFIX = "kighmu.vpn.profile.secret.";
 
-function extractSecrets(profile: TunnelProfile) {
-  return Object.fromEntries(secretFields(profile).map((field) => [field, String((profile as Record<string, unknown>)[field] ?? "")]));
+function secretKey(id: string) {
+  return `${SECRET_PREFIX}${id}`;
 }
 
-function normalizeProfiles(kind: TunnelKind, publicValue: string | null, secretValue: string | null): TunnelProfile[] {
+function makeLog(level: LogLevel, component: string, message: string): DiagnosticLog {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+    level,
+    component,
+    message,
+  };
+}
+
+async function readSecret(id: string) {
+  const key = secretKey(id);
+  const value = Platform.OS === "web" ? localStorage.getItem(key) : await SecureStore.getItemAsync(key);
+  if (!value) return { obfs: "", password: "", hysteriaAuth: "", hysteriaObfs: "", xrayLink: "", xrayJson: "" };
   try {
-    const publicProfiles = JSON.parse(publicValue ?? "[]") as TunnelProfile[];
-    const secretMap = JSON.parse(secretValue ?? "{}") as Record<string, Record<string, string>>;
-    return publicProfiles.filter((profile) => profile.kind === kind).map((profile) => {
-      const hydrated = withSecrets(profile, secretMap[profile.id] ?? {}) as TunnelProfile & { obfs?: string; sshHost?: string; json?: string };
-      if (hydrated.kind === "zivpn") {
-        const { obfs: _legacyObfs, ...normalized } = hydrated;
-        return normalized as TunnelProfile;
-      }
-      if (hydrated.kind === "slowdns") {
-        const { sshHost: _legacySshHost, ...normalized } = hydrated;
-        return normalized as TunnelProfile;
-      }
-      if (hydrated.kind === "v2ray-slowdns") {
-        const { json: _legacyJson, ...normalized } = hydrated;
-        return { ...normalized, inputMode: "link", link: hydrated.link ?? "" } as TunnelProfile;
-      }
-      return hydrated;
-    });
-  } catch { return []; }
+    const parsed = JSON.parse(value) as { obfs?: string; password?: string; hysteriaAuth?: string; hysteriaObfs?: string; xrayLink?: string; xrayJson?: string };
+    return {
+      obfs: parsed.obfs ?? "",
+      password: parsed.password ?? "",
+      hysteriaAuth: parsed.hysteriaAuth ?? "",
+      hysteriaObfs: parsed.hysteriaObfs ?? "",
+      xrayLink: parsed.xrayLink ?? "",
+      xrayJson: parsed.xrayJson ?? "",
+    };
+  } catch {
+    return { obfs: "", password: "", hysteriaAuth: "", hysteriaObfs: "", xrayLink: "", xrayJson: "" };
+  }
+}
+
+async function writeSecret(profile: VpnProfile) {
+  const value = JSON.stringify({
+    obfs: profile.obfs,
+    password: profile.password,
+    hysteriaAuth: profile.hysteriaAuth,
+    hysteriaObfs: profile.hysteriaObfs,
+    xrayLink: profile.xrayLink,
+    xrayJson: profile.xrayJson,
+  });
+  const key = secretKey(profile.id);
+  if (Platform.OS === "web") localStorage.setItem(key, value);
+  else await SecureStore.setItemAsync(key, value);
+}
+
+async function removeSecret(id: string) {
+  const key = secretKey(id);
+  if (Platform.OS === "web") localStorage.removeItem(key);
+  else await SecureStore.deleteItemAsync(key);
 }
 
 type VpnContextValue = {
-  activeKind: TunnelKind;
-  profilesByKind: ProfilesByKind;
-  balancersByKind: BalancersByKind;
+  profiles: VpnProfile[];
+  activeProfiles: VpnProfile[];
+  primaryProfile: VpnProfile | null;
   status: TunnelStatus;
   logs: DiagnosticLog[];
   lastError: string | null;
   hydrated: boolean;
-  activeProfiles: TunnelProfile[];
-  selectTunnel: (kind: TunnelKind) => void;
-  createProfile: (kind?: TunnelKind) => TunnelProfile;
-  cloneProfile: (profile: TunnelProfile) => Promise<void>;
-  saveProfile: (profile: TunnelProfile) => Promise<{ ok: boolean; errors: ProfileFieldErrors }>;
-  deleteProfile: (kind: TunnelKind, id: string) => Promise<void>;
-  toggleProfileSelection: (kind: TunnelKind, id: string) => Promise<void>;
-  setBalancer: (kind: TunnelKind, patch: Partial<TunnelBalancer>) => Promise<void>;
+  createProfile: (method: TunnelMethod) => VpnProfile;
+  saveProfile: (profile: VpnProfile) => Promise<boolean>;
+  duplicateProfile: (profile: VpnProfile) => Promise<boolean>;
+  deleteProfile: (id: string) => Promise<void>;
+  setProfileEnabled: (id: string, enabled: boolean) => Promise<void>;
+  setMethodEnabled: (method: TunnelMethod, enabled: boolean) => Promise<void>;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   clearLogs: () => void;
-  resetAllProfiles: () => Promise<void>;
-  buildConfigExport: (kinds: TunnelKind[], includeSecrets?: boolean, restrictions?: ExportRestrictions) => ConfigExport;
-  importConfig: (raw: string, mode: "append" | "replace-imported") => Promise<ImportResult>;
+  importProfiles: (nextProfiles: VpnProfile[]) => Promise<boolean>;
+  resetProfiles: () => Promise<void>;
 };
+
 const VpnContext = createContext<VpnContextValue | null>(null);
 
 export function VpnProvider({ children }: { children: React.ReactNode }) {
-  const [activeKind, setActiveKind] = useState<TunnelKind>("zivpn");
-  const [profilesByKind, setProfilesByKind] = useState<ProfilesByKind>(emptyProfiles);
-  const [balancersByKind, setBalancersByKind] = useState<BalancersByKind>(emptyBalancers);
-  const [activeRestrictions, setActiveRestrictions] = useState<ExportRestrictions>(DEFAULT_EXPORT_RESTRICTIONS);
+  const { settings, hydrated: settingsHydrated } = useVpnSettings();
+  const [profiles, setProfiles] = useState<VpnProfile[]>([]);
   const [status, setStatus] = useState<TunnelStatus>("disconnected");
   const [logs, setLogs] = useState<DiagnosticLog[]>([]);
   const [lastError, setLastError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const addLog = useCallback((level: LogLevel, component: string, message: string) => setLogs((current) => [makeLog(level, component, message), ...current].slice(0, 300)), []);
 
-  const persistKind = useCallback(async (kind: TunnelKind, profiles: TunnelProfile[], balancer: TunnelBalancer) => {
-    const secretMap = Object.fromEntries(profiles.map((profile) => [profile.id, extractSecrets(profile)]));
-    await Promise.all([
-      AsyncStorage.setItem(profileStoreKey(kind), JSON.stringify(profiles.map(omitSecrets))),
-      secretSet(secretStoreKey(kind), JSON.stringify(secretMap)),
-      AsyncStorage.setItem(balancerStoreKey(kind), JSON.stringify(balancer)),
-    ]);
+  const addLog = useCallback((level: LogLevel, component: string, message: string) => {
+    setLogs((current) => [makeLog(level, component, message), ...current].slice(0, 300));
   }, []);
 
-  const migrateLegacyProfile = useCallback(async () => {
-    const [legacyConfig, password, sshPassword] = await Promise.all([
-      AsyncStorage.getItem(LEGACY_CONFIG_KEY), secretGet(LEGACY_PASSWORD_KEY), secretGet(LEGACY_SLOWDNS_PASSWORD_KEY),
-    ]);
-    if (!legacyConfig) return null;
-    try {
-      const config = JSON.parse(legacyConfig) as Record<string, string>;
-      if (config.mode === "slowdns") {
-        return { ...makeProfile("slowdns"), name: "Profil SSH/SlowDNS migré", selected: true, dnsServer: config.slowDnsServer ?? "", dnsPort: config.slowDnsPort ?? "53", nameserver: config.slowDnsNameserver ?? "", publicKey: config.slowDnsPublicKey ?? "", sshUsername: config.slowDnsUsername ?? "", sshPassword: sshPassword ?? "" } as TunnelProfile;
-      }
-      return { ...makeProfile("zivpn"), name: "Profil UDP-ZIVPN migré", selected: true, host: config.host ?? "", port: config.port ?? "", password: password ?? "" } as TunnelProfile;
-    } catch { return null; }
+  const persistProfiles = useCallback(async (next: VpnProfile[]) => {
+    await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(next.map(stripSecrets)));
+    await Promise.all(next.map(writeSecret));
   }, []);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const [activeStored, storedRestrictions] = await Promise.all([AsyncStorage.getItem(ACTIVE_TUNNEL_KEY), AsyncStorage.getItem(ACTIVE_RESTRICTIONS_KEY)]);
-        if (activeStored === "v2ray-dns") {
-          await AsyncStorage.setItem(ACTIVE_TUNNEL_KEY, "zivpn");
-        }
-        await Promise.all([
-          AsyncStorage.removeItem(REMOVED_V2RAY_DNS_PROFILE_KEY),
-          secretDelete(REMOVED_V2RAY_DNS_SECRET_KEY),
-          AsyncStorage.removeItem(REMOVED_V2RAY_DNS_BALANCER_KEY),
-        ]);
-        const loaded = emptyProfiles();
-        const loadedBalancers = emptyBalancers();
-        await Promise.all(TUNNEL_KINDS.map(async (kind) => {
-          const [publicProfiles, secretProfiles, savedBalancer] = await Promise.all([AsyncStorage.getItem(profileStoreKey(kind)), secretGet(secretStoreKey(kind)), AsyncStorage.getItem(balancerStoreKey(kind))]);
-          loaded[kind] = normalizeProfiles(kind, publicProfiles, secretProfiles);
-          try { if (savedBalancer) loadedBalancers[kind] = { ...defaultBalancer(), ...JSON.parse(savedBalancer) }; } catch { /* garde les valeurs sûres */ }
-        }));
-        if (loaded.zivpn.length === 0 && loaded.slowdns.length === 0) {
-          const migrated = await migrateLegacyProfile();
-          if (migrated) {
-            loaded[migrated.kind] = [migrated];
-            await persistKind(migrated.kind, [migrated], loadedBalancers[migrated.kind]);
+        const stored = await AsyncStorage.getItem(PROFILES_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as StoredVpnProfile[];
+          const restored = await Promise.all(parsed.map(async (profile) => withFixedZiVpnObfs({ ...createEmptyProfile(profile.method), ...profile, ...(await readSecret(profile.id)) })));
+          if (mounted) setProfiles(restored);
+        } else {
+          const legacy = await AsyncStorage.getItem(LEGACY_CONFIG_KEY);
+          const password = Platform.OS === "web" ? localStorage.getItem(LEGACY_PASSWORD_KEY) : await SecureStore.getItemAsync(LEGACY_PASSWORD_KEY);
+          if (legacy) {
+            const parsed = JSON.parse(legacy) as { host?: string; port?: string };
+            const migrated = { ...createEmptyProfile("zivpn-udp"), name: "Profil ZiVPN migré", host: parsed.host ?? "", port: parsed.port ?? "", password: password ?? "" };
+            if (mounted) setProfiles([migrated]);
+            await persistProfiles([migrated]);
           }
         }
-        if (!mounted) return;
-        setProfilesByKind(loaded);
-        setBalancersByKind(loadedBalancers);
-        setActiveRestrictions(normalizeExportRestrictions(storedRestrictions ? JSON.parse(storedRestrictions) : null));
-        if (activeStored && TUNNEL_KINDS.includes(activeStored as TunnelKind)) setActiveKind(activeStored as TunnelKind);
-        addLog("info", "STORAGE", "Collections de profils isolées chargées ; les secrets restent masqués.");
+        if (mounted) addLog("info", "STORAGE", "Profils locaux chargés ; les secrets restent protégés.");
       } catch {
-        if (mounted) addLog("warning", "STORAGE", "Une collection de profils n’a pas pu être chargée.");
-      } finally { if (mounted) setHydrated(true); }
+        if (mounted) addLog("warning", "STORAGE", "Les profils locaux n’ont pas pu être chargés.");
+      } finally {
+        if (mounted) setHydrated(true);
+      }
     })();
     return () => { mounted = false; };
-  }, [addLog, migrateLegacyProfile, persistKind]);
+  }, [addLog, persistProfiles]);
 
-  // Resynchronise l'état natif quand l'app revient au premier plan (notif encore présente mais JS en "disconnected")
   const syncNativeStatus = useCallback(() => {
     try {
       const native = getNativeVpn();
@@ -192,15 +158,14 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => subscribeNativeVpn(
     (payload) => {
-      const component = payload.component || "NATIVE";
-      if (isNavigationDiagnostic(component)) return;
       const level = payload.level === "error" || payload.level === "warning" || payload.level === "connection" ? payload.level : "info";
-      setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component, message: sanitizeDiagnosticMessage(component, payload.message) } as DiagnosticLog, ...current].slice(0, 300));
+      setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component: payload.component || "NATIVE", message: payload.message } as DiagnosticLog, ...current].slice(0, 300));
     },
-    (payload) => { if (["connected", "connecting", "disconnected", "error"].includes(payload.status)) setStatus(payload.status as TunnelStatus); },
+    (payload) => {
+      if (payload.status === "connected" || payload.status === "connecting" || payload.status === "disconnected" || payload.status === "error") setStatus(payload.status);
+    },
   ), []);
 
-  // Sync initial + à chaque retour foreground (bug: notif présente mais UI déconnectée après background)
   useEffect(() => {
     syncNativeStatus();
     const sub = AppState.addEventListener("change", (next) => {
@@ -209,154 +174,171 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [syncNativeStatus]);
 
-  // Re-sync aussi une fois hydraté (SecureStore peut avoir retardé le premier rendu)
   useEffect(() => {
     if (hydrated) syncNativeStatus();
   }, [hydrated, syncNativeStatus]);
 
-  const selectTunnel = useCallback((kind: TunnelKind) => {
-    setActiveKind(kind);
-    AsyncStorage.setItem(ACTIVE_TUNNEL_KEY, kind).catch(() => undefined);
-    addLog("info", "CATALOG", `Tunnel actif sélectionné : ${TUNNEL_CATALOG[kind].label}.`);
-  }, [addLog]);
+  const createProfile = useCallback((method: TunnelMethod) => createEmptyProfile(method), []);
 
-  const createProfile = useCallback((kind = activeKind) => makeProfile(kind), [activeKind]);
-
-  const cloneProfile = useCallback(async (profile: TunnelProfile) => {
-    if (activeRestrictions.lockConfiguration) { addLog("warning", "POLITIQUE", "Clonage refusé : configuration verrouillée."); return; }
-    const cloned = cloneTunnelProfile(profile);
-    const next = [...profilesByKind[profile.kind], cloned];
-    await persistKind(profile.kind, next, balancersByKind[profile.kind]);
-    setProfilesByKind((current) => ({ ...current, [profile.kind]: next }));
-    addLog("info", "STORAGE", `Profil ${TUNNEL_CATALOG[profile.kind].shortLabel} cloné localement.`);
-  }, [activeRestrictions.lockConfiguration, addLog, balancersByKind, persistKind, profilesByKind]);
-
-  const saveProfile = useCallback(async (profile: TunnelProfile) => {
-    if (activeRestrictions.lockConfiguration) return { ok: false, errors: { storage: "Cette configuration importée est verrouillée." } };
-    const errors = validateTunnelProfile(profile);
+  const saveProfile = useCallback(async (profile: VpnProfile) => {
+    const normalizedProfile = withFixedZiVpnObfs(profile);
+    const errors = validateProfile(normalizedProfile);
     if (Object.keys(errors).length > 0) {
-      addLog("warning", "VALIDATION", `Profil ${TUNNEL_CATALOG[profile.kind].shortLabel} non enregistré : champs invalides.`);
-      return { ok: false, errors };
+      addLog("warning", "VALIDATION", `Le profil « ${profile.name || "sans nom"} » contient des champs invalides.`);
+      return false;
     }
-    const nextProfile = { ...profile, updatedAt: Date.now() } as TunnelProfile;
-    const next = profilesByKind[nextProfile.kind].some((item) => item.id === nextProfile.id)
-      ? profilesByKind[nextProfile.kind].map((item) => item.id === nextProfile.id ? nextProfile : item)
-      : [...profilesByKind[nextProfile.kind], nextProfile];
+    const next = profiles.some((current) => current.id === profile.id)
+      ? profiles.map((current) => current.id === normalizedProfile.id ? normalizedProfile : current)
+      : [...profiles, normalizedProfile];
     try {
-      await persistKind(nextProfile.kind, next, balancersByKind[nextProfile.kind]);
-      setProfilesByKind((current) => ({ ...current, [nextProfile.kind]: next }));
-      addLog("info", "STORAGE", `Profil ${TUNNEL_CATALOG[nextProfile.kind].shortLabel} enregistré ; secrets=${redact(Object.values(extractSecrets(nextProfile)).filter(Boolean).join(""))}.`);
-      return { ok: true, errors: {} };
+      await persistProfiles(next);
+      setProfiles(next);
+      addLog("info", "STORAGE", `Profil « ${normalizedProfile.name} » enregistré.`);
+      return true;
     } catch {
       addLog("error", "STORAGE", "Échec d’enregistrement du profil sécurisé.");
-      return { ok: false, errors: { storage: "Le profil n’a pas pu être enregistré." } };
+      return false;
     }
-  }, [activeRestrictions.lockConfiguration, addLog, balancersByKind, persistKind, profilesByKind]);
+  }, [addLog, persistProfiles, profiles]);
 
-  const deleteProfile = useCallback(async (kind: TunnelKind, id: string) => {
-    if (activeRestrictions.lockConfiguration) { addLog("warning", "POLITIQUE", "Suppression refusée : configuration verrouillée."); return; }
-    const next = profilesByKind[kind].filter((profile) => profile.id !== id);
-    await persistKind(kind, next, balancersByKind[kind]);
-    setProfilesByKind((current) => ({ ...current, [kind]: next }));
-    addLog("info", "STORAGE", `Profil ${TUNNEL_CATALOG[kind].shortLabel} supprimé.`);
-  }, [activeRestrictions.lockConfiguration, addLog, balancersByKind, persistKind, profilesByKind]);
+  const duplicateProfile = useCallback(async (source: VpnProfile) => {
+    const existingNames = new Set(profiles.map((profile) => profile.name.trim().toLocaleLowerCase()));
+    const baseName = source.name.trim() || "Profil de tunnel";
+    let copyName = `${baseName} (copie)`;
+    let suffix = 2;
+    while (existingNames.has(copyName.toLocaleLowerCase())) {
+      copyName = `${baseName} (copie ${suffix})`;
+      suffix += 1;
+    }
+    const clone = withFixedZiVpnObfs({ ...source, id: createEmptyProfile(source.method).id, name: copyName });
+    try {
+      const next = [...profiles, clone];
+      await persistProfiles(next);
+      setProfiles(next);
+      addLog("info", "STORAGE", `Profil « ${source.name || "sans nom"} » cloné sous « ${copyName} ».`);
+      return true;
+    } catch {
+      addLog("error", "STORAGE", "Échec du clonage du profil sécurisé.");
+      return false;
+    }
+  }, [addLog, persistProfiles, profiles]);
 
-  const toggleProfileSelection = useCallback(async (kind: TunnelKind, id: string) => {
-    if (activeRestrictions.lockConfiguration) { addLog("warning", "POLITIQUE", "Modification refusée : configuration verrouillée."); return; }
-    const next = profilesByKind[kind].map((profile) => profile.id === id ? { ...profile, selected: !profile.selected, updatedAt: Date.now() } as TunnelProfile : profile);
-    await persistKind(kind, next, balancersByKind[kind]);
-    setProfilesByKind((current) => ({ ...current, [kind]: next }));
-  }, [activeRestrictions.lockConfiguration, addLog, balancersByKind, persistKind, profilesByKind]);
+  const importProfiles = useCallback(async (nextProfiles: VpnProfile[]) => {
+    try {
+      const unique = new Set<string>();
+      const normalized = nextProfiles.map((profile) => {
+        const fallback = createEmptyProfile(profile.method);
+        const id = profile.id && !unique.has(profile.id) ? profile.id : fallback.id;
+        unique.add(id);
+        return withFixedZiVpnObfs({ ...fallback, ...profile, id, enabled: false });
+      });
+      const invalid = normalized.find((profile) => Object.keys(validateProfile(profile)).length > 0);
+      if (invalid) {
+        addLog("warning", "IMPORT", `Import refusé : le profil « ${invalid.name || "sans nom"} » est invalide.`);
+        return false;
+      }
+      await persistProfiles(normalized);
+      const importedIds = new Set(normalized.map((profile) => profile.id));
+      await Promise.all(profiles.filter((profile) => !importedIds.has(profile.id)).map((profile) => removeSecret(profile.id)));
+      setProfiles(normalized);
+      addLog("connection", "IMPORT", `${normalized.length} profil(s) importé(s). Ils sont désactivés par sécurité.`);
+      return true;
+    } catch {
+      addLog("error", "IMPORT", "Échec de l’importation des profils.");
+      return false;
+    }
+  }, [addLog, persistProfiles, profiles]);
 
-  const setBalancer = useCallback(async (kind: TunnelKind, patch: Partial<TunnelBalancer>) => {
-    const next = { ...balancersByKind[kind], ...patch };
-    await persistKind(kind, profilesByKind[kind], next);
-    setBalancersByKind((current) => ({ ...current, [kind]: next }));
-    addLog("info", "BALANCER", `${TUNNEL_CATALOG[kind].shortLabel} : balancier ${next.enabled ? "activé" : "désactivé"}.`);
-  }, [addLog, balancersByKind, persistKind, profilesByKind]);
+  const resetProfiles = useCallback(async () => {
+    await Promise.all(profiles.map((profile) => removeSecret(profile.id)));
+    await AsyncStorage.removeItem(PROFILES_KEY);
+    setProfiles([]);
+    addLog("connection", "STORAGE", "Configurations VPN réinitialisées sur cet appareil.");
+  }, [addLog, profiles]);
 
-  const activeProfiles = profilesByKind[activeKind].filter((profile) => profile.selected);
+  const deleteProfile = useCallback(async (id: string) => {
+    const next = profiles.filter((profile) => profile.id !== id);
+    await persistProfiles(next);
+    await removeSecret(id);
+    setProfiles(next);
+    addLog("info", "STORAGE", "Profil supprimé de l’appareil.");
+  }, [addLog, persistProfiles, profiles]);
+
+  const setProfileEnabled = useCallback(async (id: string, enabled: boolean) => {
+    const next = profiles.map((profile) => profile.id === id ? { ...profile, enabled } : profile);
+    await persistProfiles(next);
+    setProfiles(next);
+  }, [persistProfiles, profiles]);
+
+  const setMethodEnabled = useCallback(async (method: TunnelMethod, enabled: boolean) => {
+    const next = profiles.map((profile) => profile.method === method ? { ...profile, enabled } : profile);
+    await persistProfiles(next);
+    setProfiles(next);
+    const count = next.filter((profile) => profile.method === method).length;
+    addLog("info", "TUNNEL", `${count} profil(s) ${enabled ? "activé(s)" : "désactivé(s)"} pour la méthode ${method}.`);
+  }, [addLog, persistProfiles, profiles]);
+
+  const activeProfiles = useMemo(() => profiles.filter((profile) => profile.enabled), [profiles]);
+  const primaryProfile = activeProfiles[0] ?? profiles[0] ?? null;
+
   const connect = useCallback(async () => {
-    const selected = profilesByKind[activeKind].filter((profile) => profile.selected);
-    if (selected.length === 0) {
-      setLastError("Sélectionnez au moins un profil pour le tunnel choisi.");
-      setStatus("error");
-      addLog("error", "VALIDATION", "Connexion refusée : aucun profil sélectionné.");
+    if (!settingsHydrated) {
+      setLastError("Chargement des paramètres VPN en cours. Réessayez dans un instant.");
+      addLog("warning", "SETTINGS", "Connexion différée pendant le chargement des paramètres.");
       return;
     }
-    const invalid = selected.map((profile) => ({ profile, errors: validateTunnelProfile(profile) })).find((item) => Object.keys(item.errors).length > 0);
+    if (activeProfiles.length === 0) {
+      setLastError("Activez au moins un profil de tunnel avant de vous connecter.");
+      setStatus("error");
+      addLog("error", "VALIDATION", "Connexion refusée : aucun profil actif.");
+      return;
+    }
+    const invalid = activeProfiles.find((profile) => Object.keys(validateProfile(profile)).length > 0);
     if (invalid) {
-      setLastError(`Le profil « ${invalid.profile.name} » est incomplet.`);
+      setLastError(`Complétez le profil « ${invalid.name || "sans nom"} » avant de vous connecter.`);
       setStatus("error");
-      addLog("error", "VALIDATION", `Connexion refusée : profil invalide pour ${TUNNEL_CATALOG[activeKind].shortLabel}.`);
+      addLog("error", "VALIDATION", "Connexion refusée : un profil actif est invalide.");
       return;
     }
-    const balancer = balancersByKind[activeKind];
-    const shouldBalance = shouldUseRoundRobin(selected.length);
     setLastError(null);
     setStatus("connecting");
-    setLogs([]);
-    addLog("connection", "SESSION", `Journal de connexion réinitialisé pour ${TUNNEL_CATALOG[activeKind].label}.`);
-    addLog("connection", "CATALOG", `${TUNNEL_CATALOG[activeKind].label} : ${selected.length} profil(s) sélectionné(s), balancier=${shouldBalance ? "round robin automatique" : "sortie directe"}.`);
+    addLog("connection", "TUNNEL", `Préparation de ${activeProfiles.length} tunnel(s) actif(s).`);
     const native = getNativeVpn();
     if (!native) {
       setLastError("Le moteur natif Android n’est pas disponible dans ce preview.");
       setStatus("error");
-      addLog("warning", "NATIVE", "La connexion réelle nécessite un build Android personnalisé.");
+      addLog("warning", "NATIVE", "Un build Android personnalisé est nécessaire pour établir les tunnels.");
       return;
     }
     try {
-      if (!await native.prepareVpn()) {
+      const prepared = await native.prepareVpn();
+      if (!prepared) {
         setStatus("disconnected");
         setLastError("Autorisation VPN en attente ou refusée par Android.");
         addLog("warning", "ANDROID", "L’autorisation VPN doit être confirmée dans la fenêtre système.");
         return;
       }
-      await native.startVpn(JSON.stringify({ version: 3, kind: activeKind, balancer: { ...balancer, enabled: shouldBalance }, restrictions: activeRestrictions, profiles: selected }));
-      addLog("connection", "NATIVE", `Service Android démarré pour ${TUNNEL_CATALOG[activeKind].label}.`);
+      await native.startVpn(JSON.stringify({ profiles: activeProfiles, settings }));
+      addLog("connection", "NATIVE", "Service VPN démarré ; initialisation et contrôle de santé des tunnels en cours.");
     } catch (error) {
       setLastError("Le service VPN Android n’a pas pu démarrer.");
       setStatus("error");
       addLog("error", "NATIVE", `Échec du démarrage natif : ${String(error).slice(0, 180)}`);
     }
-  }, [activeKind, activeRestrictions, addLog, balancersByKind, profilesByKind]);
+  }, [activeProfiles, addLog, settings, settingsHydrated]);
 
   const disconnect = useCallback(async () => {
-    try { await getNativeVpn()?.stopVpn(); } catch (error) { addLog("warning", "NATIVE", `Arrêt natif signalé avec une erreur : ${String(error).slice(0, 160)}`); }
+    try {
+      await getNativeVpn()?.stopVpn();
+    } catch (error) {
+      addLog("warning", "NATIVE", `Arrêt natif signalé avec une erreur : ${String(error).slice(0, 160)}`);
+    }
     setStatus("disconnected");
     setLastError(null);
     addLog("connection", "TUNNEL", "Déconnexion demandée.");
   }, [addLog]);
 
-  const resetAllProfiles = useCallback(async () => {
-    await Promise.all([...TUNNEL_KINDS.flatMap((kind) => [AsyncStorage.removeItem(profileStoreKey(kind)), AsyncStorage.removeItem(balancerStoreKey(kind)), secretDelete(secretStoreKey(kind))]), AsyncStorage.removeItem(ACTIVE_RESTRICTIONS_KEY)]);
-    setProfilesByKind(emptyProfiles());
-    setBalancersByKind(emptyBalancers());
-    setActiveRestrictions(DEFAULT_EXPORT_RESTRICTIONS);
-    addLog("info", "STORAGE", "Toutes les collections de profils et leurs secrets ont été réinitialisés.");
-  }, [addLog]);
-
-  const exportConfiguration = useCallback((kinds: TunnelKind[], includeSecrets = false, restrictions?: ExportRestrictions) => buildConfigExport(profilesByKind, balancersByKind, kinds, includeSecrets, restrictions), [balancersByKind, profilesByKind]);
-
-  const importConfig = useCallback(async (raw: string, mode: "append" | "replace-imported") => {
-    const parsed = parseConfigImport(raw);
-    const nextProfiles = { ...profilesByKind };
-    const nextBalancers = { ...balancersByKind };
-    parsed.tunnels.forEach((tunnel) => {
-      nextProfiles[tunnel.kind] = mode === "replace-imported" ? tunnel.profiles : [...nextProfiles[tunnel.kind], ...tunnel.profiles];
-      nextBalancers[tunnel.kind] = tunnel.balancer;
-    });
-    await Promise.all(TUNNEL_KINDS.map((kind) => persistKind(kind, nextProfiles[kind], nextBalancers[kind])));
-    await AsyncStorage.setItem(ACTIVE_RESTRICTIONS_KEY, JSON.stringify(parsed.restrictions));
-    setProfilesByKind(nextProfiles);
-    setBalancersByKind(nextBalancers);
-    setActiveRestrictions(parsed.restrictions);
-    if (parsed.importedKinds.length > 0) setActiveKind(parsed.importedKinds[0]);
-    addLog("info", "IMPORT", `Configuration importée : ${parsed.importedProfiles} profil(s), ${parsed.importedKinds.length} famille(s), secrets=${parsed.containsSecrets ? "présents" : "absents"}.`);
-    return parsed;
-  }, [addLog, balancersByKind, persistKind, profilesByKind]);
-
-  const value = useMemo(() => ({ activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, cloneProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, clearLogs: () => setLogs([]), resetAllProfiles, buildConfigExport: exportConfiguration, importConfig }), [activeKind, profilesByKind, balancersByKind, status, logs, lastError, hydrated, activeProfiles, selectTunnel, createProfile, cloneProfile, saveProfile, deleteProfile, toggleProfileSelection, setBalancer, connect, disconnect, resetAllProfiles, exportConfiguration, importConfig]);
+  const value = useMemo(() => ({ profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, importProfiles, resetProfiles, deleteProfile, setProfileEnabled, setMethodEnabled, connect, disconnect, clearLogs: () => setLogs([]) }), [profiles, activeProfiles, primaryProfile, status, logs, lastError, hydrated, createProfile, saveProfile, duplicateProfile, importProfiles, resetProfiles, deleteProfile, setProfileEnabled, setMethodEnabled, connect, disconnect]);
   return <VpnContext.Provider value={value}>{children}</VpnContext.Provider>;
 }
 
