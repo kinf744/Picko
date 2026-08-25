@@ -27,6 +27,28 @@ describe("modèle de profils multi-tunnels", () => {
     });
   });
 
+  it("pré-remplit les valeurs par défaut utilisables (ports ZIVPN/Hysteria, DNS publics)", () => {
+    const zivpn = createProfile("zivpn");
+    if (zivpn.kind !== "zivpn") throw new Error("Profil ZIVPN attendu");
+    expect(zivpn.port).toBe("6000-19999");
+
+    const hysteria = createProfile("hysteria");
+    if (hysteria.kind !== "hysteria") throw new Error("Profil Hysteria attendu");
+    expect(hysteria.port).toBe("20000-50000");
+
+    const slowdns = createProfile("slowdns");
+    if (slowdns.kind !== "slowdns") throw new Error("Profil SlowDNS attendu");
+    expect(slowdns.dnsServer).toBe("8.8.8.8");
+
+    const v2dns = createProfile("v2ray-slowdns");
+    if (v2dns.kind !== "v2ray-slowdns") throw new Error("Profil V2Ray+SlowDNS attendu");
+    expect(v2dns.dnsServer).toBe("8.8.8.8");
+
+    // Les valeurs par défaut sont directement valides côté moteur.
+    expect(validateTunnelProfile({ ...zivpn, host: "198.51.100.10", password: "secret", name: "ZIVPN" }).port).toBeUndefined();
+    expect(validateTunnelProfile({ ...hysteria, host: "198.51.100.12", auth: "a", obfs: "o", name: "H" }).port).toBeUndefined();
+  });
+
   it("initialise et valide les débits UDP-ZIVPN", () => {
     const profile = createProfile("zivpn");
     if (profile.kind !== "zivpn") throw new Error("Profil ZIVPN attendu");

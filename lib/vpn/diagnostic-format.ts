@@ -22,6 +22,24 @@ export function isNavigationDiagnostic(component: string) {
   return new Set(["NAVIGATION", "STORAGE", "IMPORT", "EXPORT", "UI"]).has(component.trim().toUpperCase());
 }
 
+/** Composants natifs/applicatifs liés au cycle de navigation, jamais pertinents pour le tunnel. */
+const NAVIGATION_COMPONENTS = new Set(["NAVIGATION", "STORAGE", "IMPORT", "EXPORT", "UI", "ROUTER", "LIFECYCLE", "APP_STATE", "FOCUS", "TAB", "SWIPE"]);
+
+const navigationMessagePattern = /\b(navigat\w*|routers?\b|routes?\b|onglets?\b|balayag\w*|swip\w*|screen[- ]?(?:focus|blur|mount)|goBack|tab(?:s)? (?:change|switch))\b/i;
+
+/**
+ * Décide si une entrée de journal doit être ignorée. Les activités de navigation
+ * et d'interface ne sont JAMAIS affichées dans le diagnostic (choix produit) :
+ * - composant lié à la navigation/stockage/import → silencieux ;
+ * - message évoquant la navigation (FR/EN) → silencieux ;
+ * - les warnings et erreurs passent TOUJOURS (un vrai problème doit rester visible).
+ */
+export function shouldSkipJournalEntry(level: DiagnosticLevel, component: string, message: string): boolean {
+  if (level === "warning" || level === "error") return false;
+  if (NAVIGATION_COMPONENTS.has(component.trim().toUpperCase())) return true;
+  return navigationMessagePattern.test(message);
+}
+
 export function isSshBanner(component: string) {
   return component.trim().toUpperCase() === "SSH_BANNER";
 }

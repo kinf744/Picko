@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { AppState, Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
-import { isNavigationDiagnostic, sanitizeDiagnosticMessage } from "./diagnostic-format";
+import { sanitizeDiagnosticMessage, shouldSkipJournalEntry } from "./diagnostic-format";
 import { buildConfigExport, parseConfigImport, type ConfigExport, type ImportResult } from "./config-transfer";
 import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, type ExportRestrictions } from "./export-restrictions";
 import {
@@ -54,7 +54,6 @@ const emptyBalancers = (): BalancersByKind => ({
   zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "http-payload": defaultBalancer(), "ssh-tls": defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(),
 });
 const redact = (value: string) => (value ? tLog("logs.redacted") : tLog("logs.unset"));
-const makeLog = (level: LogLevel, component: string, message: string): DiagnosticLog => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), level, component, message: sanitizeDiagnosticMessage(component, message) });
 const secretGet = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.getItem(key)) : SecureStore.getItemAsync(key);
 const secretSet = (key: string, value: string) => Platform.OS === "web" ? Promise.resolve(localStorage.setItem(key, value)) : SecureStore.setItemAsync(key, value);
 const secretDelete = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.removeItem(key)) : SecureStore.deleteItemAsync(key);
@@ -120,7 +119,13 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   const [logs, setLogs] = useState<DiagnosticLog[]>([]);
   const [lastError, setLastError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const addLog = useCallback((level: LogLevel, component: string, message: string) => setLogs((current) => [makeLog(level, component, message), ...current].slice(0, 300)), []);
+  // Journal : les activités de navigation et d'interface ne sont jamais affichées
+// (les warnings/erreurs passent toujours — voir shouldSkipJournalEntry).
+const addLog = useCallback((level: LogLevel, component: string, rawMessage: string) => {
+    const message = sanitizeDiagnosticMessage(component, rawMessage);
+    if (shouldSkipJournalEntry(level, component, message)) return;
+    setLogs((current) => [{ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), level, component, message }, ...current].slice(0, 300));
+  }, []);
 
   const persistKind = useCallback(async (kind: TunnelKind, profiles: TunnelProfile[], balancer: TunnelBalancer) => {
     const secretMap = Object.fromEntries(profiles.map((profile) => [profile.id, extractSecrets(profile)]));
@@ -199,9 +204,10 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => subscribeNativeVpn(
     (payload) => {
       const component = payload.component || "NATIVE";
-      if (isNavigationDiagnostic(component)) return;
       const level = payload.level === "error" || payload.level === "warning" || payload.level === "connection" ? payload.level : "info";
-      setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component, message: sanitizeDiagnosticMessage(component, payload.message) } as DiagnosticLog, ...current].slice(0, 300));
+      const message = sanitizeDiagnosticMessage(component, payload.message);
+      if (shouldSkipJournalEntry(level, component, message)) return;
+      setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component, message } as DiagnosticLog, ...current].slice(0, 300));
     },
     (payload) => { if (["connected", "connecting", "disconnected", "error"].includes(payload.status)) setStatus(payload.status as TunnelStatus); },
   ), []);
@@ -223,8 +229,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   const selectTunnel = useCallback((kind: TunnelKind) => {
     setActiveKind(kind);
     AsyncStorage.setItem(ACTIVE_TUNNEL_KEY, kind).catch(() => undefined);
-    addLog("info", "CATALOG", tLog("logs.catalog.selected", { label: tunnelCatalog(kind).label }));
-  }, [addLog]);
+  }, []);
 
   const createProfile = useCallback((kind = activeKind) => makeProfile(kind), [activeKind]);
 
@@ -278,8 +283,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
     const next = { ...balancersByKind[kind], ...patch };
     await persistKind(kind, profilesByKind[kind], next);
     setBalancersByKind((current) => ({ ...current, [kind]: next }));
-    addLog("info", "BALANCER", tLog("logs.balancer.state", { short: tunnelCatalog(kind).shortLabel, state: next.enabled ? tLog("logs.balancer.on") : tLog("logs.balancer.off") }));
-  }, [addLog, balancersByKind, persistKind, profilesByKind]);
+  }, [balancersByKind, persistKind, profilesByKind]);
 
   const activeProfiles = profilesByKind[activeKind].filter((profile) => profile.selected);
   const connect = useCallback(async () => {

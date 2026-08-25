@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDiagnosticTime, formatSshServerMessage, isNavigationDiagnostic, isSshBanner, isSshServerMessage, sanitizeDiagnosticMessage, sanitizeDiagnosticText } from "../lib/vpn/diagnostic-format";
+import { formatDiagnosticTime, formatSshServerMessage, isNavigationDiagnostic, isSshBanner, isSshServerMessage, sanitizeDiagnosticMessage, sanitizeDiagnosticText, shouldSkipJournalEntry } from "../lib/vpn/diagnostic-format";
 
 describe("format du journal Diagnostic", () => {
   it("masque les valeurs sensibles dans les sorties de tunnel", () => {
@@ -41,5 +41,27 @@ describe("format du journal Diagnostic", () => {
   it("formate un horaire stable et gère une date invalide", () => {
     expect(formatDiagnosticTime("invalide")).toBe("--:--:--");
     expect(formatDiagnosticTime("2026-08-19T11:15:24.000Z")).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+  });
+});
+
+describe("filtre anti-navigation du journal", () => {
+  it("ignore les entrées info/connection liées à la navigation, au stockage et à l'import", () => {
+    expect(shouldSkipJournalEntry("info", "STORAGE", "Profil enregistré")).toBe(true);
+    expect(shouldSkipJournalEntry("connection", "IMPORT", "Configuration importée : 3 profil(s)")).toBe(true);
+    expect(shouldSkipJournalEntry("info", "ROUTER", "screen focus /index")).toBe(true);
+    expect(shouldSkipJournalEntry("info", "NATIVE", "Balayage vers l'onglet configuration")).toBe(true);
+    expect(shouldSkipJournalEntry("info", "UI", "tab switch")).toBe(true);
+  });
+
+  it("garde toujours les warnings et erreurs, même liés à la navigation", () => {
+    expect(shouldSkipJournalEntry("warning", "STORAGE", "Une collection n'a pas pu être chargée.")).toBe(false);
+    expect(shouldSkipJournalEntry("error", "NAVIGATION", "Échec de navigation")).toBe(false);
+  });
+
+  it("garde les entrées utiles du tunnel (SESSION/NATIVE/ANDROID/VALIDATION)", () => {
+    expect(shouldSkipJournalEntry("connection", "SESSION", "Journal de connexion réinitialisé pour UDP-ZIVPN.")).toBe(false);
+    expect(shouldSkipJournalEntry("warning", "ANDROID", "L'autorisation VPN doit être confirmée dans la fenêtre système.")).toBe(false);
+    expect(shouldSkipJournalEntry("error", "NATIVE", "Échec du démarrage natif : timeout")).toBe(false);
+    expect(shouldSkipJournalEntry("info", "CATALOG", "UDP-ZIVPN : 2 profil(s) sélectionné(s), balancier=round robin automatique.")).toBe(false);
   });
 });

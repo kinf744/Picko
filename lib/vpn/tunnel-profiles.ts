@@ -146,12 +146,12 @@ const makeBase = <K extends TunnelKind>(kind: K): ProfileBase & { kind: K } => (
 export function createProfile(kind: TunnelKind): TunnelProfile {
   const base = makeBase(kind);
   switch (kind) {
-    case "zivpn": return { ...base, kind, host: "", port: "", password: "", uploadMbps: "10", downloadMbps: "50" };
-    case "slowdns": return { ...base, kind, dnsServer: "", dnsPort: "53", nameserver: "", publicKey: "", sshUsername: "", sshPassword: "" };
-    case "hysteria": return { ...base, kind, host: "", port: "", auth: "", obfs: "", uploadMbps: "10", downloadMbps: "50" };
+    case "zivpn": return { ...base, kind, host: "", port: "6000-19999", password: "", uploadMbps: "10", downloadMbps: "50" }; // port par défaut directement utilisable
+    case "slowdns": return { ...base, kind, dnsServer: "8.8.8.8", dnsPort: "53", nameserver: "", publicKey: "", sshUsername: "", sshPassword: "" }; // DNS public par défaut
+    case "hysteria": return { ...base, kind, host: "", port: "20000-50000", auth: "", obfs: "", uploadMbps: "10", downloadMbps: "50" }; // plage UDP par défaut
     case "http-payload": return { ...base, kind, proxyHost: "", proxyPort: "8080", payload: "CONNECT [host]:[port] HTTP/1.1[crlf]Host: [host]:[port][crlf]Proxy-Connection: Keep-Alive[crlf][crlf]", sshHost: "", sshPort: "22", sshUsername: "", sshPassword: "" };
     case "ssh-tls": return { ...base, kind, tlsHost: "", tlsPort: "443", sni: "", sshUsername: "", sshPassword: "" };
-    case "v2ray-slowdns": return { ...base, kind, dnsServer: "", dnsPort: "53", nameserver: "", publicKey: "", inputMode: "link", link: "" };
+    case "v2ray-slowdns": return { ...base, kind, dnsServer: "8.8.8.8", dnsPort: "53", nameserver: "", publicKey: "", inputMode: "link", link: "" }; // DNS public par défaut
     case "xray-v2ray": return { ...base, kind, inputMode: "link", link: "", json: "" };
   }
 }
