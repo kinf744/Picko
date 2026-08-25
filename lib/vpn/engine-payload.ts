@@ -1,3 +1,4 @@
+import type { AppSettings } from "../app-settings";
 import { ZIVPN_FIXED_OBFS, type TunnelKind, type TunnelProfile } from "./tunnel-profiles";
 
 /**
@@ -106,7 +107,85 @@ export function toEngineProfile(profile: TunnelProfile): EngineProfile {
   throw new Error(`Type de tunnel non pris en charge : ${JSON.stringify(exhaustive)}`);
 }
 
-/** Construit la chaîne JSON passée à `native.startVpn(...)`. */
-export function buildEnginePayload(profiles: TunnelProfile[]): string {
-  return JSON.stringify({ profiles: profiles.map(toEngineProfile) });
+/**
+ * Réglages moteurs émis sous la clé `settings` (sibling de `profiles`).
+ * Les noms de clés DOIVENT être identiques à ceux lus par `VpnRuntimeSettings.parse()`
+ * (modules/kighmu-vpn-native/.../VpnRuntimeSettings.kt:30-54) : une clé mal
+ * orthographiée retomberait silencieusement sur le défaut natif.
+ *
+ * ⚠️ `debugMode` est volontairement ABSENT : le réglage applicatif
+ * `verboseDiagnostics` ne concerne que la rétention locale des logs et ne doit
+ * jamais basculer le debug moteur natif (défaut false).
+ */
+export type EngineSettings = {
+  customDnsEnabled: boolean;
+  dnsPrimary: string;
+  dnsSecondary: string;
+  mtu: number;
+  wakeLockEnabled: boolean;
+  profileNameInNotification: boolean;
+  httpPingEnabled: boolean;
+  httpPingUrl: string;
+  httpPingIntervalMs: number;
+  httpPingTimeoutMs: number;
+  reconnectAfterFailures: number;
+  alwaysReconnect: boolean;
+};
+
+/** Clamps entiers miroir des `coerceIn(...)` natifs (arrondit les demi-mesures). */
+const clampInt = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, Math.round(value)));
+
+/** Repli identiques aux défauts de la data class native (VpnRuntimeSettings.kt:9-16),
+ * utilisés quand la valeur saisie est vide/invalide — même comportement que le natif. */
+const NATIVE_FALLBACK = {
+  dnsPrimary: "1.1.1.1",
+  dnsSecondary: "1.0.0.1",
+  httpPingUrl: "https://www.google.com/generate_204",
+} as const;
+
+const cleanDns = (value: string, fallback: string): string => {
+  const trimmed = String(value ?? "").trim().slice(0, 255);
+  return trimmed.length > 0 ? trimmed : fallback;
+};
+
+// Miroir de VpnRuntimeSettings.kt:34-36 : schéma http(s) + hôte non vide, sinon repli.
+const cleanHttpUrl = (value: string): string => {
+  const trimmed = String(value ?? "").trim();
+  return /^https?:\/\/[^\s/:?#]+/i.test(trimmed) ? trimmed : NATIVE_FALLBACK.httpPingUrl;
+};
+
+/** Traduit AppSettings vers l'objet `settings` du moteur (clamps JS = défense en profondeur,
+ * le natif re-clampe de toute façon). */
+export function toEngineSettings(settings: AppSettings): EngineSettings {
+  // Le timeout est plafonné par min(60000, intervalle), exactement comme le natif.
+  const interval = clampInt(settings.httpPingIntervalMs, 1_000, 120_000);
+  return {
+    customDnsEnabled: settings.customDnsEnabled === true,
+    dnsPrimary: cleanDns(settings.dnsPrimary, NATIVE_FALLBACK.dnsPrimary),
+    dnsSecondary: cleanDns(settings.dnsSecondary, NATIVE_FALLBACK.dnsSecondary),
+    mtu: clampInt(settings.mtu, 1280, 1500),
+    wakeLockEnabled: settings.wakeLockEnabled === true,
+    profileNameInNotification: settings.profileNameInNotification !== false,
+    httpPingEnabled: settings.httpPingEnabled !== false,
+    httpPingUrl: cleanHttpUrl(settings.httpPingUrl),
+    httpPingIntervalMs: interval,
+    httpPingTimeoutMs: clampInt(settings.httpPingTimeoutMs, 1_000, Math.min(60_000, interval)),
+    reconnectAfterFailures: clampInt(settings.reconnectAfterFailures, 0, 20),
+    alwaysReconnect: settings.alwaysReconnect !== false,
+  };
+}
+
+/**
+ * Construit la chaîne JSON passée à `native.startVpn(...)`.
+ *
+ * Sans `settings`, émet uniquement `{ profiles }` : le moteur garde alors ses
+ * défauts natifs — c'est le comportement historique, conservé pour les tests.
+ * Avec `settings`, émet `{ profiles, settings }` : les valeurs deviennent
+ * autoritaires côté natif (défauts AppSettings = défauts natifs → neutre).
+ */
+export function buildEnginePayload(profiles: TunnelProfile[], settings?: AppSettings): string {
+  const payload = settings === undefined
+    ? { profiles: profiles.map(toEngineProfile) }
+    : { profiles: profiles.map(toEngineProfile), settings: toEngineSettings(settings) };
+  return JSON.stringify(payload);
 }

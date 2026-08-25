@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ZIVPN_FIXED_OBFS, TUNNEL_KINDS, createProfile, type TunnelProfile } from "../lib/vpn/tunnel-profiles";
 import { buildEnginePayload, toEngineProfile } from "../lib/vpn/engine-payload";
+import { DEFAULT_APP_SETTINGS } from "../lib/app-settings";
+
+// L'adaptateur n'utilise que des imports de types d'app-settings ; le mock
+// neutralise AsyncStorage pour l'import des constantes de défauts sous Vitest.
+vi.mock("@react-native-async-storage/async-storage", () => ({ default: { getItem: async () => null, setItem: async () => undefined } }));
 
 // Profils entièrement renseignés pour chaque famille (mêmes valeurs de référence
 // que tests/tunnel-profiles.test.ts) — toutes valides côté #154.
@@ -137,5 +142,58 @@ describe("adaptateur de charge utile moteur natif", () => {
     expect(payload.profiles).toHaveLength(2);
     expect(payload.profiles[0].method).toBe("zivpn-udp");
     expect(payload.profiles[1].method).toBe("hysteria-udp");
+  });
+});
+
+// Défauts documentés de la data class native (VpnRuntimeSettings.kt:7-20) :
+// référence figée pour le garde-fou anti-dérive des défauts JS.
+const NATIVE_ENGINE_DEFAULTS = {
+  customDnsEnabled: false,
+  dnsPrimary: "1.1.1.1",
+  dnsSecondary: "1.0.0.1",
+  mtu: 1400,
+  wakeLockEnabled: false,
+  profileNameInNotification: true,
+  httpPingEnabled: true,
+  httpPingUrl: "https://www.google.com/generate_204",
+  httpPingIntervalMs: 5000,
+  httpPingTimeoutMs: 5000,
+  reconnectAfterFailures: 3,
+  alwaysReconnect: true,
+};
+
+describe("réglages moteurs émis sous la clé `settings`", () => {
+  it("émet { profiles, settings } avec défauts AppSettings identiques aux défauts natifs", () => {
+    const payload = JSON.parse(buildEnginePayload([configured("zivpn")], DEFAULT_APP_SETTINGS));
+    expect(Object.keys(payload)).toEqual(["profiles", "settings"]);
+    expect(payload.settings).toEqual(NATIVE_ENGINE_DEFAULTS);
+  });
+
+  it("n'émet jamais `debugMode` (verboseDiagnostics ne doit pas basculer le debug moteur)", () => {
+    const payload = JSON.parse(buildEnginePayload([configured("zivpn")], { ...DEFAULT_APP_SETTINGS, verboseDiagnostics: true }));
+    expect("debugMode" in payload.settings).toBe(false);
+  });
+
+  it("clampe les valeurs hors bornes comme VpnRuntimeSettings.parse()", () => {
+    const payload = JSON.parse(buildEnginePayload([configured("zivpn")], { ...DEFAULT_APP_SETTINGS, mtu: 99999, httpPingIntervalMs: 500, httpPingTimeoutMs: 90000, reconnectAfterFailures: 99 }));
+    expect(payload.settings.mtu).toBe(1500);
+    expect(payload.settings.httpPingIntervalMs).toBe(1000);
+    // Le timeout est replafonné par l'intervalle déjà clampé : min(60000, 1000).
+    expect(payload.settings.httpPingTimeoutMs).toBe(1000);
+    expect(payload.settings.reconnectAfterFailures).toBe(20);
+  });
+
+  it("plafonne le timeout HTTP par min(60000, intervalle)", () => {
+    const high = JSON.parse(buildEnginePayload([configured("zivpn")], { ...DEFAULT_APP_SETTINGS, httpPingIntervalMs: 120000, httpPingTimeoutMs: 90000 }));
+    expect(high.settings.httpPingTimeoutMs).toBe(60000);
+    const mid = JSON.parse(buildEnginePayload([configured("zivpn")], { ...DEFAULT_APP_SETTINGS, httpPingIntervalMs: 2500, httpPingTimeoutMs: 2500 }));
+    expect(mid.settings.httpPingTimeoutMs).toBe(2500);
+  });
+
+  it("repli DNS vides et URL invalide sur les défauts natifs (même comportement que parse())", () => {
+    const payload = JSON.parse(buildEnginePayload([configured("zivpn")], { ...DEFAULT_APP_SETTINGS, dnsPrimary: "   ", dnsSecondary: "", httpPingUrl: "ftp://invalide.example" }));
+    expect(payload.settings.dnsPrimary).toBe("1.1.1.1");
+    expect(payload.settings.dnsSecondary).toBe("1.0.0.1");
+    expect(payload.settings.httpPingUrl).toBe("https://www.google.com/generate_204");
   });
 });

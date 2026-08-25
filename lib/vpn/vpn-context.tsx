@@ -23,6 +23,7 @@ import {
 } from "./tunnel-profiles";
 import { validateTunnelProfile } from "./validation";
 import { buildEnginePayload } from "./engine-payload";
+import { loadAppSettings } from "../app-settings";
 
 export type TunnelStatus = "disconnected" | "connecting" | "connected" | "error";
 export type LogLevel = "info" | "connection" | "warning" | "error";
@@ -312,7 +313,10 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
         addLog("warning", "ANDROID", "L’autorisation VPN doit être confirmée dans la fenêtre système.");
         return;
       }
-      await native.startVpn(buildEnginePayload(selected));
+      // Source unique de vérité = le blob app-settings : lu au moment de la
+      // connexion, jamais dupliqué dans l'état du provider (pas de dérive).
+      const appSettings = await loadAppSettings();
+      await native.startVpn(buildEnginePayload(selected, appSettings));
       addLog("connection", "NATIVE", `Service Android démarré pour ${TUNNEL_CATALOG[activeKind].label}.`);
     } catch (error) {
       setLastError("Le service VPN Android n’a pas pu démarrer.");
