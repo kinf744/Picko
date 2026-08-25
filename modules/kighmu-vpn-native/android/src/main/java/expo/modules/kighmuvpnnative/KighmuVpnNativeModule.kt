@@ -2,6 +2,7 @@ package expo.modules.kighmuvpnnative
 
 import android.content.Intent
 import android.net.VpnService
+import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -11,10 +12,6 @@ class KighmuVpnNativeModule : Module() {
     Events("onStateChanged", "onLog")
 
     OnCreate {
-      appContext.reactContext?.let {
-        PersistentDiagnosticLog.initialize(it)
-        PersistentDiagnosticLog.record(it, "info", "MODULE", "Module natif KIGHMU VPN initialisé")
-      }
       KighmuVpnService.logSink = { level, component, message ->
         sendEvent("onLog", mapOf(
           "level" to level,
@@ -33,51 +30,36 @@ class KighmuVpnNativeModule : Module() {
       KighmuVpnService.stateSink = null
     }
 
-    Function("getStatus") {
-      KighmuVpnService.currentStatus
-    }
+    Function("getStatus") { KighmuVpnService.currentStatus }
 
-    AsyncFunction("getDeviceSecurityInfo") {
-      val context = appContext.reactContext ?: throw IllegalStateException("Contexte Android indisponible")
-      KighmuVpnService.deviceSecurityInfo(context)
+    Function("getHardwareId") {
+      val context = appContext.reactContext ?: return@Function "indisponible"
+      Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)?.uppercase() ?: "indisponible"
     }
 
     AsyncFunction("prepareVpn") {
       val activity = appContext.currentActivity ?: return@AsyncFunction false
       val intent = VpnService.prepare(activity)
-      PersistentDiagnosticLog.record(activity, "info", "MODULE", if (intent == null) "Autorisation VPN déjà accordée" else "Demande d’autorisation VPN affichée")
-      if (intent == null) {
-        true
-      } else {
+      if (intent == null) true else {
         activity.startActivityForResult(intent, KighmuVpnService.PREPARE_REQUEST_CODE)
         false
       }
     }
 
-    AsyncFunction("startVpn") { configJson: String ->
+    AsyncFunction("startVpn") { profilesJson: String ->
       val context = appContext.reactContext ?: throw IllegalStateException("Contexte Android indisponible")
       val intent = Intent(context, KighmuVpnService::class.java).apply {
         action = KighmuVpnService.ACTION_START
-        putExtra(KighmuVpnService.EXTRA_CONFIG_JSON, configJson)
+        putExtra(KighmuVpnService.EXTRA_PROFILES_JSON, profilesJson)
       }
-      try {
-        PersistentDiagnosticLog.record(context, "info", "MODULE", "Demande de démarrage du service VPN")
-        context.startForegroundService(intent)
-      } catch (error: Throwable) {
-        PersistentDiagnosticLog.recordThrowable(context, "MODULE", error)
-        throw error
-      }
+      context.startForegroundService(intent)
       sendEvent("onStateChanged", mapOf("status" to KighmuVpnService.STATUS_CONNECTING))
       true
     }
 
     AsyncFunction("stopVpn") {
       val context = appContext.reactContext ?: return@AsyncFunction false
-      PersistentDiagnosticLog.record(context, "info", "MODULE", "Demande d’arrêt du service VPN")
-      context.startService(Intent(context, KighmuVpnService::class.java).apply {
-        action = KighmuVpnService.ACTION_STOP
-      })
-      // The service emits DISCONNECTED after process/TUN/network cleanup.
+      context.startService(Intent(context, KighmuVpnService::class.java).apply { action = KighmuVpnService.ACTION_STOP })
       true
     }
   }

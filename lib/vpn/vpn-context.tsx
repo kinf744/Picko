@@ -22,6 +22,7 @@ import {
   type TunnelProfile,
 } from "./tunnel-profiles";
 import { validateTunnelProfile } from "./validation";
+import { buildEnginePayload } from "./engine-payload";
 
 export type TunnelStatus = "disconnected" | "connecting" | "connected" | "error";
 export type LogLevel = "info" | "connection" | "warning" | "error";
@@ -291,7 +292,6 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
       addLog("error", "VALIDATION", `Connexion refusée : profil invalide pour ${TUNNEL_CATALOG[activeKind].shortLabel}.`);
       return;
     }
-    const balancer = balancersByKind[activeKind];
     const shouldBalance = shouldUseRoundRobin(selected.length);
     setLastError(null);
     setStatus("connecting");
@@ -312,14 +312,14 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
         addLog("warning", "ANDROID", "L’autorisation VPN doit être confirmée dans la fenêtre système.");
         return;
       }
-      await native.startVpn(JSON.stringify({ version: 3, kind: activeKind, balancer: { ...balancer, enabled: shouldBalance }, restrictions: activeRestrictions, profiles: selected }));
+      await native.startVpn(buildEnginePayload(selected));
       addLog("connection", "NATIVE", `Service Android démarré pour ${TUNNEL_CATALOG[activeKind].label}.`);
     } catch (error) {
       setLastError("Le service VPN Android n’a pas pu démarrer.");
       setStatus("error");
       addLog("error", "NATIVE", `Échec du démarrage natif : ${String(error).slice(0, 180)}`);
     }
-  }, [activeKind, activeRestrictions, addLog, balancersByKind, profilesByKind]);
+  }, [activeKind, addLog, profilesByKind]);
 
   const disconnect = useCallback(async () => {
     try { await getNativeVpn()?.stopVpn(); } catch (error) { addLog("warning", "NATIVE", `Arrêt natif signalé avec une erreur : ${String(error).slice(0, 160)}`); }

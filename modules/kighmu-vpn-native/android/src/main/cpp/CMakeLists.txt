@@ -4,25 +4,17 @@ project("zivpn_test_native")
 add_library(hev_jni SHARED hev_jni.cpp)
 target_compile_options(hev_jni PRIVATE -O2 -fvisibility=hidden)
 
-# libopol centralizes protected tunnel policy and config generation.
+# libopol is deliberately isolated from the tunnel executables. It only builds
+# Xray configuration material and cannot replace or intercept libxray itself.
 add_library(opol SHARED opol_jni.cpp)
 target_compile_options(opol PRIVATE
-  -O3
+  -O2
   -fvisibility=hidden
   -fvisibility-inlines-hidden
   -fdata-sections
   -ffunction-sections
-  -fstack-protector-strong
-  -D_FORTIFY_SOURCE=2
-  -fno-ident
 )
-target_link_options(opol PRIVATE
-  -Wl,--gc-sections
-  -Wl,--strip-all
-  -Wl,--exclude-libs,ALL
-  -Wl,-z,relro,-z,now
-  -Wl,-z,noexecstack
-)
+target_link_options(opol PRIVATE -Wl,--gc-sections)
 
 if(ANDROID_ABI STREQUAL "armeabi-v7a")
   add_library(hev_core SHARED IMPORTED)
