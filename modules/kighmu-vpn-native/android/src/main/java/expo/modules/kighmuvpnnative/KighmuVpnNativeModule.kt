@@ -94,7 +94,7 @@ class KighmuVpnNativeModule : Module() {
     // Réponse vide = tunnel inactif ou sonde indisponible.
     AsyncFunction("probeVpnExitIp") {
       val port = KighmuVpnService.currentBalancerPort
-      RootHotspotRouter.fetchExitIpViaSocks(port)
+      HotspotProbe.fetchExitIpViaSocks(port)
     }
 
     // Compteurs globaux de l'appareil (octets) — pas de détail par client sans root.
