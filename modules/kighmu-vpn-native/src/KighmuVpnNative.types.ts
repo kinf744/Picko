@@ -24,4 +24,6 @@ export type KighmuVpnNativeModuleApi = {
   prepareVpn: () => Promise<boolean>;
   startVpn: (profilesJson: string) => Promise<boolean>;
   stopVpn: () => Promise<boolean>;
+  probeVpnExitIp: () => Promise<string>;
+  getTrafficTotals: () => { rx: number; tx: number };
 };

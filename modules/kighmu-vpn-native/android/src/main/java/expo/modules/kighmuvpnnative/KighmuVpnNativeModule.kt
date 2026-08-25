@@ -87,5 +87,21 @@ class KighmuVpnNativeModule : Module() {
       context.startService(Intent(context, KighmuVpnService::class.java).apply { action = KighmuVpnService.ACTION_STOP })
       true
     }
+
+    // --- Hotspot Share (100 % sans root) ------------------------------------
+
+    // IP publique vue PAR LE TUNNEL (HTTP via le proxy SOCKS local du balancier).
+    // Réponse vide = tunnel inactif ou sonde indisponible.
+    AsyncFunction("probeVpnExitIp") {
+      val port = KighmuVpnService.currentBalancerPort
+      RootHotspotRouter.fetchExitIpViaSocks(port)
+    }
+
+    // Compteurs globaux de l'appareil (octets) — pas de détail par client sans root.
+    Function("getTrafficTotals") {
+      val rx = android.net.TrafficStats.getTotalRxBytes()
+      val tx = android.net.TrafficStats.getTotalTxBytes()
+      mapOf("rx" to rx, "tx" to tx)
+    }
   }
 }

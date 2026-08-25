@@ -7,6 +7,8 @@ declare class KighmuVpnNativeModule extends NativeModule<KighmuVpnNativeModuleEv
   prepareVpn(): Promise<boolean>;
   startVpn(profilesJson: string): Promise<boolean>;
   stopVpn(): Promise<boolean>;
+  probeVpnExitIp(): Promise<string>;
+  getTrafficTotals(): { rx: number; tx: number };
 }
 
 export default requireNativeModule<KighmuVpnNativeModule>("KighmuVpnNative");

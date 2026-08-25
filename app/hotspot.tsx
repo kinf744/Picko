@@ -1,0 +1,213 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import * as Clipboard from "expo-clipboard";
+import { Linking } from "react-native";
+import { router } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+
+import { ScreenContainer } from "@/components/screen-container";
+import { InfoRow, Panel, SectionLabel, StatusPill, ToggleRow, SettingTextRow } from "@/components/kighmu-ui";
+import { useColors } from "@/hooks/use-colors";
+import { useLang } from "@/lib/i18n-provider";
+import { DEFAULT_HOTSPOT_SETTINGS, loadHotspotSettings, saveHotspotSettings, type HotspotSettings } from "@/lib/hotspot-settings";
+import { getDeviceSecurityInfo, getTrafficTotals, probeVpnExitIp } from "@/lib/hotspot-runtime";
+import { useVpn } from "@/lib/vpn/vpn-context";
+
+const CLIENT_TEST_URL = "https://api.ipify.org";
+
+const formatBytes = (bytes: number): string => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 o";
+  const units = ["o", "Ko", "Mo", "Go", "To"];
+  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+};
+
+export default function HotspotScreen() {
+  const colors = useColors();
+  const { t } = useLang();
+  const { status } = useVpn();
+  const [settings, setSettings] = useState<HotspotSettings>(DEFAULT_HOTSPOT_SETTINGS);
+  const [exitIp, setExitIp] = useState<string | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [totals, setTotals] = useState({ rx: 0, tx: 0 });
+  const baseTotals = useRef({ rx: 0, tx: 0 });
+  const previousStatus = useRef(status);
+
+  useEffect(() => {
+    void loadHotspotSettings().then(setSettings);
+    baseTotals.current = getTrafficTotals();
+    const timer = setInterval(() => {
+      const now = getTrafficTotals();
+      setTotals({ rx: Math.max(0, now.rx - baseTotals.current.rx), tx: Math.max(0, now.tx - baseTotals.current.tx) });
+    }, 2000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Sonde d'IP de sortie : automatique à l'ouverture/connexion, puis toutes les 30 s
+  // pendant que le partage est armé et le VPN connecté.
+  useEffect(() => {
+    if (status !== "connected") return;
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      setProbing(true);
+      void probeVpnExitIp().then((ip) => {
+        if (cancelled) return;
+        setExitIp(ip);
+        setProbing(false);
+      });
+    };
+    run();
+    const timer = settings.shareArmed ? setInterval(run, 30_000) : null;
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [status, settings.shareArmed]);
+
+  // Kill switch sans root : Android ne permet pas de couper le hotspot par code,
+  // donc alerte immédiate + raccourci vers le réglage système dès que le tunnel tombe.
+  useEffect(() => {
+    const lost = status === "disconnected" || status === "error";
+    const wasUp = previousStatus.current === "connected" || previousStatus.current === "connecting";
+    previousStatus.current = status;
+    if (settings.shareArmed && settings.killSwitchEnabled && wasUp && lost) {
+      Alert.alert(t("hs.alert.vpnLost.title"), t("hs.alert.vpnLost.body"), [
+        { text: t("hs.alert.vpnLost.later"), style: "cancel" },
+        { text: t("hs.alert.vpnLost.open"), onPress: () => void openWirelessSettings() },
+      ]);
+    }
+  }, [status, settings.shareArmed, settings.killSwitchEnabled, t]);
+
+  const update = (patch: Partial<HotspotSettings>) => {
+    setSettings((current) => {
+      const next = { ...current, ...patch };
+      void saveHotspotSettings(next);
+      return next;
+    });
+  };
+
+  const openWirelessSettings = async () => {
+    try {
+      await Linking.sendIntent("android.settings.WIRELESS_SETTINGS");
+    } catch {
+      Alert.alert(t("hs.open.fail"), t("hs.open.fail.body"));
+    }
+  };
+
+  // Armer le partage → proposer immédiatement le panneau système (l'app ne peut
+  // pas activer le hotspot elle-même : permission réservée au système).
+  const armSharing = (value: boolean) => {
+    update({ shareArmed: value });
+    if (value) {
+      Alert.alert(t("hs.panel.title"), t("hs.panel.body"), [
+        { text: t("hs.alert.vpnLost.later"), style: "cancel" },
+        { text: t("hs.panel.open"), onPress: () => void openConnectivityPanel() },
+      ]);
+    }
+  };
+
+  const openConnectivityPanel = async () => {
+    try {
+      await Linking.sendIntent("android.settings.panel.action.INTERNET_CONNECTIVITY");
+    } catch {
+      await openWirelessSettings();
+    }
+  };
+
+  const copyText = async (label: string, value: string) => {
+    await Clipboard.setStringAsync(value);
+    Alert.alert(t("hs.ipCopiedTitle"), label);
+  };
+
+  const vpnPill = (() => {
+    if (!settings.shareArmed) return { label: t("hs.pill.off"), tone: "neutral" as const };
+    if (status === "connected") return { label: t("hs.pill.armedOn"), tone: "success" as const };
+    if (status === "connecting") return { label: t("hs.pill.armedWaiting"), tone: "warning" as const };
+    return { label: t("hs.route.pill.off"), tone: "error" as const };
+  })();
+
+  return <ScreenContainer edges={["top", "bottom", "left", "right"]} className="px-5"><View style={styles.top}><Pressable onPress={() => router.back()} style={({ pressed }) => [styles.back, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="arrow-back" size={20} color={colors.foreground} /></Pressable><Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("hs.title")}</Text><View style={styles.back} /></View><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <Text style={[styles.intro, { color: colors.muted }]}>{t("hs.intro")}</Text>
+
+    <SectionLabel>{t("hs.state.section")}</SectionLabel>
+    <Panel style={styles.panel}>
+      <View style={styles.stateLine}><StatusPill label={vpnPill.label} tone={vpnPill.tone} /><Text style={[styles.statusText, { color: colors.muted }]}>VPN · {status}</Text></View>
+      <ToggleRow icon="wifi-tethering" title={t("hs.share.toggle")} description={t("hs.share.desc")} value={settings.shareArmed} onChange={armSharing} />
+      <ToggleRow icon="gpp-maybe" title={t("hs.killswitch.title")} description={t("hs.killswitch.desc")} value={settings.killSwitchEnabled} onChange={(value) => update({ killSwitchEnabled: value })} />
+    </Panel>
+
+    <SectionLabel>{t("hs.hotspot.section")}</SectionLabel>
+    <Panel style={styles.panel}>
+      <SettingTextRow icon="badge" title={t("hs.ssid.title")} description={t("hs.ssid.desc")} value={settings.ssid} onChangeText={(value) => update({ ssid: value })} />
+      <SettingTextRow icon="password" title={t("hs.password.title")} description={t("hs.password.desc")} value={settings.password} onChangeText={(value) => update({ password: value })} secure />
+      <Pressable onPress={() => void openWirelessSettings()} style={({ pressed }) => [styles.systemButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}>
+        <MaterialIcons name="open-in-new" size={18} color="#FFFFFF" />
+        <Text style={styles.systemButtonText}>{t("hs.open.settings")}</Text>
+      </Pressable>
+    </Panel>
+
+    <SectionLabel>{t("hs.routing.section")}</SectionLabel>
+    <Panel style={styles.panel}>
+      <InfoRow icon="alt-route" title={t("hs.route.title")} description={t("hs.route.desc.noroot")} pillLabel={status === "connected" ? t("hs.route.pill.check") : t("hs.route.pill.off")} pillTone={status === "connected" ? "warning" : "neutral"} />
+      {/* Sonde d'IP de sortie via le SOCKS local = IP vue par les serveurs à travers le tunnel réel */}
+      <View style={[styles.probeBlock, { borderTopColor: colors.border }]}>
+        <View style={styles.probeHead}><Text style={[styles.rowTitleLocal, { color: colors.foreground }]}>{t("hs.probe.title")}</Text><Pressable onPress={() => { setProbing(true); void probeVpnExitIp().then((ip) => { setExitIp(ip); setProbing(false); }); }} style={({ pressed }) => [styles.probeButton, { borderColor: colors.border }, pressed && styles.pressed]}><Text style={[styles.probeButtonText, { color: colors.primary }]}>{t("hs.probe.refresh")}</Text></Pressable></View>
+        <Pressable disabled={!exitIp} onPress={() => void copyText(t("hs.ipCopiedBody"), exitIp ?? "")} style={({ pressed }) => [pressed && styles.pressed]}>
+          <Text selectable style={[styles.probeIp, { color: exitIp ? colors.success : colors.muted }]}>{probing ? "…" : exitIp === null ? t("hs.probe.idle") : exitIp || t("hs.probe.failed")}</Text>
+        </Pressable>
+        <Text style={[styles.note, { color: colors.muted }]}>{t("hs.probe.desc")}</Text>
+        <View style={[styles.clientBlock, { backgroundColor: colors.surfaceRaised }]}>
+          <Text style={[styles.rowTitleSmall, { color: colors.foreground }]}>{t("hs.client.title")}</Text>
+          <Text style={[styles.note, { color: colors.muted }]}>{t("hs.client.desc")}</Text>
+          <Pressable onPress={() => void copyText(t("hs.client.desc"), CLIENT_TEST_URL)} style={({ pressed }) => [pressed && styles.pressed]}>
+            <Text selectable style={[styles.clientUrl, { color: colors.primary }]}>{CLIENT_TEST_URL}</Text>
+          </Pressable>
+        </View>
+      </View>
+      <InfoRow icon="dns" title={t("hs.leak.dns.title")} description={t("hs.leak.dns.desc.noroot")} pillLabel="DNS" />
+      <InfoRow icon="block" title={t("hs.leak.ipv6.title")} description={t("hs.leak.ipv6.desc.noroot")} pillLabel="IPv6" />
+    </Panel>
+
+    <SectionLabel>{t("hs.devices.section")}</SectionLabel>
+    <Panel style={styles.panel}>
+      <InfoRow icon="devices" title={t("hs.devices.limit").slice(0, 46) + "…"} description={t("hs.devices.limit")} pillLabel="—" />
+    </Panel>
+
+    <SectionLabel>{t("hs.traffic.section")}</SectionLabel>
+    <Panel style={styles.panel}>
+      <View style={styles.trafficRow}>
+        <View style={[styles.trafficCell, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name="south" size={17} color={colors.success} /><Text style={[styles.trafficValue, { color: colors.foreground }]}>{formatBytes(totals.rx)}</Text></View>
+        <View style={[styles.trafficCell, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name="north" size={17} color={colors.primary} /><Text style={[styles.trafficValue, { color: colors.foreground }]}>{formatBytes(totals.tx)}</Text></View>
+      </View>
+      <Text style={[styles.note, { color: colors.muted }]}>{t("hs.traffic.global")}</Text>
+    </Panel>
+  </ScrollView></ScreenContainer>;
+}
+
+const styles = StyleSheet.create({
+  top: { height: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  back: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  headerTitle: { fontSize: 17, fontWeight: "900" },
+  content: { paddingTop: 14, paddingBottom: 32, gap: 12 },
+  intro: { fontSize: 14, lineHeight: 20, marginBottom: 8 },
+  panel: { padding: 16 },
+  stateLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  statusText: { fontSize: 11, fontVariant: ["tabular-nums"], textTransform: "capitalize" },
+  systemButton: { marginTop: 12, minHeight: 50, borderRadius: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  systemButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
+  probeBlock: { paddingTop: 14, marginTop: 14, borderTopWidth: StyleSheet.hairlineWidth, gap: 9 },
+  probeHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  probeButton: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, minHeight: 34, alignItems: "center", justifyContent: "center" },
+  probeButtonText: { fontSize: 12, fontWeight: "800" },
+  probeIp: { fontSize: 22, fontWeight: "900", letterSpacing: 0.5 },
+  rowTitleLocal: { fontSize: 14, fontWeight: "900" },
+  rowTitleSmall: { fontSize: 12, fontWeight: "900" },
+  note: { fontSize: 11, lineHeight: 16 },
+  clientBlock: { borderRadius: 12, padding: 11, gap: 6 },
+  clientUrl: { fontSize: 13, fontWeight: "800", letterSpacing: 0.2 },
+  trafficRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
+  trafficCell: { flex: 1, minHeight: 56, borderRadius: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  trafficValue: { fontSize: 16, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  pressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },
+});

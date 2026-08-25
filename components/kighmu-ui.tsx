@@ -7,6 +7,7 @@ import { useColors } from "@/hooks/use-colors";
 import { TUNNEL_KINDS, tunnelCatalog, type TunnelKind } from "@/lib/vpn/tunnel-profiles";
 import { useLang } from "@/lib/i18n-provider";
 import { ConfigMenu } from "@/components/config-menu";
+import { SettingsMenu } from "@/components/settings-menu";
 
 type MaterialIconName = ComponentProps<typeof MaterialIcons>["name"];
 type Tone = "neutral" | "primary" | "success" | "warning" | "error";
@@ -24,7 +25,7 @@ const familyIcons: Record<TunnelKind, MaterialIconName> = {
 export function AppHeader() {
   const colors = useColors();
   return (
-    <View style={styles.header}><View style={styles.headerSpacer} /><Text style={[styles.headerTitle, { color: colors.foreground }]}>KIGHMU VPN</Text><View style={styles.headerActions}><Pressable accessibilityRole="button" accessibilityLabel="Paramètres" onPress={() => router.push("/settings")} style={({ pressed }) => [styles.headerButton, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="settings" size={19} color={colors.foreground} /></Pressable><ConfigMenu /></View></View>
+    <View style={styles.header}><View style={styles.headerSpacer} /><Text style={[styles.headerTitle, { color: colors.foreground }]}>KIGHMU VPN</Text><View style={styles.headerActions}><SettingsMenu /><ConfigMenu /></View></View>
   );
 }
 
@@ -72,9 +73,9 @@ export function ToggleRow({ icon, title, description, value, onChange, disabled 
 }
 
 /** Champ texte de réglage (DNS, URL) — même style d'input que l'écran Configuration. */
-export function SettingTextRow({ icon, title, description, value, onChangeText, placeholder, error, disabled = false }: { icon: MaterialIconName; title: string; description: string; value: string; onChangeText: (value: string) => void; placeholder?: string; error?: string | null; disabled?: boolean }) {
+export function SettingTextRow({ icon, title, description, value, onChangeText, placeholder, error, disabled = false, secure = false }: { icon: MaterialIconName; title: string; description: string; value: string; onChangeText: (value: string) => void; placeholder?: string; error?: string | null; disabled?: boolean; secure?: boolean }) {
   const colors = useColors();
-  return <View style={[styles.settingBlock, { borderTopColor: colors.border }, disabled && styles.disabledRow]} pointerEvents={disabled ? "none" : "auto"}><View style={styles.rowHeader}><View style={[styles.rowIcon, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name={icon} size={18} color={colors.primary} /></View><View style={styles.copy}><Text style={[styles.rowTitle, { color: colors.foreground }]}>{title}</Text><Text style={[styles.description, { color: colors.muted }]}>{description}</Text></View></View><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} editable={!disabled} style={[styles.textInput, { color: colors.foreground, backgroundColor: colors.surfaceRaised, borderColor: error ? colors.error : colors.border }]} />{error ? <Text style={[styles.fieldError, { color: colors.error }]}>{error}</Text> : null}</View>;
+  return <View style={[styles.settingBlock, { borderTopColor: colors.border }, disabled && styles.disabledRow]} pointerEvents={disabled ? "none" : "auto"}><View style={styles.rowHeader}><View style={[styles.rowIcon, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name={icon} size={18} color={colors.primary} /></View><View style={styles.copy}><Text style={[styles.rowTitle, { color: colors.foreground }]}>{title}</Text><Text style={[styles.description, { color: colors.muted }]}>{description}</Text></View></View><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} secureTextEntry={secure} editable={!disabled} style={[styles.textInput, { color: colors.foreground, backgroundColor: colors.surfaceRaised, borderColor: error ? colors.error : colors.border }]} />{error ? <Text style={[styles.fieldError, { color: colors.error }]}>{error}</Text> : null}</View>;
 }
 
 /** Champ numérique à pas (+/−) avec clamp min/max et unité — généralise le stepper existant. */

@@ -128,6 +128,7 @@ class KighmuVpnService : VpnService() {
         }
         tunnels = started.toList()
         balancer = localBalancer
+        currentBalancerPort = localBalancer.port
         currentStatus = STATUS_CONNECTED
         stateSink?.invoke(STATUS_CONNECTED)
       }
@@ -270,6 +271,7 @@ class KighmuVpnService : VpnService() {
       tunnels = emptyList()
       runningBalancer = balancer
       balancer = null
+      currentBalancerPort = -1
       currentStatus = finalStatus
       stateSink?.invoke(finalStatus)
     }
@@ -322,6 +324,9 @@ class KighmuVpnService : VpnService() {
     const val CHANNEL_ID = "kighmu-vpn"
     const val NOTIFICATION_ID = 4008
     @Volatile var currentStatus = STATUS_DISCONNECTED
+    // Port SOCKS local du balancier actif (-1 si VPN arrêté) : sert à la sonde
+    // d'IP de sortie du Hotspot Share (requête HTTP via le tunnel réel).
+    @Volatile var currentBalancerPort: Int = -1
     @Volatile var logSink: ((String, String, String) -> Unit)? = null
     @Volatile var stateSink: ((String) -> Unit)? = null
   }
