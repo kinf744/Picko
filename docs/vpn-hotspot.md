@@ -23,6 +23,7 @@
 2. **Kill switch applicatif** : si le tunnel tombe pendant que le partage est armé → alerte immédiate + raccourci réglages (l'app ne peut pas couper le hotspot elle-même).
 3. **Sonde d'IP de sortie** (`probeVpnExitIp`) : requête HTTP envoyée **dans le tunnel réel** via le SOCKS local ; l'utilisateur la compare depuis un client (api.ipify.org) pour vérifier que le trafic client passe bien par le VPN.
 4. **Trafic global** de l'appareil (deltas TrafficStats), honnêteté totale sur les limites (chaque ligne d'interface l'énonce).
+5. **Proxy de partage LAN** (`LanShareGateway`) : un seul port TCP sur `0.0.0.0` parlant **HTTP CONNECT/forme absolue** (réglages proxy Wi-Fi Android/iOS) **et SOCKS5** (PC/apps, détection au premier octet 0x05). Chaque connexion cliente est relayée vers le balancier local → tunnels actifs : le trafic sort par le VPN **et le DNS des clients est résolu côté tunnel** (anti-fuite). C'est la méthode de partage la plus fiable sans root car elle ne dépend pas du routage système : les clients se connectent volontairement au proxy.
 
 ## Pourquoi pas de mode root ?
 

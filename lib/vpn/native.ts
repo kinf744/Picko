@@ -12,6 +12,10 @@ type NativeVpnModule = {
   getDeviceSecurityInfo: () => Promise<DeviceSecurityInfo>;
   probeVpnExitIp?: () => Promise<string>;
   getTrafficTotals?: () => TrafficTotals;
+  startLanShare?: (preferredPort: number) => Promise<{ port: number; running: boolean }>;
+  stopLanShare?: () => Promise<boolean>;
+  getLanShareStatus?: () => Promise<{ running: boolean; port: number; balancerPort: number }>;
+  getPhoneLanIps?: () => { ips: string[] };
   addListener?: (event: "onLog" | "onStateChanged", listener: (payload: any) => void) => NativeSubscription;
 };
 
@@ -56,4 +60,33 @@ export function getTrafficTotals(): TrafficTotals {
   const native = getNativeVpn();
   if (!native?.getTrafficTotals) return { rx: 0, tx: 0 };
   try { return native.getTrafficTotals(); } catch { return { rx: 0, tx: 0 }; }
+}
+
+/** Démarre la passerelle proxy LAN (HTTP + SOCKS5 sur un seul port). */
+export async function startLanShare(preferredPort: number): Promise<{ port: number; running: boolean } | null> {
+  const native = getNativeVpn();
+  if (!native?.startLanShare) return null;
+  try { return await native.startLanShare(preferredPort); } catch { return null; }
+}
+
+export async function stopLanShare(): Promise<boolean> {
+  const native = getNativeVpn();
+  if (!native?.stopLanShare) return false;
+  try { return await native.stopLanShare(); } catch { return false; }
+}
+
+export async function getLanShareStatus(): Promise<{ running: boolean; port: number; supported: boolean }> {
+  const native = getNativeVpn();
+  if (!native?.getLanShareStatus) return { running: false, port: -1, supported: false };
+  try {
+    const status = await native.getLanShareStatus();
+    return { ...status, supported: true };
+  } catch { return { running: false, port: -1, supported: true }; }
+}
+
+/** IPv4 site-local du téléphone visibles par les clients du hotspot. */
+export function getPhoneLanIps(): string[] {
+  const native = getNativeVpn();
+  if (!native?.getPhoneLanIps) return [];
+  try { return native.getPhoneLanIps().ips.filter(Boolean); } catch { return []; }
 }

@@ -103,5 +103,35 @@ class KighmuVpnNativeModule : Module() {
       val tx = android.net.TrafficStats.getTotalTxBytes()
       mapOf("rx" to rx, "tx" to tx)
     }
+
+    // --- Proxy de partage Hotspot (un port HTTP + SOCKS5 sur le LAN) ---------
+
+    AsyncFunction("startLanShare") { preferredPort: Int ->
+      val actualPort = LanShareGateway.start(preferredPort)
+      mapOf("port" to actualPort, "running" to LanShareGateway.isRunning())
+    }
+
+    AsyncFunction("stopLanShare") {
+      LanShareGateway.stop()
+      true
+    }
+
+    AsyncFunction("getLanShareStatus") {
+      mapOf(
+        "running" to LanShareGateway.isRunning(),
+        "port" to (LanShareGateway.portOrNull() ?: -1),
+        "balancerPort" to KighmuVpnService.currentBalancerPort,
+      )
+    }
+
+    // Adresses IPv4 du téléphone visibles depuis le réseau local/hotspot.
+    Function("getPhoneLanIps") {
+      val ips = java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
+        .flatMap { nif -> java.util.Collections.list(nif.inetAddresses) }
+        .filter { it is java.net.Inet4Address && !it.isLoopbackAddress && it.isSiteLocalAddress }
+        .map { it.hostAddress.orEmpty() }
+        .filter { it.isNotBlank() }
+      mapOf("ips" to ips)
+    }
   }
 }

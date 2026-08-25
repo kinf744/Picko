@@ -9,6 +9,9 @@ export type HotspotSettings = {
   password: string;
   /** Alerte immédiate dès que le VPN tombe pour éviter toute fuite des clients. */
   killSwitchEnabled: boolean;
+  /** Proxy de partage sur le réseau du hotspot (HTTP + SOCKS5, un seul port). */
+  lanProxyEnabled: boolean;
+  lanProxyPort: number;
 };
 
 export const DEFAULT_HOTSPOT_SETTINGS: HotspotSettings = {
@@ -16,6 +19,8 @@ export const DEFAULT_HOTSPOT_SETTINGS: HotspotSettings = {
   ssid: "KIGHMU VPN",
   password: "",
   killSwitchEnabled: true,
+  lanProxyEnabled: false,
+  lanProxyPort: 8888,
 };
 
 export async function loadHotspotSettings(): Promise<HotspotSettings> {

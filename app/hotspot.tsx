@@ -11,6 +11,7 @@ import { useColors } from "@/hooks/use-colors";
 import { useLang } from "@/lib/i18n-provider";
 import { DEFAULT_HOTSPOT_SETTINGS, loadHotspotSettings, saveHotspotSettings, type HotspotSettings } from "@/lib/hotspot-settings";
 import { getDeviceSecurityInfo, getTrafficTotals, probeVpnExitIp } from "@/lib/hotspot-runtime";
+import { getLanShareStatus, getPhoneLanIps, startLanShare, stopLanShare } from "@/lib/vpn/native";
 import { useVpn } from "@/lib/vpn/vpn-context";
 
 const CLIENT_TEST_URL = "https://api.ipify.org";
@@ -30,8 +31,37 @@ export default function HotspotScreen() {
   const [exitIp, setExitIp] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
   const [totals, setTotals] = useState({ rx: 0, tx: 0 });
+  const [lanState, setLanState] = useState<{ running: boolean; port: number }>({ running: false, port: -1 });
+  const [ips, setIps] = useState<string[]>([]);
   const baseTotals = useRef({ rx: 0, tx: 0 });
   const previousStatus = useRef(status);
+
+  // Adresses du téléphone visibles par les clients (rafraîchies périodiquement :
+  // l'interface hotspot peut apparaître après activation dans le système).
+  useEffect(() => {
+    const refresh = () => setIps(getPhoneLanIps());
+    refresh();
+    const timer = setInterval(refresh, 8_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Cycle de vie de la passerelle : active seulement si armée ET VPN connecté ;
+  // redémarre automatiquement après chaque reconnexion du VPN.
+  useEffect(() => {
+    let cancelled = false;
+    if (settings.lanProxyEnabled && status === "connected") {
+      void startLanShare(settings.lanProxyPort).then((result) => {
+        if (!cancelled && result?.running) setLanState({ running: true, port: result.port });
+      });
+    } else {
+      void stopLanShare().then(() => {
+        if (!cancelled) setLanState({ running: false, port: -1 });
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.lanProxyEnabled, settings.lanProxyPort, status]);
 
   useEffect(() => {
     void loadHotspotSettings().then(setSettings);
@@ -145,6 +175,29 @@ export default function HotspotScreen() {
         <MaterialIcons name="open-in-new" size={18} color="#FFFFFF" />
         <Text style={styles.systemButtonText}>{t("hs.open.settings")}</Text>
       </Pressable>
+    </Panel>
+
+    <SectionLabel>{t("hs.proxy.section")}</SectionLabel>
+    <Panel style={styles.panel}>
+      <ToggleRow icon="swap-horiz" title={t("hs.proxy.toggle")} description={t("hs.proxy.desc")} value={settings.lanProxyEnabled} onChange={(value) => update({ lanProxyEnabled: value })} />
+      <SettingTextRow icon="router" title={t("hs.proxy.port")} description={t("hs.proxy.port.desc")} value={String(settings.lanProxyPort)} onChangeText={(value) => { const parsed = parseInt(value.replace(/[^0-9]/g, ""), 10); if (Number.isFinite(parsed)) update({ lanProxyPort: parsed }); }} error={String(settings.lanProxyPort).match(/^\d+$/) && settings.lanProxyPort >= 1024 && settings.lanProxyPort <= 65535 ? null : "1024–65535"} />
+      {settings.lanProxyEnabled ? (
+        lanState.running && ips.length > 0 ? (
+          <View style={[styles.clientBlock, { backgroundColor: colors.surfaceRaised }]}>
+            <Text style={[styles.rowTitleSmall, { color: colors.foreground }]}>{t("hs.proxy.addr")}</Text>
+            {ips.slice(0, 3).map((ip) => (
+              <Pressable key={ip} onPress={() => void copyText(t("hs.proxy.copiedBody"), `${ip}:${lanState.port}`)} style={({ pressed }) => [pressed && styles.pressed]}>
+                <Text selectable style={[styles.clientUrl, { color: colors.primary }]}>{ip}:{lanState.port}</Text>
+              </Pressable>
+            ))}
+            <Text style={[styles.note, { color: colors.muted }]}>{t("hs.proxy.howto")}</Text>
+          </View>
+        ) : status !== "connected" ? (
+          <Text style={[styles.note, { color: colors.warning }]}>{t("hs.proxy.needVpn")}</Text>
+        ) : (
+          <Text style={[styles.note, { color: colors.muted }]}>{t("hs.proxy.starting")}</Text>
+        )
+      ) : null}
     </Panel>
 
     <SectionLabel>{t("hs.routing.section")}</SectionLabel>
