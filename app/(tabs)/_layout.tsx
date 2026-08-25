@@ -7,6 +7,7 @@ import { runOnJS } from "react-native-reanimated";
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useColors } from "@/hooks/use-colors";
+import { useLang } from "@/lib/i18n-provider";
 
 const TAB_ORDER = ["index", "configuration", "diagnostic"] as const;
 
@@ -82,6 +83,7 @@ function SwipeWrapper({ children }: { children: React.ReactNode }) {
 
 export default function TabLayout() {
   const colors = useColors();
+  const { t } = useLang();
 
   return (
     <SwipeWrapper>
@@ -108,21 +110,21 @@ export default function TabLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            title: "Tunnel",
+            title: t("tabs.tunnel"),
             tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
           }}
         />
         <Tabs.Screen
           name="configuration"
           options={{
-            title: "Configuration",
+            title: t("tabs.configuration"),
             tabBarIcon: ({ color }) => <IconSymbol size={28} name="pencil" color={color} />,
           }}
         />
         <Tabs.Screen
           name="diagnostic"
           options={{
-            title: "Diagnostic",
+            title: t("tabs.diagnostic"),
             tabBarIcon: ({ color }) => <IconSymbol size={28} name="doc.text" color={color} />,
           }}
         />

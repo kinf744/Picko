@@ -4,7 +4,8 @@ import { type ComponentProps, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { useColors } from "@/hooks/use-colors";
-import { TUNNEL_CATALOG, TUNNEL_KINDS, type TunnelKind } from "@/lib/vpn/tunnel-profiles";
+import { TUNNEL_KINDS, tunnelCatalog, type TunnelKind } from "@/lib/vpn/tunnel-profiles";
+import { useLang } from "@/lib/i18n-provider";
 import { ConfigMenu } from "@/components/config-menu";
 
 type MaterialIconName = ComponentProps<typeof MaterialIcons>["name"];
@@ -51,9 +52,10 @@ export function PrimaryAction({ label, icon, onPress, tone = "primary", loading 
 
 export function FamilySelector({ activeKind, onSelect }: { activeKind: TunnelKind; onSelect: (kind: TunnelKind) => void }) {
   const colors = useColors();
+  const { t } = useLang();
   return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.familyRail}>{TUNNEL_KINDS.map((kind) => {
     const active = kind === activeKind;
-    return <Pressable key={kind} accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={() => onSelect(kind)} style={({ pressed }) => [styles.familyChip, { backgroundColor: active ? colors.primary : colors.surface, borderColor: active ? colors.primary : colors.border }, pressed && styles.pressed]}><MaterialIcons name={familyIcons[kind]} size={16} color={active ? "#FFFFFF" : colors.muted} /><Text style={[styles.familyChipText, { color: active ? "#FFFFFF" : colors.foreground }]}>{TUNNEL_CATALOG[kind].shortLabel}</Text></Pressable>;
+    return <Pressable key={kind} accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={() => onSelect(kind)} style={({ pressed }) => [styles.familyChip, { backgroundColor: active ? colors.primary : colors.surface, borderColor: active ? colors.primary : colors.border }, pressed && styles.pressed]}><MaterialIcons name={familyIcons[kind]} size={16} color={active ? "#FFFFFF" : colors.muted} /><Text style={[styles.familyChipText, { color: active ? "#FFFFFF" : colors.foreground }]}>{t(`tunnels.${kind}.shortLabel`)}</Text></Pressable>;
   })}</ScrollView>;
 }
 

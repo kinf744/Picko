@@ -5,19 +5,21 @@ import { Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useColors } from "@/hooks/use-colors";
 import { useVpn } from "@/lib/vpn/vpn-context";
+import { useLang } from "@/lib/i18n-provider";
 
 export function ConfigMenu() {
   const colors = useColors();
+  const { t } = useLang();
   const { resetAllProfiles } = useVpn();
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
-  const reset = () => Alert.alert("Réinitialiser tous les VPN ?", "Cette action supprime de cet appareil tous les profils, secrets et réglages de balancier. Elle ne peut pas être annulée.", [
-    { text: "Annuler", style: "cancel" },
-    { text: "Réinitialiser", style: "destructive", onPress: () => resetAllProfiles().catch(() => Alert.alert("Réinitialisation impossible", "Les données locales n’ont pas pu être effacées.")) },
+  const reset = () => Alert.alert(t("menu.resetTitle"), t("menu.resetBody"), [
+    { text: t("common.cancel"), style: "cancel" },
+    { text: t("menu.resetConfirm"), style: "destructive", onPress: () => resetAllProfiles().catch(() => Alert.alert(t("menu.resetFailTitle"), t("menu.resetFailBody"))) },
   ]);
   const goTo = (path: "/config-import" | "/config-export") => { close(); router.push(path); };
 
-  return <><Pressable accessibilityRole="button" accessibilityLabel="Options de configuration" onPress={() => setOpen(true)} style={({ pressed }) => [styles.trigger, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="more-vert" size={23} color={colors.foreground} /></Pressable><Modal visible={open} transparent animationType="fade" statusBarTranslucent onRequestClose={close}><View style={styles.overlay}><Pressable style={StyleSheet.absoluteFill} onPress={close} /><View style={[styles.menu, { backgroundColor: colors.surface, borderColor: colors.border }]}><View style={styles.header}><View><Text style={[styles.title, { color: colors.foreground }]}>Configuration</Text><Text style={[styles.subtitle, { color: colors.muted }]}>Gérez les fichiers et les données VPN locales.</Text></View><Pressable onPress={close} style={({ pressed }) => [styles.close, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="close" size={19} color={colors.foreground} /></Pressable></View><MenuItem icon="file-open" title="Importer une configuration" text="Ouvrir un fichier JSON KIGHMU VPN et examiner son contenu avant application." color={colors.primary} onPress={() => goTo("/config-import")} /><MenuItem icon="file-upload" title="Exporter une configuration" text="Choisir les familles, nommer le fichier et contrôler l’inclusion des secrets." color={colors.primary} onPress={() => goTo("/config-export")} /><MenuItem icon="restart-alt" title="Réinitialiser tous les VPN" text="Supprimer les profils, secrets et réglages locaux après confirmation." color={colors.error} onPress={() => { close(); reset(); }} /></View></View></Modal></>;
+  return <><Pressable accessibilityRole="button" accessibilityLabel={t("menu.triggerA11y")} onPress={() => setOpen(true)} style={({ pressed }) => [styles.trigger, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="more-vert" size={23} color={colors.foreground} /></Pressable><Modal visible={open} transparent animationType="fade" statusBarTranslucent onRequestClose={close}><View style={styles.overlay}><Pressable style={StyleSheet.absoluteFill} onPress={close} /><View style={[styles.menu, { backgroundColor: colors.surface, borderColor: colors.border }]}><View style={styles.header}><View><Text style={[styles.title, { color: colors.foreground }]}>{t("menu.title")}</Text><Text style={[styles.subtitle, { color: colors.muted }]}>{t("menu.subtitle")}</Text></View><Pressable onPress={close} style={({ pressed }) => [styles.close, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="close" size={19} color={colors.foreground} /></Pressable></View><MenuItem icon="file-open" title={t("menu.import.title")} text={t("menu.import.text")} color={colors.primary} onPress={() => goTo("/config-import")} /><MenuItem icon="file-upload" title={t("menu.export.title")} text={t("menu.export.text")} color={colors.primary} onPress={() => goTo("/config-export")} /><MenuItem icon="restart-alt" title={t("menu.reset.itemTitle")} text={t("menu.reset.itemText")} color={colors.error} onPress={() => { close(); reset(); }} /></View></View></Modal></>;
 }
 
 function MenuItem({ icon, title, text, color, onPress }: { icon: React.ComponentProps<typeof MaterialIcons>["name"]; title: string; text: string; color: string; onPress: () => void }) {

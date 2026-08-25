@@ -4,12 +4,17 @@ import {
   omitSecrets,
   secretFields,
   TUNNEL_KINDS,
+  tunnelCatalog,
   type TunnelBalancer,
   type TunnelKind,
   type TunnelProfile,
 } from "./tunnel-profiles";
 import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, type ExportRestrictions } from "./export-restrictions";
 import { validateTunnelProfile } from "./validation";
+import { getActiveLang, translate, type Translator, type TranslationKey } from "../i18n";
+
+// Messages traduits au moment de la levée (code hors React).
+const tc: Translator = (key, params) => translate(getActiveLang(), key, params);
 
 const MAX_IMPORT_BYTES = 1_000_000;
 const EXPORT_SCHEMA_VERSION = 2;
@@ -43,12 +48,12 @@ function encodeClipboardBase64(value: string): string {
     const bytes = encodeURIComponent(value).replace(/%([0-9A-F]{2})/g, (_match, code: string) => String.fromCharCode(parseInt(code, 16)));
     return globalThis.btoa(bytes);
   }
-  throw new Error("Encodage Clipboard indisponible sur cet appareil.");
+  throw new Error(tc("import.err.noEncoder"));
 }
 
 function decodeClipboardBase64(value: string): string {
   const normalized = value.trim().replace(/-/g, "+").replace(/_/g, "/");
-  if (!normalized || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) throw new Error("Le Clipboard KIGHMU contient un Base64 invalide.");
+  if (!normalized || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) throw new Error(tc("import.err.badBase64"));
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
   const buffer = (globalThis as Record<string, unknown>).Buffer as { from?: (source: string, encoding: string) => { toString: (encoding: string) => string } } | undefined;
   if (buffer?.from) return buffer.from(padded, "base64").toString("utf-8");
@@ -56,7 +61,7 @@ function decodeClipboardBase64(value: string): string {
     const bytes = globalThis.atob(padded);
     try { return decodeURIComponent(Array.from(bytes).map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`).join("")); } catch { return bytes; }
   }
-  throw new Error("Décodage Clipboard indisponible sur cet appareil.");
+  throw new Error(tc("import.err.noDecoder"));
 }
 
 function unwrapClipboardPayload(raw: string): string {
@@ -81,7 +86,7 @@ function normalizeProfile(kind: TunnelKind, source: unknown): TunnelProfile | nu
   const now = Date.now();
   base.id = `${kind}-${now}-${Math.random().toString(36).slice(2, 8)}`;
   base.kind = kind;
-  base.name = typeof base.name === "string" && base.name.trim() ? base.name.trim().slice(0, 120) : `Profil importé ${kind}`;
+  base.name = typeof base.name === "string" && base.name.trim() ? base.name.trim().slice(0, 120) : tc("import.importedProfile", { short: tunnelCatalog(kind).shortLabel });
   base.selected = Boolean(base.selected);
   base.createdAt = now;
   base.updatedAt = now;
@@ -140,7 +145,7 @@ function importDirectVless(value: unknown): ImportResult | null {
   const tls = config.tls === true;
   const wsPath = typeof config.wsPath === "string" && config.wsPath.trim() ? config.wsPath.trim() : "/";
   const wsHeaderHost = typeof config.wsHeaderHost === "string" && config.wsHeaderHost.trim() ? config.wsHeaderHost.trim() : host;
-  const name = typeof value.name === "string" && value.name.trim() ? value.name.trim().slice(0, 120) : "Profil VLESS importé";
+  const name = typeof value.name === "string" && value.name.trim() ? value.name.trim().slice(0, 120) : tc("import.importedVless");
   const link = `vless://${encodeURIComponent(uuid)}@${host}:${port}?type=ws&security=${tls ? "tls" : "none"}&path=${encodeURIComponent(wsPath)}&host=${encodeURIComponent(wsHeaderHost)}#${encodeURIComponent(name)}`;
   const profile = normalizeProfile("xray-v2ray", { name, inputMode: "link", link });
   if (!profile) return null;
@@ -178,19 +183,19 @@ export function buildConfigExport(
 
 export function buildClipboardPayload(config: ConfigExport): string {
   const json = JSON.stringify(directVlessClipboard(config) ?? config);
-  if (json.length > MAX_IMPORT_BYTES) throw new Error("La configuration est trop volumineuse pour le Clipboard.");
+  if (json.length > MAX_IMPORT_BYTES) throw new Error(tc("import.err.tooBigClipboard"));
   return `${CLIPBOARD_PREFIX}${encodeClipboardBase64(json)}`;
 }
 
 export function parseConfigImport(raw: string): ImportResult {
   const content = unwrapClipboardPayload(raw);
-  if (content.length > MAX_IMPORT_BYTES) throw new Error("Le fichier dépasse la taille maximale autorisée (1 Mo).");
+  if (content.length > MAX_IMPORT_BYTES) throw new Error(tc("import.err.tooBig"));
   let parsed: unknown;
-  try { parsed = JSON.parse(content); } catch { throw new Error("Le fichier ou Clipboard ne contient pas un JSON valide."); }
+  try { parsed = JSON.parse(content); } catch { throw new Error(tc("import.err.notJson")); }
   const directVless = importDirectVless(parsed);
   if (directVless) return directVless;
   if (!isRecord(parsed) || ![1, EXPORT_SCHEMA_VERSION].includes(Number(parsed.schemaVersion)) || parsed.application !== "KIGHMU VPN" || !Array.isArray(parsed.tunnels)) {
-    throw new Error("Le fichier n’est pas une configuration KIGHMU VPN compatible.");
+    throw new Error(tc("import.err.notCompatible"));
   }
   const tunnels: ImportResult["tunnels"] = [];
   let importedProfiles = 0;
@@ -204,7 +209,7 @@ export function parseConfigImport(raw: string): ImportResult {
     importedProfiles += profiles.length;
     tunnels.push({ kind, profiles, balancer: normalizeBalancer(entry.balancer) });
   });
-  if (tunnels.length === 0) throw new Error("Aucune famille de tunnel importable n’a été trouvée.");
+  if (tunnels.length === 0) throw new Error(tc("import.err.nothingImportable"));
   return {
     tunnels,
     importedKinds: tunnels.map((tunnel) => tunnel.kind),

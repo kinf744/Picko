@@ -5,6 +5,9 @@ export const APP_SETTINGS_KEY = "kighmu.vpn.app-settings.v1";
 /** Préférence de thème : « system » suit l'OS en direct, « light »/« dark » forcent le schéma. */
 export type ThemePreference = "system" | "light" | "dark";
 
+/** Préférence de langue : « system » suit l'appareil (repli français), sinon forçage fr/en. */
+export type LanguagePreference = "system" | "fr" | "en";
+
 export type AppSettings = {
   autoReconnect: boolean;
   stopOnNetworkLoss: boolean;
@@ -14,6 +17,7 @@ export type AppSettings = {
   confirmDisconnect: boolean;
   reconnectDelaySeconds: number;
   theme: ThemePreference;
+  language: LanguagePreference;
   mtu: number;
   wakeLockEnabled: boolean;
   profileNameInNotification: boolean;
@@ -41,6 +45,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   confirmDisconnect: true,
   reconnectDelaySeconds: 5,
   theme: "system",
+  language: "system",
   mtu: 1400, // natif : coerceIn(1280, 1500)
   wakeLockEnabled: false,
   profileNameInNotification: true,

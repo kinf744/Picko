@@ -1,3 +1,8 @@
+import { getActiveLang, translate, type TranslationKey } from "../i18n";
+
+// Messages de validation traduits au moment du contrôle (langue active).
+const tv = (key: TranslationKey, params?: Record<string, string | number>) => translate(getActiveLang(), key, params);
+
 export type TunnelMode = "zivpn" | "slowdns";
 
 export type VpnValidationConfig = {
@@ -29,17 +34,17 @@ export function isValidPort(port: string) {
 export function validateVpnConfig(config: VpnValidationConfig) {
   const errors: Partial<Record<keyof VpnValidationConfig, string>> = {};
   if (config.mode === "zivpn") {
-    if (!config.host.trim()) errors.host = "Saisissez un Host ou une adresse IP.";
-    if (!isValidPort(config.port)) errors.port = "Utilisez un port ou une plage, par exemple 6000-19999.";
-    if (!config.password.trim()) errors.password = "Le mot de passe est requis.";
+    if (!config.host.trim()) errors.host = tv("valid.f.host");
+    if (!isValidPort(config.port)) errors.port = tv("valid.port.rangeExample");
+    if (!config.password.trim()) errors.password = tv("valid.required", { field: tv("valid.f.password") });
     return errors;
   }
-  if (!config.slowDnsUsername.trim()) errors.slowDnsUsername = "L’identifiant SSH est requis.";
-  if (!config.slowDnsPassword.trim()) errors.slowDnsPassword = "Le mot de passe SSH est requis.";
-  if (!config.slowDnsServer.trim()) errors.slowDnsServer = "Le serveur DNS/UDP est requis.";
-  if (!isValidPort(config.slowDnsPort)) errors.slowDnsPort = "Utilisez un port DNS valide, généralement 53.";
-  if (!config.slowDnsNameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(config.slowDnsNameserver.trim())) errors.slowDnsNameserver = "Le nameserver DNS est invalide.";
-  if (!config.slowDnsPublicKey.trim()) errors.slowDnsPublicKey = "La clé publique dnstt est requise.";
+  if (!config.slowDnsUsername.trim()) errors.slowDnsUsername = tv("valid.required", { field: tv("valid.f.sshUser") });
+  if (!config.slowDnsPassword.trim()) errors.slowDnsPassword = tv("valid.required", { field: tv("valid.f.sshPassword") });
+  if (!config.slowDnsServer.trim()) errors.slowDnsServer = tv("valid.required", { field: tv("valid.f.dnsServer") });
+  if (!isValidPort(config.slowDnsPort)) errors.slowDnsPort = tv("valid.port.dnsExample");
+  if (!config.slowDnsNameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(config.slowDnsNameserver.trim())) errors.slowDnsNameserver = tv("valid.nameserver");
+  if (!config.slowDnsPublicKey.trim()) errors.slowDnsPublicKey = tv("valid.required", { field: tv("valid.f.publicKey") });
   return errors;
 }
 
@@ -50,62 +55,62 @@ const isJsonObject = (value: string) => {
 };
 const isSupportedV2RayLink = (value: string) => /^(vmess|vless|trojan):\/\//i.test(value.trim());
 
-const required = (errors: ProfileFieldErrors, field: string, value: string, label: string) => {
-  if (!value.trim()) errors[field] = `${label} est requis.`;
+const requiredI18n = (errors: ProfileFieldErrors, field: string, value: string, labelKey: TranslationKey) => {
+  if (!value.trim()) errors[field] = tv("valid.required", { field: tv(labelKey) });
 };
 
 export function validateTunnelProfile(profile: TunnelProfile): ProfileFieldErrors {
   const errors: ProfileFieldErrors = {};
-  required(errors, "name", profile.name, "Le nom du profil");
+  requiredI18n(errors, "name", profile.name, "valid.f.name");
   switch (profile.kind) {
     case "zivpn":
-      required(errors, "host", profile.host, "Le Host ou l’adresse IP");
-      if (!isValidPort(profile.port)) errors.port = "Utilisez un port ou une plage valide.";
-      required(errors, "password", profile.password, "Le mot de passe");
-      if (!/^\d+$/.test(profile.uploadMbps) || Number(profile.uploadMbps) < 1) errors.uploadMbps = "Le débit montant doit être supérieur à zéro.";
-      if (!/^\d+$/.test(profile.downloadMbps) || Number(profile.downloadMbps) < 1) errors.downloadMbps = "Le débit descendant doit être supérieur à zéro.";
+      requiredI18n(errors, "host", profile.host, "valid.f.host");
+      if (!isValidPort(profile.port)) errors.port = tv("valid.port.range");
+      requiredI18n(errors, "password", profile.password, "valid.f.password");
+      if (!/^\d+$/.test(profile.uploadMbps) || Number(profile.uploadMbps) < 1) errors.uploadMbps = tv("valid.upMbps");
+      if (!/^\d+$/.test(profile.downloadMbps) || Number(profile.downloadMbps) < 1) errors.downloadMbps = tv("valid.downMbps");
       break;
     case "slowdns":
-      required(errors, "dnsServer", profile.dnsServer, "Le serveur DNS/UDP");
-      if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Le port DNS est invalide.";
-      if (!profile.nameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(profile.nameserver.trim())) errors.nameserver = "Le nameserver DNS est invalide.";
-      required(errors, "publicKey", profile.publicKey, "La clé publique dnstt");
-      required(errors, "sshUsername", profile.sshUsername, "L’identifiant SSH");
-      required(errors, "sshPassword", profile.sshPassword, "Le mot de passe SSH");
+      requiredI18n(errors, "dnsServer", profile.dnsServer, "valid.f.dnsServer");
+      if (!isValidPort(profile.dnsPort)) errors.dnsPort = tv("valid.port.dns");
+      if (!profile.nameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(profile.nameserver.trim())) errors.nameserver = tv("valid.nameserver");
+      requiredI18n(errors, "publicKey", profile.publicKey, "valid.f.publicKey");
+      requiredI18n(errors, "sshUsername", profile.sshUsername, "valid.f.sshUser");
+      requiredI18n(errors, "sshPassword", profile.sshPassword, "valid.f.sshPassword");
       break;
     case "hysteria":
-      required(errors, "host", profile.host, "Le Host ou l’adresse IP");
-      if (!isValidPort(profile.port)) errors.port = "Utilisez un port ou une plage valide.";
-      required(errors, "auth", profile.auth, "L’authentification Hysteria");
-      if (!/^\d+$/.test(profile.uploadMbps) || Number(profile.uploadMbps) < 1) errors.uploadMbps = "Le débit montant doit être supérieur à zéro.";
-      if (!/^\d+$/.test(profile.downloadMbps) || Number(profile.downloadMbps) < 1) errors.downloadMbps = "Le débit descendant doit être supérieur à zéro.";
+      requiredI18n(errors, "host", profile.host, "valid.f.host");
+      if (!isValidPort(profile.port)) errors.port = tv("valid.port.range");
+      requiredI18n(errors, "auth", profile.auth, "valid.f.auth");
+      if (!/^\d+$/.test(profile.uploadMbps) || Number(profile.uploadMbps) < 1) errors.uploadMbps = tv("valid.upMbps");
+      if (!/^\d+$/.test(profile.downloadMbps) || Number(profile.downloadMbps) < 1) errors.downloadMbps = tv("valid.downMbps");
       break;
     case "http-payload":
-      required(errors, "proxyHost", profile.proxyHost, "L’hôte du proxy HTTP");
-      if (!isValidPort(profile.proxyPort)) errors.proxyPort = "Le port du proxy HTTP est invalide.";
-      required(errors, "payload", profile.payload, "Le payload HTTP");
-      required(errors, "sshHost", profile.sshHost, "L’hôte SSH cible");
-      if (!isValidPort(profile.sshPort)) errors.sshPort = "Le port SSH est invalide.";
-      required(errors, "sshUsername", profile.sshUsername, "L’identifiant SSH");
-      required(errors, "sshPassword", profile.sshPassword, "Le mot de passe SSH");
+      requiredI18n(errors, "proxyHost", profile.proxyHost, "valid.f.proxyHost");
+      if (!isValidPort(profile.proxyPort)) errors.proxyPort = tv("valid.port.proxy");
+      requiredI18n(errors, "payload", profile.payload, "valid.f.payload");
+      requiredI18n(errors, "sshHost", profile.sshHost, "valid.f.sshHost");
+      if (!isValidPort(profile.sshPort)) errors.sshPort = tv("valid.port.ssh");
+      requiredI18n(errors, "sshUsername", profile.sshUsername, "valid.f.sshUser");
+      requiredI18n(errors, "sshPassword", profile.sshPassword, "valid.f.sshPassword");
       break;
     case "ssh-tls":
-      required(errors, "tlsHost", profile.tlsHost, "L’hôte SSL/TLS");
-      if (!isValidPort(profile.tlsPort)) errors.tlsPort = "Le port SSL/TLS est invalide.";
-      if (profile.sni.trim() && !/^[A-Za-z0-9.-]+$/.test(profile.sni.trim())) errors.sni = "Le SNI est invalide.";
-      required(errors, "sshUsername", profile.sshUsername, "L’identifiant SSH");
-      required(errors, "sshPassword", profile.sshPassword, "Le mot de passe SSH");
+      requiredI18n(errors, "tlsHost", profile.tlsHost, "valid.f.tlsHost");
+      if (!isValidPort(profile.tlsPort)) errors.tlsPort = tv("valid.port.tls");
+      if (profile.sni.trim() && !/^[A-Za-z0-9.-]+$/.test(profile.sni.trim())) errors.sni = tv("valid.sni");
+      requiredI18n(errors, "sshUsername", profile.sshUsername, "valid.f.sshUser");
+      requiredI18n(errors, "sshPassword", profile.sshPassword, "valid.f.sshPassword");
       break;
     case "xray-v2ray":
-      if (profile.inputMode === "link") required(errors, "link", profile.link, "Le lien Xray/V2Ray");
-      else if (!isJsonObject(profile.json)) errors.json = "La configuration Xray/V2Ray doit être un objet JSON valide.";
+      if (profile.inputMode === "link") requiredI18n(errors, "link", profile.link, "valid.f.link");
+      else if (!isJsonObject(profile.json)) errors.json = tv("valid.json");
       break;
     case "v2ray-slowdns":
-      required(errors, "dnsServer", profile.dnsServer, "Le serveur DNS/UDP");
-      if (!isValidPort(profile.dnsPort)) errors.dnsPort = "Le port DNS est invalide.";
-      if (!profile.nameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(profile.nameserver.trim())) errors.nameserver = "Le nameserver DNS est invalide.";
-      required(errors, "publicKey", profile.publicKey, "La clé publique dnstt");
-      if (!isSupportedV2RayLink(profile.link)) errors.link = "Utilisez un lien VMess, VLESS ou Trojan valide.";
+      requiredI18n(errors, "dnsServer", profile.dnsServer, "valid.f.dnsServer");
+      if (!isValidPort(profile.dnsPort)) errors.dnsPort = tv("valid.port.dns");
+      if (!profile.nameserver.trim() || !/^[A-Za-z0-9.-]+$/.test(profile.nameserver.trim())) errors.nameserver = tv("valid.nameserver");
+      requiredI18n(errors, "publicKey", profile.publicKey, "valid.f.publicKey");
+      if (!isSupportedV2RayLink(profile.link)) errors.link = tv("valid.linkFormat");
       break;
   }
   return errors;

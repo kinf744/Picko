@@ -1,3 +1,5 @@
+import { getActiveLang, translate, tNow, type Translator } from "../i18n";
+
 export const TUNNEL_KINDS = [
   "zivpn",
   "slowdns",
@@ -11,15 +13,42 @@ export const TUNNEL_KINDS = [
 export type TunnelKind = (typeof TUNNEL_KINDS)[number];
 export const ZIVPN_FIXED_OBFS = "hu``hqb`c";
 
-export const TUNNEL_CATALOG: Record<TunnelKind, { label: string; shortLabel: string; description: string; accent: string }> = {
-  zivpn: { label: "UDP-ZIVPN", shortLabel: "ZIVPN", description: "UDP avec Obfs et plage de ports", accent: "#1687F8" },
-  slowdns: { label: "SSH / SlowDNS", shortLabel: "SlowDNS", description: "SSH sur tunnel DNS", accent: "#7357E8" },
-  hysteria: { label: "Hysteria UDP", shortLabel: "Hysteria", description: "UDP haute performance", accent: "#04A777" },
-  "http-payload": { label: "HTTP Proxy + Payload", shortLabel: "HTTP Payload", description: "Proxy HTTP puis SSH", accent: "#C66B17" },
-  "ssh-tls": { label: "SSH SSL/TLS", shortLabel: "SSH TLS", description: "SSH à travers TLS", accent: "#0D86A8" },
-  "v2ray-slowdns": { label: "V2Ray + SlowDNS", shortLabel: "V2 + DNS", description: "V2Ray simple encapsulé par SlowDNS", accent: "#B14CCD" },
-  "xray-v2ray": { label: "Xray / V2Ray", shortLabel: "Xray", description: "Liens ou JSON Xray/V2Ray", accent: "#D34B5C" },
+/**
+ * Catalogue des familles : les libellés affichables vivent dans le dictionnaire
+ * i18n (clés `tunnels.<kind>.label|shortLabel|description`) ; seules les données
+ * stables (accent) restent ici. Les accesseurs ci-dessous prennent un traducteur
+ * réactif (hook useLang) ou retombent sur la langue active hors React.
+ */
+const TUNNEL_ACCENTS: Record<TunnelKind, string> = {
+  zivpn: "#1687F8",
+  slowdns: "#7357E8",
+  hysteria: "#04A777",
+  "http-payload": "#C66B17",
+  "ssh-tls": "#0D86A8",
+  "v2ray-slowdns": "#B14CCD",
+  "xray-v2ray": "#D34B5C",
 };
+
+export type TunnelCatalogEntry = { label: string; shortLabel: string; description: string; accent: string };
+
+function localizedCatalog(kind: TunnelKind, t: Translator): TunnelCatalogEntry {
+  return {
+    label: t(`tunnels.${kind}.label`),
+    shortLabel: t(`tunnels.${kind}.shortLabel`),
+    description: t(`tunnels.${kind}.description`),
+    accent: TUNNEL_ACCENTS[kind],
+  };
+}
+
+/** Entrée liée à la langue active (contexte non React : logs, exports). */
+export function tunnelCatalog(kind: TunnelKind): TunnelCatalogEntry {
+  return localizedCatalog(kind, tNow());
+}
+
+/** Accès statique aux couleurs d'accent (indépendant de la langue). */
+export function tunnelAccent(kind: TunnelKind): string {
+  return TUNNEL_ACCENTS[kind];
+}
 
 export type TunnelBalancer = {
   enabled: boolean;
@@ -108,7 +137,7 @@ export type ProfileFieldErrors = Record<string, string>;
 const makeBase = <K extends TunnelKind>(kind: K): ProfileBase & { kind: K } => ({
   id: `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   kind,
-  name: `Profil ${TUNNEL_CATALOG[kind].shortLabel}`,
+  name: translate(getActiveLang(), "tunnels.defaultName", { short: translate(getActiveLang(), `tunnels.${kind}.shortLabel` as const) }),
   selected: false,
   createdAt: Date.now(),
   updatedAt: Date.now(),
@@ -131,7 +160,7 @@ export function cloneTunnelProfile(profile: TunnelProfile, timestamp = Date.now(
   return {
     ...profile,
     id: `${profile.kind}-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
-    name: `${profile.name} — copie`,
+    name: translate(getActiveLang(), "tunnels.copySuffix", { name: profile.name }),
     selected: false,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -147,15 +176,16 @@ export function shouldUseRoundRobin(selectedProfileCount: number): boolean {
   return selectedProfileCount >= 2;
 }
 
-export function profileEndpoint(profile: TunnelProfile): string {
+/** Résumé d'accès d'un profil ; passez le traducteur du hook useLang pour un rendu réactif. */
+export function profileEndpoint(profile: TunnelProfile, t: Translator = tNow()): string {
   switch (profile.kind) {
-    case "zivpn": return profile.host ? `${profile.host}:${profile.port || "—"}` : "Non configuré";
-    case "slowdns": return profile.dnsServer ? `${profile.dnsServer}:${profile.dnsPort || "53"}` : "Non configuré";
-    case "hysteria": return profile.host ? `${profile.host}:${profile.port || "—"}` : "Non configuré";
-    case "http-payload": return profile.proxyHost ? `${profile.proxyHost}:${profile.proxyPort || "8080"}` : "Non configuré";
-    case "ssh-tls": return profile.tlsHost ? `${profile.tlsHost}:${profile.tlsPort || "443"}` : "Non configuré";
-    case "v2ray-slowdns": return profile.link ? "Lien V2Ray+DNS" : "Lien non configuré";
-    case "xray-v2ray": return profile.inputMode === "link" ? (profile.link ? "Lien Xray/V2Ray" : "Lien non configuré") : (profile.json ? "JSON Xray/V2Ray" : "JSON non configuré");
+    case "zivpn": return profile.host ? `${profile.host}:${profile.port || "—"}` : t("tunnels.endpoint.unset");
+    case "slowdns": return profile.dnsServer ? `${profile.dnsServer}:${profile.dnsPort || "53"}` : t("tunnels.endpoint.unset");
+    case "hysteria": return profile.host ? `${profile.host}:${profile.port || "—"}` : t("tunnels.endpoint.unset");
+    case "http-payload": return profile.proxyHost ? `${profile.proxyHost}:${profile.proxyPort || "8080"}` : t("tunnels.endpoint.unset");
+    case "ssh-tls": return profile.tlsHost ? `${profile.tlsHost}:${profile.tlsPort || "443"}` : t("tunnels.endpoint.unset");
+    case "v2ray-slowdns": return profile.link ? t("tunnels.endpoint.v2rayDnsLink") : t("tunnels.endpoint.linkUnset");
+    case "xray-v2ray": return profile.inputMode === "link" ? (profile.link ? t("tunnels.endpoint.xrayLink") : t("tunnels.endpoint.linkUnset")) : (profile.json ? t("tunnels.endpoint.xrayJson") : t("tunnels.endpoint.jsonUnset"));
   }
 }
 

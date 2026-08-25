@@ -9,32 +9,24 @@ import { InfoRow, Panel, SectionLabel, SegmentedControl, SettingNumberRow, Setti
 import { useColors } from "@/hooks/use-colors";
 import { DEFAULT_APP_SETTINGS, loadAppSettings, saveAppSettings, type AppSettings } from "@/lib/app-settings";
 import { useThemeContext } from "@/lib/theme-provider";
+import { useLang } from "@/lib/i18n-provider";
 import { getNativeVpn, type DeviceSecurityInfo } from "@/lib/vpn/native";
 
-const unavailableDevice: DeviceSecurityInfo = { hardwareId: "Disponible après installation Android", mobileOperator: "—", rooted: false };
+const unavailableDevice = (label: string): DeviceSecurityInfo => ({ hardwareId: label, mobileOperator: "—", rooted: false });
 
 // Validation JS = première barrière ; le natif re-valide de toute façon
 // (repli sur ses défauts) → une saisie invalide ne peut pas casser le tunnel.
-const dnsFormatError = (value: string): string | null => {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  return /^[a-zA-Z0-9._:-]+$/.test(trimmed) ? null : "Adresse ou hôte invalide.";
-};
-const httpUrlError = (value: string): string | null => {
-  const trimmed = value.trim();
-  if (!/^https?:\/\/\S+$/i.test(trimmed)) return "L’URL doit commencer par http:// ou https://.";
-  return /^https?:\/\/[^\s/:?#]+/i.test(trimmed) ? null : "Hôte manquant dans l’URL.";
-};
-
 export default function SettingsScreen() {
   const colors = useColors();
+  const { t } = useLang();
   const { themePreference, setThemePreference } = useThemeContext();
+  const { languagePreference, setLanguagePreference } = useLang();
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
-  const [device, setDevice] = useState<DeviceSecurityInfo>(unavailableDevice);
+  const [device, setDevice] = useState<DeviceSecurityInfo>(unavailableDevice(t("settings.hwid.unavailable")));
   useEffect(() => {
     loadAppSettings().then(setSettings);
     const native = getNativeVpn();
-    if (native) native.getDeviceSecurityInfo().then(setDevice).catch(() => setDevice(unavailableDevice));
+    if (native) native.getDeviceSecurityInfo().then(setDevice).catch(() => setDevice(unavailableDevice(t("settings.hwid.unavailable"))));
   }, []);
   const update = (patch: Partial<AppSettings>) => {
     setSettings((current) => {
@@ -47,90 +39,115 @@ export default function SettingsScreen() {
     update({ theme });
     setThemePreference(theme);
   };
-  const copyHardwareId = async () => {
-    if (!/^[A-F0-9]{32}$/.test(device.hardwareId)) { Alert.alert("Hardware ID indisponible", "Installez l’APK Android KIGHMU VPN pour lire l’identifiant matériel local."); return; }
-    await Clipboard.setStringAsync(device.hardwareId);
-    Alert.alert("Hardware ID copié", "Collez cet identifiant dans la liste autorisée lors de l’export d’une configuration verrouillée.");
+  const applyLanguage = (language: AppSettings["language"]) => {
+    update({ language });
+    setLanguagePreference(language);
   };
-  const reset = () => Alert.alert("Réinitialiser les paramètres ?", "Les profils, secrets et tunnels resteront intacts.", [{ text: "Annuler", style: "cancel" }, { text: "Réinitialiser", style: "destructive", onPress: () => { setSettings(DEFAULT_APP_SETTINGS); void saveAppSettings(DEFAULT_APP_SETTINGS); setThemePreference(DEFAULT_APP_SETTINGS.theme); } }]);
+  // Validation JS = première barrière ; le natif re-valide de toute façon.
+  const dnsFormatError = (value: string): string | null => {
+    const trimmed = value.trim();
+    if (!trimmed || /^[a-zA-Z0-9._:-]+$/.test(trimmed)) return null;
+    return t("settings.err.dns");
+  };
+  const httpUrlError = (value: string): string | null => {
+    const trimmed = value.trim();
+    if (!/^https?:\/\/\S+$/i.test(trimmed)) return t("settings.err.urlScheme");
+    return /^https?:\/\/[^\s/:?#]+/i.test(trimmed) ? null : t("settings.err.urlHost");
+  };
+  const copyHardwareId = async () => {
+    if (!/^[A-F0-9]{32}$/.test(device.hardwareId)) { Alert.alert(t("settings.copyFailTitle"), t("settings.copyFailBody")); return; }
+    await Clipboard.setStringAsync(device.hardwareId);
+    Alert.alert(t("settings.copyOkTitle"), t("settings.copyOkBody"));
+  };
+  const reset = () => Alert.alert(t("settings.reset.title"), t("settings.reset.body"), [{ text: t("common.cancel"), style: "cancel" }, { text: t("settings.reset.confirm"), style: "destructive", onPress: () => { setSettings(DEFAULT_APP_SETTINGS); void saveAppSettings(DEFAULT_APP_SETTINGS); setThemePreference(DEFAULT_APP_SETTINGS.theme); setLanguagePreference(DEFAULT_APP_SETTINGS.language); } }]);
 
-  return <ScreenContainer edges={["top", "bottom", "left", "right"]} className="px-5"><View style={styles.top}><Pressable onPress={() => router.back()} style={({ pressed }) => [styles.back, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="arrow-back" size={20} color={colors.foreground} /></Pressable><Text style={[styles.headerTitle, { color: colors.foreground }]}>Paramètres</Text><View style={styles.back} /></View><ScrollView contentContainerStyle={styles.content}>
-    <Text style={[styles.intro, { color: colors.muted }]}>Réglez le comportement de KIGHMU VPN. Ces préférences sont locales et n’altèrent pas les profils ni les moteurs de tunnel.</Text>
+  return <ScreenContainer edges={["top", "bottom", "left", "right"]} className="px-5"><View style={styles.top}><Pressable onPress={() => router.back()} style={({ pressed }) => [styles.back, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="arrow-back" size={20} color={colors.foreground} /></Pressable><Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("settings.title")}</Text><View style={styles.back} /></View><ScrollView contentContainerStyle={styles.content}>
+    <Text style={[styles.intro, { color: colors.muted }]}>{t("settings.intro")}</Text>
 
-    <SectionLabel>Apparence</SectionLabel>
+    <SectionLabel>{t("settings.lang.section")}</SectionLabel>
     <Panel style={styles.panel}>
-      <Text style={[styles.subTitle, { color: colors.muted }]}>Thème</Text>
+      <SegmentedControl<AppSettings["language"]>
+        options={[{ label: t("settings.lang.system"), value: "system" }, { label: "Français", value: "fr" }, { label: "English", value: "en" }]}
+        value={languagePreference}
+        onChange={applyLanguage}
+      />
+      <Text style={[styles.note, { color: colors.muted }]}>{t("settings.lang.note")}</Text>
+    </Panel>
+
+    <SectionLabel>{t("settings.appearance.section")}</SectionLabel>
+    <Panel style={styles.panel}>
+      <Text style={[styles.subTitle, { color: colors.muted }]}>{t("settings.theme.label")}</Text>
       <SegmentedControl<AppSettings["theme"]>
-        options={[{ label: "Système", value: "system" }, { label: "Clair", value: "light" }, { label: "Sombre", value: "dark" }]}
+        options={[{ label: t("settings.theme.system"), value: "system" }, { label: t("settings.theme.light"), value: "light" }, { label: t("settings.theme.dark"), value: "dark" }]}
         value={themePreference}
         onChange={applyTheme}
       />
-      <Text style={[styles.note, { color: colors.muted }]}>« Système » suit automatiquement le mode clair ou sombre d’Android en temps réel ; « Clair » et « Sombre » figent l’apparence.</Text>
+      <Text style={[styles.note, { color: colors.muted }]}>{t("settings.theme.note")}</Text>
     </Panel>
 
-    <SectionLabel>VPN</SectionLabel>
+    <SectionLabel>{t("settings.vpn.section")}</SectionLabel>
     <Panel style={styles.panel}>
-      <SettingNumberRow icon="tune" title="MTU" description="Taille maximale des paquets VPN, de 1280 à 1500." value={settings.mtu} min={1280} max={1500} step={10} unit="o" onChange={(value) => update({ mtu: value })} />
-      <ToggleRow icon="battery-charging-full" title="WakeLock" description="Maintient le processeur actif tant que le VPN est connecté." value={settings.wakeLockEnabled} onChange={(value) => update({ wakeLockEnabled: value })} />
-      <ToggleRow icon="notifications" title="Nom du profil dans la notification" description="Affiche le premier profil actif dans la notification Android." value={settings.profileNameInNotification} onChange={(value) => update({ profileNameInNotification: value })} />
+      <SettingNumberRow icon="tune" title={t("settings.mtu.title")} description={t("settings.mtu.desc")} value={settings.mtu} min={1280} max={1500} step={10} unit="o" onChange={(value) => update({ mtu: value })} />
+      <ToggleRow icon="battery-charging-full" title={t("settings.wakeLock.title")} description={t("settings.wakeLock.desc")} value={settings.wakeLockEnabled} onChange={(value) => update({ wakeLockEnabled: value })} />
+      <ToggleRow icon="notifications" title={t("settings.notifProfile.title")} description={t("settings.notifProfile.desc")} value={settings.profileNameInNotification} onChange={(value) => update({ profileNameInNotification: value })} />
     </Panel>
 
-    <SectionLabel>Proxy et ports locaux</SectionLabel>
+    <SectionLabel>{t("settings.proxy.section")}</SectionLabel>
     <Panel style={styles.panel}>
-      <InfoRow icon="swap-horiz" title="Ports SOCKS et DNSTT" description="Attribués dynamiquement pour préserver le multi-profil et éviter les collisions." pillLabel="Auto par profil" pillTone="success" />
-      <InfoRow icon="devices" title="Accès depuis le réseau local" description="Les proxys locaux restent privés sur l’appareil ; aucune ouverture LAN non authentifiée n’est exposée." pillLabel="Désactivé" />
+      <InfoRow icon="swap-horiz" title={t("settings.ports.title")} description={t("settings.ports.desc")} pillLabel={t("settings.ports.pill")} pillTone="success" />
+      <InfoRow icon="devices" title={t("settings.lan.title")} description={t("settings.lan.desc")} pillLabel={t("settings.lan.pill")} />
     </Panel>
 
-    <SectionLabel>DNS</SectionLabel>
+    <SectionLabel>{t("settings.dns.section")}</SectionLabel>
     <Panel style={styles.panel}>
-      <ToggleRow icon="dns" title="Protection anti-fuite DNS" description="Réduire le risque de résolution DNS hors du tunnel (mécanisme local de l’application)." value={settings.dnsProtection} onChange={(value) => update({ dnsProtection: value })} />
-      <ToggleRow icon="public" title="DNS personnalisé" description="Remplace les résolveurs utilisés par le moteur VPN par vos deux serveurs." value={settings.customDnsEnabled} onChange={(value) => update({ customDnsEnabled: value })} />
-      <SettingTextRow icon="looks-one" title="DNS primaire" description="Premier résolveur consulté par le moteur." value={settings.dnsPrimary} onChangeText={(value) => update({ dnsPrimary: value })} error={dnsFormatError(settings.dnsPrimary)} disabled={!settings.customDnsEnabled} />
-      <SettingTextRow icon="looks-two" title="DNS secondaire" description="Résolveur de secours." value={settings.dnsSecondary} onChangeText={(value) => update({ dnsSecondary: value })} error={dnsFormatError(settings.dnsSecondary)} disabled={!settings.customDnsEnabled} />
-      <Text style={[styles.note, { color: colors.muted }]}>La protection anti-fuite et le DNS personnalisé sont complémentaires : l’une sécurise la résolution locale des ponts, l’autre choisit les résolveurs du tunnel.</Text>
+      <ToggleRow icon="dns" title={t("settings.dnsProtection.title")} description={t("settings.dnsProtection.desc")} value={settings.dnsProtection} onChange={(value) => update({ dnsProtection: value })} />
+      <ToggleRow icon="public" title={t("settings.customDns.title")} description={t("settings.customDns.desc")} value={settings.customDnsEnabled} onChange={(value) => update({ customDnsEnabled: value })} />
+      <SettingTextRow icon="looks-one" title={t("settings.dnsPrimary.title")} description={t("settings.dnsPrimary.desc")} value={settings.dnsPrimary} onChangeText={(value) => update({ dnsPrimary: value })} error={dnsFormatError(settings.dnsPrimary)} disabled={!settings.customDnsEnabled} />
+      <SettingTextRow icon="looks-two" title={t("settings.dnsSecondary.title")} description={t("settings.dnsSecondary.desc")} value={settings.dnsSecondary} onChangeText={(value) => update({ dnsSecondary: value })} error={dnsFormatError(settings.dnsSecondary)} disabled={!settings.customDnsEnabled} />
+      <Text style={[styles.note, { color: colors.muted }]}>{t("settings.dns.note")}</Text>
     </Panel>
 
-    <SectionLabel>Vérification HTTP et reconnexion</SectionLabel>
+    <SectionLabel>{t("settings.http.section")}</SectionLabel>
     <Panel style={styles.panel}>
-      <Text style={[styles.subTitle, { color: colors.muted }]}>Contrôlé par le moteur</Text>
-      <ToggleRow icon="network-check" title="Vérification HTTP" description="Contrôle régulier de la connectivité réelle du tunnel via une requête HTTP." value={settings.httpPingEnabled} onChange={(value) => update({ httpPingEnabled: value })} />
-      <SettingTextRow icon="link" title="URL de vérification" description="Point de contact censé répondre sans contenu (204)." value={settings.httpPingUrl} onChangeText={(value) => update({ httpPingUrl: value })} error={httpUrlError(settings.httpPingUrl)} disabled={!settings.httpPingEnabled} />
-      <SettingNumberRow icon="timer" title="Intervalle" description="Temps entre deux vérifications, de 1 s à 120 s." value={settings.httpPingIntervalMs} min={1000} max={120000} step={1000} unit="ms" onChange={(value) => {
+      <Text style={[styles.subTitle, { color: colors.muted }]}>{t("settings.engineSubtitle")}</Text>
+      <ToggleRow icon="network-check" title={t("settings.httpPing.title")} description={t("settings.httpPing.desc")} value={settings.httpPingEnabled} onChange={(value) => update({ httpPingEnabled: value })} />
+      <SettingTextRow icon="link" title={t("settings.pingUrl.title")} description={t("settings.pingUrl.desc")} value={settings.httpPingUrl} onChangeText={(value) => update({ httpPingUrl: value })} error={httpUrlError(settings.httpPingUrl)} disabled={!settings.httpPingEnabled} />
+      <SettingNumberRow icon="timer" title={t("settings.pingInterval.title")} description={t("settings.pingInterval.desc")} value={settings.httpPingIntervalMs} min={1000} max={120000} step={1000} unit="ms" onChange={(value) => {
         const ceiling = Math.min(60000, value);
         if (settings.httpPingTimeoutMs > ceiling) update({ httpPingIntervalMs: value, httpPingTimeoutMs: ceiling });
         else update({ httpPingIntervalMs: value });
       }} disabled={!settings.httpPingEnabled} />
-      <SettingNumberRow icon="hourglass-empty" title="Délai maximal" description="Sans réponse avant ce délai, la vérification échoue." value={settings.httpPingTimeoutMs} min={1000} max={Math.min(60000, settings.httpPingIntervalMs)} step={1000} unit="ms" onChange={(value) => update({ httpPingTimeoutMs: value })} disabled={!settings.httpPingEnabled} />
-      <SettingNumberRow icon="repeat" title="Échecs avant reconnexion" description="Nombre d’échecs consécutifs déclenchant une relance du tunnel (0–20)." value={settings.reconnectAfterFailures} min={0} max={20} step={1} onChange={(value) => update({ reconnectAfterFailures: value })} />
-      <ToggleRow icon="all-inclusive" title="Toujours tenter de reconnecter" description="Relancer indéfiniment le tunnel après une perte." value={settings.alwaysReconnect} onChange={(value) => update({ alwaysReconnect: value })} />
+      <SettingNumberRow icon="hourglass-empty" title={t("settings.pingTimeout.title")} description={t("settings.pingTimeout.desc")} value={settings.httpPingTimeoutMs} min={1000} max={Math.min(60000, settings.httpPingIntervalMs)} step={1000} unit="ms" onChange={(value) => update({ httpPingTimeoutMs: value })} disabled={!settings.httpPingEnabled} />
+      <SettingNumberRow icon="repeat" title={t("settings.failures.title")} description={t("settings.failures.desc")} value={settings.reconnectAfterFailures} min={0} max={20} step={1} onChange={(value) => update({ reconnectAfterFailures: value })} />
+      <ToggleRow icon="all-inclusive" title={t("settings.alwaysReconnect.title")} description={t("settings.alwaysReconnect.desc")} value={settings.alwaysReconnect} onChange={(value) => update({ alwaysReconnect: value })} />
       <View style={[styles.divider, { borderTopColor: colors.border }]} />
-      <Text style={[styles.subTitle, { color: colors.muted }]}>Comportement de l’application</Text>
-      <ToggleRow icon="sync" title="Reconnexion automatique" description="Réessayer après une déconnexion inattendue." value={settings.autoReconnect} onChange={(value) => update({ autoReconnect: value })} />
-      <SettingNumberRow icon="timer" title="Délai de reconnexion" description="Attente avant chaque nouvel essai (1 à 60 s)." value={settings.reconnectDelaySeconds} min={1} max={60} step={1} unit="s" onChange={(value) => update({ reconnectDelaySeconds: value })} />
-      <ToggleRow icon="signal-wifi-off" title="Arrêter sur perte réseau" description="Arrêter proprement le VPN si le réseau disparaît." value={settings.stopOnNetworkLoss} onChange={(value) => update({ stopOnNetworkLoss: value })} />
-      <ToggleRow icon="power-settings-new" title="Démarrer au lancement" description="Préparer le dernier tunnel au lancement, désactivé par défaut." value={settings.launchOnBoot} onChange={(value) => update({ launchOnBoot: value })} />
+      <Text style={[styles.subTitle, { color: colors.muted }]}>{t("settings.appSubtitle")}</Text>
+      <ToggleRow icon="sync" title={t("settings.autoReconnect.title")} description={t("settings.autoReconnect.desc")} value={settings.autoReconnect} onChange={(value) => update({ autoReconnect: value })} />
+      <SettingNumberRow icon="timer" title={t("settings.delay.title")} description={t("settings.delay.desc")} value={settings.reconnectDelaySeconds} min={1} max={60} step={1} unit="s" onChange={(value) => update({ reconnectDelaySeconds: value })} />
+      <ToggleRow icon="signal-wifi-off" title={t("settings.stopOnLoss.title")} description={t("settings.stopOnLoss.desc")} value={settings.stopOnNetworkLoss} onChange={(value) => update({ stopOnNetworkLoss: value })} />
+      <ToggleRow icon="power-settings-new" title={t("settings.boot.title")} description={t("settings.boot.desc")} value={settings.launchOnBoot} onChange={(value) => update({ launchOnBoot: value })} />
     </Panel>
 
-    <SectionLabel>Diagnostic</SectionLabel>
+    <SectionLabel>{t("settings.diag.section")}</SectionLabel>
     <Panel style={styles.panel}>
-      <ToggleRow icon="article" title="Diagnostic détaillé" description="Conserver les événements de transport et de cycle de vie dans le journal local. N’affecte que les logs, jamais le moteur." value={settings.verboseDiagnostics} onChange={(value) => update({ verboseDiagnostics: value })} />
-      <ToggleRow icon="help-outline" title="Confirmer la déconnexion" description="Demander une confirmation avant d’arrêter un tunnel actif." value={settings.confirmDisconnect} onChange={(value) => update({ confirmDisconnect: value })} />
+      <ToggleRow icon="article" title={t("settings.verbose.title")} description={t("settings.verbose.desc")} value={settings.verboseDiagnostics} onChange={(value) => update({ verboseDiagnostics: value })} />
+      <ToggleRow icon="help-outline" title={t("settings.confirmDisconnect.title")} description={t("settings.confirmDisconnect.desc")} value={settings.confirmDisconnect} onChange={(value) => update({ confirmDisconnect: value })} />
     </Panel>
 
-    <SectionLabel>Payload</SectionLabel>
+    <SectionLabel>{t("settings.payload.section")}</SectionLabel>
     <Panel style={styles.panel}>
-      <InfoRow icon="memory" title="Payload Buffer" description="Tampons optimisés automatiquement : client 16 384 octets · distant 32 768 octets. Aucun réglage manuel nécessaire." pillLabel="Auto" pillTone="success" />
+      <InfoRow icon="memory" title={t("settings.buffer.title")} description={t("settings.buffer.desc")} pillLabel={t("settings.buffer.pill")} pillTone="success" />
     </Panel>
 
-    <SectionLabel>Identité de l’appareil</SectionLabel>
+    <SectionLabel>{t("settings.identity.section")}</SectionLabel>
     <Panel style={styles.devicePanel}>
       <View style={[styles.deviceIcon, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name="fingerprint" size={22} color={colors.primary} /></View>
-      <View style={styles.deviceCopy}><Text style={styles.rowTitleLocal}>Hardware ID</Text><Text numberOfLines={2} style={[styles.hardwareId, { color: colors.foreground }]}>{device.hardwareId}</Text><Text style={[styles.description, { color: colors.muted }]}>Opérateur : {device.mobileOperator || "indisponible"} · Intégrité : {device.rooted ? "root détecté" : "aucun root détecté"}</Text></View>
+      <View style={styles.deviceCopy}><Text style={styles.rowTitleLocal}>{t("settings.hwid.label")}</Text><Text numberOfLines={2} style={[styles.hardwareId, { color: colors.foreground }]}>{device.hardwareId}</Text><Text style={[styles.description, { color: colors.muted }]}>{t("settings.operator", { operator: device.mobileOperator || "—" })}{" · "}{t("settings.integrity", { state: device.rooted ? t("settings.rootDetected") : t("settings.noRoot") })}</Text></View>
       <Pressable onPress={() => void copyHardwareId()} style={({ pressed }) => [styles.copyButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}><MaterialIcons name="content-copy" size={18} color="#FFFFFF" /></Pressable>
     </Panel>
-    <Text style={[styles.deviceHint, { color: colors.muted }]}>Copiez cet ID pour l’ajouter à une liste autorisée dans Exporter.</Text>
+    <Text style={[styles.deviceHint, { color: colors.muted }]}>{t("settings.hwid.hint")}</Text>
 
-    <Pressable onPress={reset} style={({ pressed }) => [styles.reset, pressed && styles.pressed]}><MaterialIcons name="restart-alt" size={18} color={colors.error} /><Text style={[styles.resetText, { color: colors.error }]}>Réinitialiser les paramètres</Text></Pressable>
+    <Pressable onPress={reset} style={({ pressed }) => [styles.reset, pressed && styles.pressed]}><MaterialIcons name="restart-alt" size={18} color={colors.error} /><Text style={[styles.resetText, { color: colors.error }]}>{t("settings.reset.button")}</Text></Pressable>
   </ScrollView></ScreenContainer>;
 }
 
