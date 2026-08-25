@@ -34,7 +34,7 @@ object LanShareGateway {
   fun start(preferredPort: Int): Int {
     stop()
     val socket = ServerSocket()
-    socket.reuseAddress(true)
+    socket.reuseAddress = true
     try {
       socket.bind(InetSocketAddress(InetAddress.getByName("0.0.0.0"), preferredPort.coerceIn(1024, 65535)), 64)
     } catch (_: Throwable) {
