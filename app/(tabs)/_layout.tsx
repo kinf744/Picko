@@ -52,17 +52,23 @@ function SwipeWrapper({ children }: { children: React.ReactNode }) {
     else router.push(`/(tabs)/${target}` as any);
   };
 
+  // Toute la logique (lecture de pathname via getIndex + navigation router) doit tourner
+  // sur le thread JS. Le callback .onEnd de RNGH est un worklet (thread UI) car Reanimated
+  // est actif : y appeler getIndex()/router directement plante en build release.
+  const handleSwipe = (dx: number) => {
+    const idx = getIndex();
+    if (dx < -50 && idx < TAB_ORDER.length - 1) {
+      navigateTo(idx + 1);
+    } else if (dx > 50 && idx > 0) {
+      navigateTo(idx - 1);
+    }
+  };
+
   const pan = Gesture.Pan()
     .activeOffsetX([-20, 20])
     .failOffsetY([-15, 15])
     .onEnd((e) => {
-      const dx = e.translationX;
-      const idx = getIndex();
-      if (dx < -50 && idx < TAB_ORDER.length - 1) {
-        runOnJS(navigateTo)(idx + 1);
-      } else if (dx > 50 && idx > 0) {
-        runOnJS(navigateTo)(idx - 1);
-      }
+      runOnJS(handleSwipe)(e.translationX);
     });
 
   return (

@@ -1,10 +1,16 @@
 package expo.modules.kighmuvpnnative
 
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.os.Build
 import android.provider.Settings
+import android.telephony.TelephonyManager
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.io.File
+import java.security.MessageDigest
+import java.util.Locale
 
 class KighmuVpnNativeModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -35,6 +41,25 @@ class KighmuVpnNativeModule : Module() {
     Function("getHardwareId") {
       val context = appContext.reactContext ?: return@Function "indisponible"
       Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)?.uppercase() ?: "indisponible"
+    }
+
+    // Restauré pour l'écran Paramètres de l'UI #154 : renvoie { hardwareId, mobileOperator, rooted }.
+    // Logique identique au build #154 (hardwareId = MD5 hex 32 caractères attendu par settings.tsx).
+    AsyncFunction("getDeviceSecurityInfo") {
+      val context = appContext.reactContext ?: throw IllegalStateException("Contexte Android indisponible")
+      val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID).orEmpty().ifBlank { "${Build.FINGERPRINT}:${context.packageName}" }
+      val digest = MessageDigest.getInstance("MD5").digest(androidId.toByteArray(Charsets.UTF_8))
+      val hardwareId = digest.joinToString("") { "%02X".format(Locale.US, it) }
+      val mobileOperator = try {
+        (context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager)?.simOperator.orEmpty().trim().uppercase(Locale.US)
+      } catch (_: SecurityException) { "" }
+      val rooted = Build.TAGS?.contains("test-keys") == true ||
+        listOf("/system/bin/su", "/system/xbin/su", "/sbin/su", "/system/app/Superuser.apk").any { File(it).exists() }
+      mapOf(
+        "hardwareId" to hardwareId,
+        "mobileOperator" to mobileOperator,
+        "rooted" to rooted,
+      )
     }
 
     AsyncFunction("prepareVpn") {
