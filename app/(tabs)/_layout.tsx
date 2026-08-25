@@ -48,8 +48,10 @@ function SwipeWrapper({ children }: { children: React.ReactNode }) {
 
   const navigateTo = (index: number) => {
     const target = TAB_ORDER[index];
-    if (target === "index") router.push("/(tabs)" as any);
-    else router.push(`/(tabs)/${target}` as any);
+    // navigate (et non push) : bascule vers l'onglet sans empiler l'historique.
+    // Évite que le bouton Retour Android reparcoure les onglets balayés un par un.
+    if (target === "index") router.navigate("/(tabs)" as any);
+    else router.navigate(`/(tabs)/${target}` as any);
   };
 
   // Toute la logique (lecture de pathname via getIndex + navigation router) doit tourner
@@ -92,6 +94,10 @@ export default function TabLayout() {
           tabBarLabelStyle: { fontSize: 11, fontWeight: "700", marginTop: 1 },
           tabBarItemStyle: { paddingTop: 3 },
           tabBarStyle: {
+            // Couleur de la barre alignée sur le thème de l'app (bleu-gris en clair,
+            // navy surélevé en sombre) au lieu du blanc par défaut de React Navigation.
+            backgroundColor: colors.surfaceRaised,
+            borderTopColor: colors.border,
             borderTopWidth: 1,
             elevation: 0,
             shadowOpacity: 0,
