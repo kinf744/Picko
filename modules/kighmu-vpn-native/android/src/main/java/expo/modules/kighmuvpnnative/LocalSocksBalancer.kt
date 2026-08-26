@@ -127,8 +127,8 @@ class LocalSocksBalancer(private val log: (String, String, String) -> Unit) {
   companion object {
     fun hasSocksGreeting(port: Int): Boolean = try {
       Socket().use { socket ->
-        socket.connect(InetSocketAddress("127.0.0.1", port), 900)
-        socket.soTimeout = 900
+        socket.connect(InetSocketAddress("127.0.0.1", port), 1500)
+        socket.soTimeout = 1500
         socket.getOutputStream().apply { write(byteArrayOf(0x05, 0x01, 0x00)); flush() }
         val reply = ByteArray(2)
         val received = socket.getInputStream().read(reply)
