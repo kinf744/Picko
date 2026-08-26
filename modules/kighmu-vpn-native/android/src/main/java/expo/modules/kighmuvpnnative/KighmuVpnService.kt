@@ -79,7 +79,7 @@ class KighmuVpnService : VpnService() {
       runtimeSettings = VpnRuntimeSettings.parse(payload)
       activeProfilesJson = payloadJson
       savePayload(payloadJson)
-      val profiles = TunnelProfile.parseMany(profilesJson)
+      val profiles = TunnelProfile.parseMany(payloadJson)
       primaryProfileName = profiles.firstOrNull()?.name.orEmpty()
       if (profiles.isEmpty()) error("Aucun profil de tunnel utilisable n’a été reçu")
       profiles.forEach { profile -> profile.validate()?.let { error("${profile.name} : $it") } }
