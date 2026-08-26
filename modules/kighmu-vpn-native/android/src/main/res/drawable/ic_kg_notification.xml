@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icône de notification KIGHMU VPN : monogramme « KG » blanc monochrome
+     (les icônes de statut Android doivent être plates blanc/transparence ;
+     le système les teinte dans la barre d'état). Viewport 24x24dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- K : tige -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,5 L5.6,5 L5.6,19 L3,19 Z" />
+
+    <!-- K : bras haut + bas -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M5.9,10.9 L9.5,5 L12.3,5 L8.1,11.7 L12.6,19 L9.7,19 L5.9,12.7 Z" />
+
+    <!-- G : barre haute -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M13,5 L21,5 L21,7.6 L13,7.6 Z" />
+
+    <!-- G : barre gauche -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M13,5 L15.6,5 L15.6,19 L13,19 Z" />
+
+    <!-- G : barre basse -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M13,16.4 L21,16.4 L21,19 L13,19 Z" />
+
+    <!-- G : équerre médiane -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M18.4,11.4 L21,11.4 L21,16.4 L15.6,16.4 L15.6,14 L18.4,14 Z" />
+</vector>

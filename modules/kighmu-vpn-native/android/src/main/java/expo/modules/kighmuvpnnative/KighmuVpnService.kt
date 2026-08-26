@@ -70,7 +70,7 @@ class KighmuVpnService : VpnService() {
       if (!connectivity.bindProcessToNetwork(physicalNetwork)) error("Impossible de lier les tunnels au réseau physique")
 
       val established = Builder()
-        .setSession("Picko multi-tunnel")
+        .setSession("KIGHMU multi-tunnel")
         .setMtu(runtimeSettings.mtu)
         .addAddress("10.0.0.2", 24)
         .addRoute("0.0.0.0", 0)
@@ -290,7 +290,7 @@ class KighmuVpnService : VpnService() {
   private fun createNotificationChannel() {
     if (Build.VERSION.SDK_INT >= 26) {
       getSystemService(NotificationManager::class.java).createNotificationChannel(
-        NotificationChannel(CHANNEL_ID, "Picko VPN", NotificationManager.IMPORTANCE_LOW),
+        NotificationChannel(CHANNEL_ID, "KIGHMU VPN", NotificationManager.IMPORTANCE_LOW),
       )
     }
   }
@@ -300,8 +300,8 @@ class KighmuVpnService : VpnService() {
     val pending = launchIntent?.let { PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT) }
     val stopPending = PendingIntent.getService(this, NOTIFICATION_ID, Intent(this, KighmuVpnService::class.java).apply { action = ACTION_STOP }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     return NotificationCompat.Builder(this, CHANNEL_ID)
-      .setSmallIcon(android.R.drawable.stat_sys_warning)
-      .setContentTitle(if (runtimeSettings.profileNameInNotification && primaryProfileName.isNotBlank()) "Picko VPN — $primaryProfileName" else "Picko VPN")
+      .setSmallIcon(R.drawable.ic_kg_notification)
+      .setContentTitle(if (runtimeSettings.profileNameInNotification && primaryProfileName.isNotBlank()) "KIGHMU VPN — $primaryProfileName" else "KIGHMU VPN")
       .setContentText(text)
       .setOngoing(true)
       .setContentIntent(pending)
