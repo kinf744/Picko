@@ -6,10 +6,12 @@ import android.net.VpnService
 import android.os.Build
 import android.provider.Settings
 import android.telephony.TelephonyManager
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
 import java.security.MessageDigest
+import kotlin.concurrent.thread
 import java.util.Locale
 
 class KighmuVpnNativeModule : Module() {
@@ -122,6 +124,29 @@ class KighmuVpnNativeModule : Module() {
         "port" to (LanShareGateway.portOrNull() ?: -1),
         "balancerPort" to KighmuVpnService.currentBalancerPort,
       )
+    }
+
+    // --- Wi-Fi Direct (réseau de partage créé par l'app, technique PdaNet) ---
+
+    AsyncFunction("startWifiDirect") { promise: Promise ->
+      val context = appContext.reactContext
+      if (context == null) { promise.reject("ERR_NO_CONTEXT", "Contexte Android indisponible", null); return@AsyncFunction }
+      WifiDirectHotspot.createGroup(context) { ok, error ->
+        if (ok) promise.resolve(mapOf("ok" to true))
+        else promise.reject("ERR_WIFI_DIRECT", error ?: "échec Wi-Fi Direct", null)
+      }
+    }
+
+    AsyncFunction("stopWifiDirect") { promise: Promise ->
+      val context = appContext.reactContext
+      if (context == null) { promise.resolve(false); return@AsyncFunction }
+      WifiDirectHotspot.removeGroup { ok, _ -> promise.resolve(ok) }
+    }
+
+    AsyncFunction("getWifiDirectInfo") { promise: Promise ->
+      val context = appContext.reactContext
+      if (context == null) { promise.resolve(mapOf("active" to false, "ssid" to "", "passphrase" to "", "ip" to "")); return@AsyncFunction }
+      thread(name = "picko-wd-info") { promise.resolve(WifiDirectHotspot.info(context)) }
     }
 
     // Adresses IPv4 du téléphone visibles depuis le réseau local/hotspot.

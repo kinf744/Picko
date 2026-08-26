@@ -12,6 +12,9 @@ type NativeVpnModule = {
   getDeviceSecurityInfo: () => Promise<DeviceSecurityInfo>;
   probeVpnExitIp?: () => Promise<string>;
   getTrafficTotals?: () => TrafficTotals;
+  startWifiDirect?: () => Promise<{ ok: boolean }>;
+  stopWifiDirect?: () => Promise<boolean>;
+  getWifiDirectInfo?: () => Promise<{ active: boolean; ssid: string; passphrase: string; ip: string }>;
   startLanShare?: (preferredPort: number) => Promise<{ port: number; running: boolean }>;
   stopLanShare?: () => Promise<boolean>;
   getLanShareStatus?: () => Promise<{ running: boolean; port: number; balancerPort: number }>;
@@ -60,6 +63,29 @@ export function getTrafficTotals(): TrafficTotals {
   const native = getNativeVpn();
   if (!native?.getTrafficTotals) return { rx: 0, tx: 0 };
   try { return native.getTrafficTotals(); } catch { return { rx: 0, tx: 0 }; }
+}
+
+// --- Wi-Fi Direct (réseau créé par l'app, technique PdaNet) -----------------
+
+export type WifiDirectInfo = { active: boolean; ssid: string; passphrase: string; ip: string };
+
+/** Crée le groupe Wi-Fi Direct (réseau DIRECT-xx, IP fixe du téléphone). */
+export async function startWifiDirect(): Promise<WifiDirectInfo | null> {
+  const native = getNativeVpn();
+  if (!native?.startWifiDirect) return null;
+  try { return { ...(await native.startWifiDirect()), active: true, ssid: "", passphrase: "", ip: "" } as WifiDirectInfo; } catch { return null; }
+}
+
+export async function stopWifiDirect(): Promise<boolean> {
+  const native = getNativeVpn();
+  if (!native?.stopWifiDirect) return false;
+  try { return (await native.stopWifiDirect()) === true; } catch { return false; }
+}
+
+export async function getWifiDirectInfo(): Promise<WifiDirectInfo | null> {
+  const native = getNativeVpn();
+  if (!native?.getWifiDirectInfo) return null;
+  try { return await native.getWifiDirectInfo(); } catch { return null; }
 }
 
 /** Démarre la passerelle proxy LAN (HTTP + SOCKS5 sur un seul port). */

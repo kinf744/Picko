@@ -29,6 +29,7 @@ object LanShareGateway {
   private val workers = Executors.newCachedThreadPool()
   private var server: ServerSocket? = null
   @Volatile private var running = false
+  @Volatile private var activePort: Int = 0
 
   /** Démarre la passerelle ; retourne le port réel (repli sur un port libre si préféré occupé). */
   fun start(preferredPort: Int): Int {
@@ -41,6 +42,7 @@ object LanShareGateway {
       socket.bind(InetSocketAddress(InetAddress.getByName("0.0.0.0"), 0), 64)
     }
     server = socket
+    activePort = socket.localPort
     running = true
     Thread {
       while (running) {
@@ -59,6 +61,7 @@ object LanShareGateway {
     running = false
     try { server?.close() } catch (_: Throwable) {}
     server = null
+    activePort = 0
   }
 
   fun isRunning(): Boolean = running && server?.isClosed == false
@@ -170,6 +173,13 @@ object LanShareGateway {
         port = if (idx > 0) authority.substring(idx + 1).toIntOrNull() ?: 80 else 80
       }
 
+      // Script PAC (technique PdaNet) : une requête HTTP locale (GET / ou /wpad.dat)
+      // renvoie la configuration de proxy automatique — config client en un seul champ.
+      if (isPacRequest(host, path)) {
+        respondPac(output)
+        return null
+      }
+
       val remote = dialBalanced(host, port) ?: run { respond(output, "502 VPN tunnel unavailable"); return null }
 
       if (method == "CONNECT") {
@@ -194,6 +204,37 @@ object LanShareGateway {
 
     private fun respond(output: java.io.OutputStream, status: String) {
       try { output.write("HTTP/1.1 $status\r\nConnection: close\r\n\r\n".toByteArray(Charsets.US_ASCII)); output.flush() } catch (_: Throwable) {}
+    }
+
+    private fun isPacRequest(host: String, path: String): Boolean {
+      if (path.endsWith("/wpad.dat")) return true
+      return localIps().contains(host) // navigation vers http://<ip-du-téléphone>:<port>/
+    }
+
+    private fun localIps(): List<String> = try {
+      java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
+        .flatMap { nif -> java.util.Collections.list(nif.inetAddresses) }
+        .filter { it is java.net.Inet4Address && !it.isLoopbackAddress && it.isSiteLocalAddress }
+        .map { it.hostAddress.orEmpty() }
+        .filter { it.isNotBlank() }
+    } catch (_: Throwable) { emptyList() }
+
+    private fun respondPac(output: java.io.OutputStream) {
+      // IP préférée : 192.168.49.1 (adresse fixe du propriétaire Wi-Fi Direct, comme PdaNet),
+      // sinon la première IP locale disponible.
+      val preferred = listOf("192.168.49.1") + localIps()
+      val proxyIp = preferred.firstOrNull { localIps().contains(it) } ?: "127.0.0.1"
+      val port = activePort
+      val body = "function FindProxyForURL(url, host) {\r\n" +
+        "  if (isPlainHostName(host) || shExpMatch(host, \"127.*\") || shExpMatch(host, \"192.168.*\") || shExpMatch(host, \"10.*\")) return \"DIRECT\";\r\n" +
+        "  return \"PROXY $proxyIp:$port; DIRECT\";\r\n" +
+        "}\r\n"
+      try {
+        val head = "HTTP/1.1 200 OK\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nContent-Length: ${body.toByteArray(Charsets.US_ASCII).size}\r\nConnection: close\r\n\r\n"
+        output.write(head.toByteArray(Charsets.US_ASCII))
+        output.write(body.toByteArray(Charsets.US_ASCII))
+        output.flush()
+      } catch (_: Throwable) {}
     }
   }
 

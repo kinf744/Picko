@@ -3,15 +3,16 @@ import * as Clipboard from "expo-clipboard";
 import { Linking } from "react-native";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, AppState, PermissionsAndroid, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { InfoRow, Panel, SectionLabel, StatusPill, ToggleRow, SettingTextRow } from "@/components/kighmu-ui";
 import { useColors } from "@/hooks/use-colors";
 import { useLang } from "@/lib/i18n-provider";
 import { DEFAULT_HOTSPOT_SETTINGS, loadHotspotSettings, saveHotspotSettings, type HotspotSettings } from "@/lib/hotspot-settings";
+import type { WifiDirectInfo } from "@/lib/vpn/native";
 import { getDeviceSecurityInfo, getTrafficTotals, probeVpnExitIp } from "@/lib/hotspot-runtime";
-import { getLanShareStatus, getPhoneLanIps, startLanShare, stopLanShare } from "@/lib/vpn/native";
+import { getLanShareStatus, getPhoneLanIps, getWifiDirectInfo, startLanShare, startWifiDirect, stopLanShare, stopWifiDirect } from "@/lib/vpn/native";
 import { useVpn } from "@/lib/vpn/vpn-context";
 
 const CLIENT_TEST_URL = "https://api.ipify.org";
@@ -33,6 +34,10 @@ export default function HotspotScreen() {
   const [totals, setTotals] = useState({ rx: 0, tx: 0 });
   const [lanState, setLanState] = useState<{ running: boolean; port: number }>({ running: false, port: -1 });
   const [ips, setIps] = useState<string[]>([]);
+  const [wd, setWd] = useState<WifiDirectInfo | null>(null);
+  const [wdBusy, setWdBusy] = useState(false);
+  const [wdError, setWdError] = useState<"perms" | "failed" | null>(null);
+  const wdIpRef = useRef("");
   const baseTotals = useRef({ rx: 0, tx: 0 });
   const previousStatus = useRef(status);
 
@@ -42,7 +47,8 @@ export default function HotspotScreen() {
   useEffect(() => {
     const refresh = () => {
       const raw = getPhoneLanIps();
-      setIps(raw.length > 0 ? [...raw].sort((a, b) => rank(a) - rank(b)) : []);
+      const list = wdIpRef.current ? [wdIpRef.current, ...raw.filter((ip) => ip !== wdIpRef.current)] : raw;
+      setIps(list.length > 0 ? [...list].sort((a, b) => rank(a) - rank(b)) : []);
     };
     const rank = (ip: string) => (ip.startsWith("192.168.43.") || ip.startsWith("192.168.137.") ? 0 : 2);
     refresh();
@@ -76,6 +82,9 @@ export default function HotspotScreen() {
 
   useEffect(() => {
     void loadHotspotSettings().then(setSettings);
+    void getWifiDirectInfo().then((info) => {
+      if (info?.active) { setWd(info); wdIpRef.current = info.ip || "192.168.49.1"; }
+    });
     baseTotals.current = getTrafficTotals();
     const timer = setInterval(() => {
       const now = getTrafficTotals();
@@ -156,6 +165,42 @@ export default function HotspotScreen() {
     }
   };
 
+  // Permissions Android pour createGroup : NEARBY_WIFI_DEVICES (13+) ou Localisation (<=12).
+  const ensureWifiDirectPermissions = async (): Promise<boolean> => {
+    try {
+      if (Number(Platform.Version) >= 33) {
+        const result = await PermissionsAndroid.request("android.permission.NEARBY_WIFI_DEVICES" as never, { title: t("hs.wifi.perms.title"), message: t("hs.wifi.perms.body"), buttonPositive: "OK" } as never);
+        return result === PermissionsAndroid.RESULTS.GRANTED;
+      }
+      const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION, { title: t("hs.wifi.perms.title"), message: t("hs.wifi.perms.body"), buttonPositive: "OK" });
+      return result === PermissionsAndroid.RESULTS.GRANTED;
+    } catch {
+      return false;
+    }
+  };
+
+  const createWifiDirect = async () => {
+    setWdError(null);
+    setWdBusy(true);
+    const granted = await ensureWifiDirectPermissions();
+    if (!granted) { setWdBusy(false); setWdError("perms"); return; }
+    const info = await startWifiDirect();
+    setWdBusy(false);
+    if (!info) { setWdError("failed"); return; }
+    const detailed = await getWifiDirectInfo();
+    const finalInfo = detailed?.active ? detailed : info;
+    setWd(finalInfo);
+    wdIpRef.current = finalInfo.ip || "192.168.49.1";
+    setIps((current) => [wdIpRef.current, ...current.filter((ip) => ip !== wdIpRef.current)]);
+  };
+
+  const stopWifiDirectNetwork = async () => {
+    await stopWifiDirect();
+    setWd(null);
+    wdIpRef.current = "";
+    setIps(getPhoneLanIps());
+  };
+
   const copyText = async (label: string, value: string) => {
     await Clipboard.setStringAsync(value);
     Alert.alert(t("hs.ipCopiedTitle"), label);
@@ -186,6 +231,28 @@ export default function HotspotScreen() {
       </Pressable>
     </Panel>
 
+    <SectionLabel>{t("hs.wifi.section")}</SectionLabel>
+    <Panel style={styles.panel}>
+      <Text style={[styles.note, { color: colors.muted }]}>{t("hs.wifi.note")}</Text>
+      {wd?.active ? (
+        <View style={[styles.proxyBlock, { backgroundColor: colors.surfaceRaised }]}>
+          <StatusPill label={t("hs.wifi.active")} tone="success" />
+          <Text style={[styles.rowTitleSmall, { color: colors.muted }]}>{t("hs.wifi.ssid")}</Text>
+          <Pressable onPress={() => void copyText(t("hs.wifi.ssid"), wd.ssid)} style={({ pressed }) => [pressed && styles.pressed]}><Text selectable style={[styles.proxyIp, { color: colors.foreground }]}>{wd.ssid}</Text></Pressable>
+          {wd.passphrase ? (<><Text style={[styles.rowTitleSmall, { color: colors.muted }]}>{t("hs.wifi.pass")}</Text><Pressable onPress={() => void copyText(t("hs.wifi.pass"), wd.passphrase)} style={({ pressed }) => [pressed && styles.pressed]}><Text selectable style={[styles.proxyIp, { color: colors.foreground }]}>{wd.passphrase}</Text></Pressable></>) : null}
+          <Text style={[styles.rowTitleSmall, { color: colors.muted }]}>{t("hs.wifi.ip")}</Text>
+          <Text selectable style={[styles.proxyIp, { color: colors.primary }]}>{wd.ip || "192.168.49.1"}</Text>
+        </View>
+      ) : null}
+      {wdBusy ? <Text style={[styles.note, { color: colors.muted }]}>{t("hs.wifi.starting")}</Text> : null}
+      {wdError === "perms" ? <Text style={[styles.note, { color: colors.error }]}>{t("hs.wifi.perms.body")}</Text> : null}
+      {wdError === "failed" ? <Text style={[styles.note, { color: colors.error }]}>{t("hs.wifi.failed")}</Text> : null}
+      <Pressable disabled={wdBusy} onPress={() => void (wd?.active ? stopWifiDirectNetwork() : createWifiDirect())} style={({ pressed }) => [styles.systemButton, { backgroundColor: wd?.active ? colors.error : colors.primary }, pressed && !wdBusy && styles.pressed, wdBusy && styles.disabled]}>
+        <MaterialIcons name={wd?.active ? "link-off" : "wifi-tethering"} size={18} color="#FFFFFF" />
+        <Text style={styles.systemButtonText}>{wd?.active ? t("hs.wifi.stop") : t("hs.wifi.create")}</Text>
+      </Pressable>
+    </Panel>
+
     <SectionLabel>{t("hs.proxy.section")}</SectionLabel>
     <Panel style={styles.panel}>
       <ToggleRow icon="swap-horiz" title={t("hs.proxy.toggle")} description={t("hs.proxy.desc")} value={settings.lanProxyEnabled} onChange={(value) => update({ lanProxyEnabled: value })} />
@@ -200,6 +267,7 @@ export default function HotspotScreen() {
               </Pressable>
             ))}
             <Text style={[styles.note, { color: colors.muted }]}>{t("hs.proxy.howto")}</Text>
+            <Text style={[styles.note, { color: colors.muted }]}>{t("hs.proxy.pac", { url: `http://${ips[0]}:${lanState.port}/wpad.dat` })}</Text>
           </View>
         ) : status !== "connected" ? (
           <Text style={[styles.note, { color: colors.warning }]}>{t("hs.proxy.needVpn")}</Text>
@@ -276,5 +344,6 @@ const styles = StyleSheet.create({
   trafficRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   trafficCell: { flex: 1, minHeight: 56, borderRadius: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   trafficValue: { fontSize: 16, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  disabled: { opacity: 0.45 },
   pressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },
 });

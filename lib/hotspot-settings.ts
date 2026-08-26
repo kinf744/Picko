@@ -10,13 +10,16 @@ export type HotspotSettings = {
   /** Proxy de partage sur le réseau du hotspot (HTTP + SOCKS5, un seul port). */
   lanProxyEnabled: boolean;
   lanProxyPort: number;
+  /** Réseau dédié créé par l'app via Wi-Fi Direct (technique PdaNet). */
+  wifiDirectEnabled: boolean;
 };
 
 export const DEFAULT_HOTSPOT_SETTINGS: HotspotSettings = {
   shareArmed: false,
   killSwitchEnabled: true,
   lanProxyEnabled: false,
-  lanProxyPort: 8888,
+  lanProxyPort: 8000, // port PdaNet historique
+  wifiDirectEnabled: false,
 };
 
 export async function loadHotspotSettings(): Promise<HotspotSettings> {
