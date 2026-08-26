@@ -24,12 +24,13 @@ describe("hotspot-settings (mode sans root)", () => {
     expect(DEFAULT_HOTSPOT_SETTINGS.shareArmed).toBe(false);
   });
 
-  it("complète un blob partiel sans migration", async () => {
-    store.set(HOTSPOT_SETTINGS_KEY, JSON.stringify({ ssid: "MonRéseau" }));
+  it("complète un blob partiel (et absorbe les anciennes clés ssid/password) sans migration", async () => {
+    store.set(HOTSPOT_SETTINGS_KEY, JSON.stringify({ killSwitchEnabled: false, ssid: "ancien", password: "ancien" }));
     const loaded = await loadHotspotSettings();
-    expect(loaded.ssid).toBe("MonRéseau");
-    expect(loaded.password).toBe("");
+    expect(loaded.killSwitchEnabled).toBe(false);
     expect(Object.keys(loaded)).toEqual(Object.keys(DEFAULT_HOTSPOT_SETTINGS));
+    expect(Object.keys(DEFAULT_HOTSPOT_SETTINGS)).not.toContain("ssid");
+    expect(Object.keys(DEFAULT_HOTSPOT_SETTINGS)).not.toContain("password");
   });
 
   it("blob corrompu → défauts", async () => {
@@ -38,7 +39,7 @@ describe("hotspot-settings (mode sans root)", () => {
   });
 
   it("round-trip save/load", async () => {
-    const next = { ...DEFAULT_HOTSPOT_SETTINGS, ssid: "KIGHMU-HS", password: "secret123", shareArmed: true };
+    const next = { ...DEFAULT_HOTSPOT_SETTINGS, lanProxyPort: 9999, shareArmed: true, lanProxyEnabled: true };
     await saveHotspotSettings(next);
     await expect(loadHotspotSettings()).resolves.toEqual(next);
   });

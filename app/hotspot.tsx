@@ -3,7 +3,7 @@ import * as Clipboard from "expo-clipboard";
 import { Linking } from "react-native";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { InfoRow, Panel, SectionLabel, StatusPill, ToggleRow, SettingTextRow } from "@/components/kighmu-ui";
@@ -36,13 +36,24 @@ export default function HotspotScreen() {
   const baseTotals = useRef({ rx: 0, tx: 0 });
   const previousStatus = useRef(status);
 
-  // Adresses du téléphone visibles par les clients (rafraîchies périodiquement :
-  // l'interface hotspot peut apparaître après activation dans le système).
+  // Adresses du téléphone visibles par les clients. L'interface hotspot n'existe
+  // qu'après activation dans le système : on rafraîchit périodiquement ET dès le
+  // retour au premier plan. Interfaces hotspot (ap*/swlan*/wlan*) en priorité.
   useEffect(() => {
-    const refresh = () => setIps(getPhoneLanIps());
+    const refresh = () => {
+      const raw = getPhoneLanIps();
+      setIps(raw.length > 0 ? [...raw].sort((a, b) => rank(a) - rank(b)) : []);
+    };
+    const rank = (ip: string) => (ip.startsWith("192.168.43.") || ip.startsWith("192.168.137.") ? 0 : 2);
     refresh();
     const timer = setInterval(refresh, 8_000);
-    return () => clearInterval(timer);
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
   }, []);
 
   // Cycle de vie de la passerelle : active seulement si armée ET VPN connecté ;
@@ -169,8 +180,6 @@ export default function HotspotScreen() {
 
     <SectionLabel>{t("hs.hotspot.section")}</SectionLabel>
     <Panel style={styles.panel}>
-      <SettingTextRow icon="badge" title={t("hs.ssid.title")} description={t("hs.ssid.desc")} value={settings.ssid} onChangeText={(value) => update({ ssid: value })} />
-      <SettingTextRow icon="password" title={t("hs.password.title")} description={t("hs.password.desc")} value={settings.password} onChangeText={(value) => update({ password: value })} secure />
       <Pressable onPress={() => void openWirelessSettings()} style={({ pressed }) => [styles.systemButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}>
         <MaterialIcons name="open-in-new" size={18} color="#FFFFFF" />
         <Text style={styles.systemButtonText}>{t("hs.open.settings")}</Text>
@@ -180,24 +189,27 @@ export default function HotspotScreen() {
     <SectionLabel>{t("hs.proxy.section")}</SectionLabel>
     <Panel style={styles.panel}>
       <ToggleRow icon="swap-horiz" title={t("hs.proxy.toggle")} description={t("hs.proxy.desc")} value={settings.lanProxyEnabled} onChange={(value) => update({ lanProxyEnabled: value })} />
-      <SettingTextRow icon="router" title={t("hs.proxy.port")} description={t("hs.proxy.port.desc")} value={String(settings.lanProxyPort)} onChangeText={(value) => { const parsed = parseInt(value.replace(/[^0-9]/g, ""), 10); if (Number.isFinite(parsed)) update({ lanProxyPort: parsed }); }} error={String(settings.lanProxyPort).match(/^\d+$/) && settings.lanProxyPort >= 1024 && settings.lanProxyPort <= 65535 ? null : "1024–65535"} />
+      {/* Adresse du proxy en tête : c'est l'information clé pour les clients */}
       {settings.lanProxyEnabled ? (
-        lanState.running && ips.length > 0 ? (
-          <View style={[styles.clientBlock, { backgroundColor: colors.surfaceRaised }]}>
-            <Text style={[styles.rowTitleSmall, { color: colors.foreground }]}>{t("hs.proxy.addr")}</Text>
+        ips.length > 0 && lanState.running ? (
+          <View style={[styles.proxyBlock, { backgroundColor: colors.surfaceRaised }]}>
+            <Text style={[styles.rowTitleSmall, { color: colors.muted }]}>{t("hs.proxy.addr")}</Text>
             {ips.slice(0, 3).map((ip) => (
               <Pressable key={ip} onPress={() => void copyText(t("hs.proxy.copiedBody"), `${ip}:${lanState.port}`)} style={({ pressed }) => [pressed && styles.pressed]}>
-                <Text selectable style={[styles.clientUrl, { color: colors.primary }]}>{ip}:{lanState.port}</Text>
+                <Text selectable style={[styles.proxyIp, { color: colors.primary }]}>{ip}:{lanState.port}</Text>
               </Pressable>
             ))}
             <Text style={[styles.note, { color: colors.muted }]}>{t("hs.proxy.howto")}</Text>
           </View>
         ) : status !== "connected" ? (
           <Text style={[styles.note, { color: colors.warning }]}>{t("hs.proxy.needVpn")}</Text>
-        ) : (
+        ) : !lanState.running ? (
           <Text style={[styles.note, { color: colors.muted }]}>{t("hs.proxy.starting")}</Text>
+        ) : (
+          <Text style={[styles.note, { color: colors.warning }]}>{t("hs.proxy.noIp")}</Text>
         )
       ) : null}
+      <SettingTextRow icon="router" title={t("hs.proxy.port")} description={t("hs.proxy.port.desc")} value={String(settings.lanProxyPort)} onChangeText={(value) => { const parsed = parseInt(value.replace(/[^0-9]/g, ""), 10); if (Number.isFinite(parsed)) update({ lanProxyPort: parsed }); }} error={String(settings.lanProxyPort).match(/^\d+$/) && settings.lanProxyPort >= 1024 && settings.lanProxyPort <= 65535 ? null : "1024–65535"} />
     </Panel>
 
     <SectionLabel>{t("hs.routing.section")}</SectionLabel>
@@ -258,6 +270,8 @@ const styles = StyleSheet.create({
   rowTitleSmall: { fontSize: 12, fontWeight: "900" },
   note: { fontSize: 11, lineHeight: 16 },
   clientBlock: { borderRadius: 12, padding: 11, gap: 6 },
+  proxyBlock: { borderRadius: 14, padding: 13, gap: 7 },
+  proxyIp: { fontSize: 19, fontWeight: "900", letterSpacing: 0.4, fontVariant: ["tabular-nums"] },
   clientUrl: { fontSize: 13, fontWeight: "800", letterSpacing: 0.2 },
   trafficRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   trafficCell: { flex: 1, minHeight: 56, borderRadius: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
