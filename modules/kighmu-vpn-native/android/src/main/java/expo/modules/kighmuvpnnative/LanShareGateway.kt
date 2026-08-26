@@ -31,6 +31,15 @@ object LanShareGateway {
   @Volatile private var running = false
   @Volatile private var activePort: Int = 0
 
+  /**
+   * Source des connexions clientes :
+   *  - false (défaut) : via le balancier local = tunnels KIGHMU actifs ;
+   *  - true : sockets DIRECTS — le trafic sort par le routage système, donc
+   *    automatiquement par le VPN tiers actif (HTTP Injector, SSH Custom…) ou
+   *    par la connexion Internet classique (modèle PdaNet, sans root).
+   */
+  @Volatile var directMode: Boolean = false
+
   /** Démarre la passerelle ; retourne le port réel (repli sur un port libre si préféré occupé). */
   fun start(preferredPort: Int): Int {
     stop()
@@ -107,8 +116,17 @@ object LanShareGateway {
     }
   }
 
-  /** Ouvre une connexion SOCKS5 vers le balancier local pour host:port. */
+  /** Ouvre une connexion vers host:port — via le balancier local ou en direct. */
   internal fun dialBalanced(host: String, port: Int): Socket? {
+    if (directMode) {
+      // Source DIRECT : la résolution DNS et la sortie suivent le routage
+      // système (VPN tiers actif ou connexion Internet), sans rien forcer.
+      return try {
+        val sock = Socket()
+        sock.connect(InetSocketAddress(host, port), 8_000)
+        sock
+      } catch (_: Throwable) { null }
+    }
     val balancer = balancerPort()
     if (balancer <= 0) return null
     val sock = Socket()

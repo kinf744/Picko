@@ -12,7 +12,7 @@ import { useLang } from "@/lib/i18n-provider";
 import { DEFAULT_HOTSPOT_SETTINGS, loadHotspotSettings, saveHotspotSettings, type HotspotSettings } from "@/lib/hotspot-settings";
 import type { WifiDirectInfo } from "@/lib/vpn/native";
 import { getDeviceSecurityInfo, getTrafficTotals, probeVpnExitIp } from "@/lib/hotspot-runtime";
-import { getLanShareStatus, getPhoneLanIps, getWifiDirectInfo, startLanShare, startWifiDirect, stopLanShare, stopWifiDirect } from "@/lib/vpn/native";
+import { getLanShareStatus, getPhoneLanIps, getWifiDirectInfo, isVpnActive, probeDirectExitIp, setLanShareMode, startLanShare, startWifiDirect, stopLanShare, stopWifiDirect } from "@/lib/vpn/native";
 import { useVpn } from "@/lib/vpn/vpn-context";
 
 const CLIENT_TEST_URL = "https://api.ipify.org";
@@ -34,12 +34,27 @@ export default function HotspotScreen() {
   const [totals, setTotals] = useState({ rx: 0, tx: 0 });
   const [lanState, setLanState] = useState<{ running: boolean; port: number }>({ running: false, port: -1 });
   const [ips, setIps] = useState<string[]>([]);
+  const [rawVpnActive, setRawVpnActive] = useState(false);
   const [wd, setWd] = useState<WifiDirectInfo | null>(null);
   const [wdBusy, setWdBusy] = useState(false);
   const [wdError, setWdError] = useState<"perms" | "failed" | null>(null);
   const wdIpRef = useRef("");
+  const prevThirdActive = useRef(false);
   const baseTotals = useRef({ rx: 0, tx: 0 });
   const previousStatus = useRef(status);
+
+  // Source du partage : tunnels KIGHMU si notre VPN est connecté, sinon
+  // routage système = VPN tiers actif (HTTP Injector, SSH Custom…) ou Internet.
+  const thirdActive = rawVpnActive && status !== "connected";
+  const shareMode: "tunnels" | "thirdvpn" | "internet" = status === "connected" ? "tunnels" : thirdActive ? "thirdvpn" : "internet";
+
+  // Détection du VPN tiers (TRANSPORT_VPN présent alors que le nôtre est arrêté).
+  useEffect(() => {
+    const refresh = () => setRawVpnActive(isVpnActive());
+    refresh();
+    const timer = setInterval(refresh, 5_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Adresses du téléphone visibles par les clients. L'interface hotspot n'existe
   // qu'après activation dans le système : on rafraîchit périodiquement ET dès le
@@ -62,11 +77,11 @@ export default function HotspotScreen() {
     };
   }, []);
 
-  // Cycle de vie de la passerelle : active seulement si armée ET VPN connecté ;
-  // redémarre automatiquement après chaque reconnexion du VPN.
+  // Cycle de vie de la passerelle : active dès que le proxy est armé — la
+  // source (tunnels KIGHMU / VPN tiers / Internet) est choisie automatiquement.
   useEffect(() => {
     let cancelled = false;
-    if (settings.lanProxyEnabled && status === "connected") {
+    if (settings.lanProxyEnabled) {
       void startLanShare(settings.lanProxyPort).then((result) => {
         if (!cancelled && result?.running) setLanState({ running: true, port: result.port });
       });
@@ -78,7 +93,7 @@ export default function HotspotScreen() {
     return () => {
       cancelled = true;
     };
-  }, [settings.lanProxyEnabled, settings.lanProxyPort, status]);
+  }, [settings.lanProxyEnabled, settings.lanProxyPort]);
 
   useEffect(() => {
     void loadHotspotSettings().then(setSettings);
@@ -93,27 +108,43 @@ export default function HotspotScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  // Sonde d'IP de sortie : automatique à l'ouverture/connexion, puis toutes les 30 s
-  // pendant que le partage est armé et le VPN connecté.
+  // Sonde d'IP de sortie : via nos tunnels (mode KIGHMU) ou via le routage
+  // système (mode VPN tiers) ; automatique + rafraîchie toutes les 30 s si armé.
   useEffect(() => {
-    if (status !== "connected") return;
     let cancelled = false;
     const run = () => {
       if (cancelled) return;
       setProbing(true);
-      void probeVpnExitIp().then((ip) => {
+      const job = shareMode === "tunnels" ? probeVpnExitIp() : shareMode === "thirdvpn" ? probeDirectExitIp() : Promise.resolve("");
+      void job.then((ip) => {
         if (cancelled) return;
         setExitIp(ip);
         setProbing(false);
       });
     };
-    run();
-    const timer = settings.shareArmed ? setInterval(run, 30_000) : null;
+    if (shareMode !== "internet") run();
+    const timer = settings.shareArmed && shareMode !== "internet" ? setInterval(run, 30_000) : null;
     return () => {
       cancelled = true;
       if (timer) clearInterval(timer);
     };
-  }, [status, settings.shareArmed]);
+  }, [shareMode, settings.shareArmed]);
+
+  useEffect(() => {
+    setLanShareMode(shareMode !== "tunnels");
+  }, [shareMode]);
+
+  // Kill switch VPN tiers : si le VPN qui alimentait le partage tombe → alerte.
+  useEffect(() => {
+    const wasActive = prevThirdActive.current;
+    prevThirdActive.current = thirdActive;
+    if (settings.shareArmed && settings.killSwitchEnabled && shareMode === "thirdvpn" && wasActive && !thirdActive) {
+      Alert.alert(t("hs.alert.thirdLost.title"), t("hs.alert.thirdLost.body"), [
+        { text: t("hs.alert.vpnLost.later"), style: "cancel" },
+        { text: t("hs.alert.vpnLost.open"), onPress: () => void openWirelessSettings() },
+      ]);
+    }
+  }, [thirdActive, shareMode, settings.shareArmed, settings.killSwitchEnabled, t]);
 
   // Kill switch sans root : Android ne permet pas de couper le hotspot par code,
   // donc alerte immédiate + raccourci vers le réglage système dès que le tunnel tombe.
@@ -269,8 +300,6 @@ export default function HotspotScreen() {
             <Text style={[styles.note, { color: colors.muted }]}>{t("hs.proxy.howto")}</Text>
             <Text style={[styles.note, { color: colors.muted }]}>{t("hs.proxy.pac", { url: `http://${ips[0]}:${lanState.port}/wpad.dat` })}</Text>
           </View>
-        ) : status !== "connected" ? (
-          <Text style={[styles.note, { color: colors.warning }]}>{t("hs.proxy.needVpn")}</Text>
         ) : !lanState.running ? (
           <Text style={[styles.note, { color: colors.muted }]}>{t("hs.proxy.starting")}</Text>
         ) : (
@@ -282,7 +311,7 @@ export default function HotspotScreen() {
 
     <SectionLabel>{t("hs.routing.section")}</SectionLabel>
     <Panel style={styles.panel}>
-      <InfoRow icon="alt-route" title={t("hs.route.title")} description={t("hs.route.desc.noroot")} pillLabel={status === "connected" ? t("hs.route.pill.check") : t("hs.route.pill.off")} pillTone={status === "connected" ? "warning" : "neutral"} />
+      <InfoRow icon="alt-route" title={t("hs.route.title")} description={shareMode === "tunnels" ? t("hs.route.desc.tunnels") : shareMode === "thirdvpn" ? t("hs.route.desc.thirdvpn") : t("hs.route.desc.internet")} pillLabel={shareMode === "tunnels" ? t("hs.route.pill.tunnels") : shareMode === "thirdvpn" ? t("hs.route.pill.thirdvpn") : t("hs.route.pill.internet")} pillTone={shareMode === "internet" ? "warning" : "success"} />
       {/* Sonde d'IP de sortie via le SOCKS local = IP vue par les serveurs à travers le tunnel réel */}
       <View style={[styles.probeBlock, { borderTopColor: colors.border }]}>
         <View style={styles.probeHead}><Text style={[styles.rowTitleLocal, { color: colors.foreground }]}>{t("hs.probe.title")}</Text><Pressable onPress={() => { setProbing(true); void probeVpnExitIp().then((ip) => { setExitIp(ip); setProbing(false); }); }} style={({ pressed }) => [styles.probeButton, { borderColor: colors.border }, pressed && styles.pressed]}><Text style={[styles.probeButtonText, { color: colors.primary }]}>{t("hs.probe.refresh")}</Text></Pressable></View>

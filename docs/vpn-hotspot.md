@@ -17,6 +17,18 @@
 | Partager le tunnel d'un **VPN tiers** | ❌ le tun appartient à l'UID de son app |
 | Routage automatique des clients vers un VPN actif | ✅ **selon l'appareil** : Android 11+ le fait souvent, 13+ plus systématiquement (décision du système, non contrôlable) |
 
+## Partager un VPN TIERS (HTTP Injector, SSH Custom, etc.)
+
+La passerelle a deux sources sélectionnables automatiquement :
+- **Tunnels KIGHMU** (notre VPN connecté) : relais vers le balancier local ;
+- **DIRECT** (notre VPN arrêté mais un réseau `TRANSPORT_VPN` présent, ou aucun VPN) :
+  la passerelle ouvre des sockets directs — le trafic sort par le **routage système**,
+  donc automatiquement par le VPN tiers actif (mécanisme Android standard, modèle PdaNet).
+  ⚠️ Ne pas exclure KIGHMU VPN dans les réglages « apps autorisées » du VPN tiers.
+
+Kill switch étendu : si le VPN tiers tombe pendant le partage armé → alerte anti-fuite.
+Sonde d'IP adaptée au mode (via tunnels ou via routage système).
+
 ## Fonctionnement livré (100 % sans root)
 
 1. **Armement** (« Partager le VPN ») + ouverture du panneau système pour activer le point d'accès.

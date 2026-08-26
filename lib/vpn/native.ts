@@ -12,6 +12,9 @@ type NativeVpnModule = {
   getDeviceSecurityInfo: () => Promise<DeviceSecurityInfo>;
   probeVpnExitIp?: () => Promise<string>;
   getTrafficTotals?: () => TrafficTotals;
+  setLanShareMode?: (direct: boolean) => boolean;
+  isVpnActive?: () => boolean;
+  probeDirectExitIp?: () => Promise<string>;
   startWifiDirect?: () => Promise<{ ok: boolean }>;
   stopWifiDirect?: () => Promise<boolean>;
   getWifiDirectInfo?: () => Promise<{ active: boolean; ssid: string; passphrase: string; ip: string }>;
@@ -63,6 +66,29 @@ export function getTrafficTotals(): TrafficTotals {
   const native = getNativeVpn();
   if (!native?.getTrafficTotals) return { rx: 0, tx: 0 };
   try { return native.getTrafficTotals(); } catch { return { rx: 0, tx: 0 }; }
+}
+
+// --- Source du partage : tunnels KIGHMU ou routage système (VPN tiers) ------
+
+/** true = la passerelle sort en direct (VPN tiers / Internet) ; false = via nos tunnels. */
+export function setLanShareMode(direct: boolean): boolean {
+  const native = getNativeVpn();
+  if (!native?.setLanShareMode) return false;
+  try { return native.setLanShareMode(direct) === true; } catch { return false; }
+}
+
+/** Un réseau VPN est-il actif sur l'appareil (le nôtre ou un tiers) ? */
+export function isVpnActive(): boolean {
+  const native = getNativeVpn();
+  if (!native?.isVpnActive) return false;
+  try { return native.isVpnActive() === true; } catch { return false; }
+}
+
+/** IP publique vue par le routage système (suit le VPN tiers actif). */
+export async function probeDirectExitIp(): Promise<string> {
+  const native = getNativeVpn();
+  if (!native?.probeDirectExitIp) return "";
+  try { return (await native.probeDirectExitIp()) || ""; } catch { return ""; }
 }
 
 // --- Wi-Fi Direct (réseau créé par l'app, technique PdaNet) -----------------

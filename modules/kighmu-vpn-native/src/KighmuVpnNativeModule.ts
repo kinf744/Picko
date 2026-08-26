@@ -9,6 +9,9 @@ declare class KighmuVpnNativeModule extends NativeModule<KighmuVpnNativeModuleEv
   stopVpn(): Promise<boolean>;
   probeVpnExitIp(): Promise<string>;
   getTrafficTotals(): { rx: number; tx: number };
+  setLanShareMode(direct: boolean): boolean;
+  isVpnActive(): boolean;
+  probeDirectExitIp(): Promise<string>;
   startWifiDirect(): Promise<{ ok: boolean }>;
   stopWifiDirect(): Promise<boolean>;
   getWifiDirectInfo(): Promise<{ active: boolean; ssid: string; passphrase: string; ip: string }>;

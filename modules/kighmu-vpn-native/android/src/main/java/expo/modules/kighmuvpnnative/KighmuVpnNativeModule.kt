@@ -126,6 +126,38 @@ class KighmuVpnNativeModule : Module() {
       )
     }
 
+    // --- Source du partage : tunnels KIGHMU ou routage système (VPN tiers) ---
+
+    // true = la passerelle sort en direct (routage système : VPN tiers actif ou
+    // connexion Internet) ; false = via le balancier local (tunnels KIGHMU).
+    Function("setLanShareMode") { direct: Boolean ->
+      LanShareGateway.directMode = direct
+      direct
+    }
+
+    // Un réseau VPN est-il actif sur l'appareil (le nôtre ou un tiers) ?
+    Function("isVpnActive") {
+      val connectivity = appContext.reactContext?.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+      if (connectivity == null) false
+      else connectivity.allNetworks.any { network ->
+        connectivity.getNetworkCapabilities(network)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+      }
+    }
+
+    // IP publique vue par le routage système (suit le VPN tiers actif).
+    AsyncFunction("probeDirectExitIp") {
+      try {
+        val connection = java.net.URL("http://api.ipify.org").openConnection() as java.net.HttpURLConnection
+        connection.connectTimeout = 8_000
+        connection.readTimeout = 8_000
+        connection.setRequestProperty("Connection", "close")
+        val code = connection.responseCode
+        val body = if (code in 200..299) connection.inputStream.bufferedReader().use { it.readText().trim() } else ""
+        connection.disconnect()
+        body.takeIf { Regex("^[0-9a-fA-F.:]{3,45}$").matches(it) } ?: ""
+      } catch (_: Throwable) { "" }
+    }
+
     // --- Wi-Fi Direct (réseau de partage créé par l'app, technique PdaNet) ---
 
     AsyncFunction("startWifiDirect") { promise: Promise ->
