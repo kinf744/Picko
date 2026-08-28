@@ -8,6 +8,7 @@ export const TUNNEL_KINDS = [
   "ssh-tls",
   "v2ray-slowdns",
   "xray-v2ray",
+  "xray-hysteria",
 ] as const;
 
 export type TunnelKind = (typeof TUNNEL_KINDS)[number];
@@ -27,6 +28,7 @@ const TUNNEL_ACCENTS: Record<TunnelKind, string> = {
   "ssh-tls": "#0D86A8",
   "v2ray-slowdns": "#B14CCD",
   "xray-v2ray": "#D34B5C",
+  "xray-hysteria": "#7C3AED",
 };
 
 export type TunnelCatalogEntry = { label: string; shortLabel: string; description: string; accent: string };
@@ -131,7 +133,22 @@ export type V2RaySlowDnsProfile = ProfileBase & {
   link: string;
 };
 
-export type TunnelProfile = ZivpnProfile | SlowDnsProfile | HysteriaProfile | HttpPayloadProfile | SshTlsProfile | XrayProfile | V2RaySlowDnsProfile;
+export type XrayHysteriaProfile = ProfileBase & {
+  kind: "xray-hysteria";
+  // Xray part
+  inputMode: "link" | "json";
+  link: string;
+  json: string;
+  // Hysteria v1.3.5 part (transport QUIC)
+  hysteriaHost: string;
+  hysteriaPort: string;
+  hysteriaAuth: string;
+  hysteriaObfs: string;
+  hysteriaUpMbps: string;
+  hysteriaDownMbps: string;
+};
+
+export type TunnelProfile = ZivpnProfile | SlowDnsProfile | HysteriaProfile | HttpPayloadProfile | SshTlsProfile | XrayProfile | V2RaySlowDnsProfile | XrayHysteriaProfile;
 export type ProfileFieldErrors = Record<string, string>;
 
 const makeBase = <K extends TunnelKind>(kind: K): ProfileBase & { kind: K } => ({
@@ -153,6 +170,7 @@ export function createProfile(kind: TunnelKind): TunnelProfile {
     case "ssh-tls": return { ...base, kind, tlsHost: "", tlsPort: "443", sni: "", sshUsername: "", sshPassword: "" };
     case "v2ray-slowdns": return { ...base, kind, dnsServer: "8.8.8.8", dnsPort: "53", nameserver: "", publicKey: "", inputMode: "link", link: "" }; // DNS public par défaut
     case "xray-v2ray": return { ...base, kind, inputMode: "link", link: "", json: "" };
+    case "xray-hysteria": return { ...base, kind, inputMode: "link", link: "", json: "", hysteriaHost: "", hysteriaPort: "20000-50000", hysteriaAuth: "", hysteriaObfs: "", hysteriaUpMbps: "20", hysteriaDownMbps: "100" };
   }
 }
 
@@ -186,6 +204,7 @@ export function profileEndpoint(profile: TunnelProfile, t: Translator = tNow()):
     case "ssh-tls": return profile.tlsHost ? `${profile.tlsHost}:${profile.tlsPort || "443"}` : t("tunnels.endpoint.unset");
     case "v2ray-slowdns": return profile.link ? t("tunnels.endpoint.v2rayDnsLink") : t("tunnels.endpoint.linkUnset");
     case "xray-v2ray": return profile.inputMode === "link" ? (profile.link ? t("tunnels.endpoint.xrayLink") : t("tunnels.endpoint.linkUnset")) : (profile.json ? t("tunnels.endpoint.xrayJson") : t("tunnels.endpoint.jsonUnset"));
+    case "xray-hysteria": return profile.hysteriaHost ? `${profile.hysteriaHost}:${profile.hysteriaPort || "—"} → ${profile.inputMode === "link" ? (profile.link ? "Xray" : t("tunnels.endpoint.linkUnset")) : (profile.json ? "Xray" : t("tunnels.endpoint.jsonUnset"))}` : t("tunnels.endpoint.unset");
   }
 }
 
@@ -198,6 +217,7 @@ export function secretFields(profile: TunnelProfile): string[] {
     case "ssh-tls": return ["sshPassword"];
     case "v2ray-slowdns": return ["link"];
     case "xray-v2ray": return ["link", "json"];
+    case "xray-hysteria": return ["link", "json", "hysteriaAuth", "hysteriaObfs"];
   }
 }
 

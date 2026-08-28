@@ -153,7 +153,12 @@ class V2RayDnsTunnel(
     root.put("inbounds", normalized)
   }
 
-  /** DNSTT fournit un hop TCP local ; la sécurité TLS/Reality est retirée uniquement après parsing natif. */
+  /**
+   * DNSTT fournit un hop TCP local transparent : on redirige uniquement l'adresse
+   * du `vnext`/`servers` vers 127.0.0.1:dnsttPort. La `streamSettings` (TCP, ws,
+   * gRPC, xhttp/splithttp, h2, httpupgrade, kcp, quic + TLS/Reality) est conservée
+   * telle quelle par libopol afin que tous les transports fonctionnent avec ou sans TLS.
+   */
   private fun redirectOutboundsThroughDnstt(root: JSONObject) {
     val outbounds = root.optJSONArray("outbounds") ?: return
     for (index in 0 until outbounds.length()) {
@@ -162,7 +167,8 @@ class V2RayDnsTunnel(
       val settings = outbound.optJSONObject("settings")
       settings?.optJSONArray("vnext")?.optJSONObject(0)?.apply { put("address", "127.0.0.1"); put("port", dnsttPort) }
       settings?.optJSONArray("servers")?.optJSONObject(0)?.apply { put("address", "127.0.0.1"); put("port", dnsttPort) }
-      outbound.optJSONObject("streamSettings")?.apply { put("security", "none"); remove("tlsSettings"); remove("realitySettings") }
+      // Ne pas altérer streamSettings : le TLS/Reality et le type de transport (tcp/ws/grpc/xhttp/h2/kcp/quic…)
+      // doivent transiter chiffrés via le tunnel DNSTT, sinon trojan/vmess en TLS échouent (handshake timeout).
     }
   }
 
