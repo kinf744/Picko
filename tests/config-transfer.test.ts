@@ -5,11 +5,11 @@ import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions } from "../lib
 import { createProfile, defaultBalancer, shouldUseRoundRobin, TUNNEL_KINDS, type TunnelKind, type TunnelProfile, type XrayProfile, type ZivpnProfile } from "../lib/vpn/tunnel-profiles";
 
 const emptyProfiles = () => ({
-  zivpn: [], slowdns: [], hysteria: [], "http-payload": [], "ssh-tls": [], "v2ray-slowdns": [], "xray-v2ray": [],
+  zivpn: [], slowdns: [], hysteria: [], "http-payload": [], "ssh-tls": [], "v2ray-slowdns": [], "xray-v2ray": [], "xray-hysteria": [],
 }) as Record<TunnelKind, TunnelProfile[]>;
 
 const emptyBalancers = () => ({
-  zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "http-payload": defaultBalancer(), "ssh-tls": defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(),
+  zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "http-payload": defaultBalancer(), "ssh-tls": defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(), "xray-hysteria": defaultBalancer(),
 });
 
 const makeZivpn = (patch: Partial<ZivpnProfile> = {}): ZivpnProfile => ({ ...createProfile("zivpn"), ...patch, kind: "zivpn" } as ZivpnProfile);

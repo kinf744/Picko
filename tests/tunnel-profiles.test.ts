@@ -12,12 +12,13 @@ const configured = (kind: TunnelProfile["kind"]): TunnelProfile => {
     case "ssh-tls": return { ...profile, name: "SSH TLS A", tlsHost: "198.51.100.15", tlsPort: "443", sni: "tls.demo.example", sshUsername: "demo", sshPassword: "demo-password" };
     case "v2ray-slowdns": return { ...profile, name: "V2 SlowDNS A", dnsServer: "198.51.100.14", dnsPort: "5353", nameserver: "t.demo.example", publicKey: "0123456789abcdef", inputMode: "link", link: "vless://00000000-0000-0000-0000-000000000000@v2.demo.example:443" };
     case "xray-v2ray": return { ...profile, name: "Xray A", inputMode: "json", link: "", json: "{\"inbounds\":[],\"outbounds\":[]}" };
+    case "xray-hysteria": return { ...profile, name: "XH A", inputMode: "link", link: "vless://00000000-0000-0000-0000-000000000000@xh.demo.example:443", json: "", hysteriaHost: "hysteria.demo.example", hysteriaPort: "443", hysteriaAuth: "demo-auth", hysteriaObfs: "", hysteriaUpMbps: "20", hysteriaDownMbps: "100" };
   }
 };
 
 describe("modèle de profils multi-tunnels", () => {
   it("crée un profil isolé pour chacune des sept familles", () => {
-    expect(TUNNEL_KINDS).toHaveLength(7);
+    expect(TUNNEL_KINDS).toHaveLength(8);
     expect(TUNNEL_KINDS).not.toContain("v2ray-dns");
     TUNNEL_KINDS.forEach((kind) => {
       const profile = createProfile(kind);

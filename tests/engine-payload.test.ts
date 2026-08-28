@@ -19,6 +19,7 @@ const configured = (kind: TunnelProfile["kind"]): TunnelProfile => {
     case "ssh-tls": return { ...profile, name: "SSH TLS A", tlsHost: "198.51.100.15", tlsPort: "443", sni: "tls.demo.example", sshUsername: "demo", sshPassword: "demo-password" };
     case "v2ray-slowdns": return { ...profile, name: "V2 SlowDNS A", dnsServer: "198.51.100.14", dnsPort: "5353", nameserver: "t.demo.example", publicKey: "0123456789abcdef", inputMode: "link", link: "vless://00000000-0000-0000-0000-000000000000@v2.demo.example:443" };
     case "xray-v2ray": return { ...profile, name: "Xray A", inputMode: "json", link: "", json: "{\"inbounds\":[],\"outbounds\":[]}" };
+    case "xray-hysteria": return { ...profile, name: "XH A", inputMode: "link", link: "vless://00000000-0000-0000-0000-000000000000@xh.demo.example:443", json: "", hysteriaHost: "hysteria.demo.example", hysteriaPort: "443", hysteriaAuth: "demo-auth", hysteriaObfs: "", hysteriaUpMbps: "20", hysteriaDownMbps: "100" };
   }
 };
 
@@ -31,6 +32,7 @@ const EXPECTED_METHOD: Record<TunnelProfile["kind"], string> = {
   "ssh-tls": "ssh-ssl-tls",
   "v2ray-slowdns": "v2ray-dns",
   "xray-v2ray": "xray",
+  "xray-hysteria": "xray-hysteria",
 };
 
 // Champs que `TunnelProfile.validate()` exige non vides côté natif, par `method`.
@@ -43,6 +45,7 @@ const REQUIRED_ENGINE_FIELDS: Record<string, string[]> = {
   "ssh-ssl-tls": ["sshHost", "sshPort", "sshUser", "password"],
   "v2ray-dns": ["xrayMode", "xrayLink", "dnsServer", "dnsPort", "nameserver", "publicKey"],
   "xray": ["xrayMode", "xrayJson"], // configured() utilise le mode JSON
+  "xray-hysteria": ["xrayMode", "xrayLink", "hysteriaHost", "hysteriaPort", "hysteriaAuth"],
 };
 
 describe("adaptateur de charge utile moteur natif", () => {
