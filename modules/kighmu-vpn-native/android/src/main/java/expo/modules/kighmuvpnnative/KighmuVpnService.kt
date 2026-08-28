@@ -75,10 +75,14 @@ class KighmuVpnService : VpnService() {
 
   private fun startTunnelsInternal(payloadJson: String, generation: Long) {
     try {
+      FileLogger.init(this)
+      FileLogger.log(this, "SERVICE", "=== startTunnelsInternal generation=$generation payloadLen=${payloadJson.length} payload=${payloadJson.take(800)} ===")
+      FileLogger.log(this, "SERVICE", "Download log: ${FileLogger.getPath(this)}")
       val payload = JSONObject(payloadJson)
       runtimeSettings = VpnRuntimeSettings.parse(payload)
       activeProfilesJson = payloadJson
       savePayload(payloadJson)
+      FileLogger.log(this, "SERVICE", "runtimeSettings mtu=${runtimeSettings.mtu} dns=${runtimeSettings.dnsServers()} httpPing=${runtimeSettings.httpPingEnabled}")
       val profiles = TunnelProfile.parseMany(payloadJson)
       primaryProfileName = profiles.firstOrNull()?.name.orEmpty()
       if (profiles.isEmpty()) error("Aucun profil de tunnel utilisable n’a été reçu")
@@ -125,9 +129,11 @@ class KighmuVpnService : VpnService() {
             else -> error("Méthode non prise en charge")
           }
           emitLog("connection", "TUNNEL", "Démarrage de ${profile.name} (${profile.method})")
+          try { FileLogger.log(this, "TUNNEL", "start ${profile.name} method=${profile.method} id=${profile.id}") } catch (_: Throwable) {}
           tunnel.start()
           started.add(tunnel)
         } catch (error: Throwable) {
+          try { FileLogger.log(this, "TUNNEL", "FAILED ${profile.name}: ${error.message} stack=${error.stackTrace.take(3).joinToString()}") } catch (_: Throwable) {}
           emitLog("warning", "TUNNEL", "${profile.name} indisponible : ${error.message ?: "erreur inconnue"}")
         }
       }
@@ -303,11 +309,13 @@ class KighmuVpnService : VpnService() {
 
   private fun fail(generation: Long, message: String) {
     if (!isActive(generation)) return
+    try { FileLogger.log(this, "VPN", "FAIL generation=$generation: $message") } catch (_: Throwable) {}
     emitLog("error", "VPN", "Échec de connexion : $message")
     stopVpn(STATUS_ERROR)
   }
 
   private fun emitLog(level: String, component: String, message: String) {
+    try { FileLogger.log(this, component, "[$level] $message") } catch (_: Throwable) {}
     if (!runtimeSettings.debugMode && level == "info") return
     logSink?.invoke(level, component, message)
   }

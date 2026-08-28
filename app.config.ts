@@ -64,7 +64,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    permissions: ["POST_NOTIFICATIONS", "ACCESS_NETWORK_STATE"],
+    permissions: ["POST_NOTIFICATIONS", "ACCESS_NETWORK_STATE", "WRITE_EXTERNAL_STORAGE", "READ_EXTERNAL_STORAGE"],
     intentFilters: [
       {
         action: "VIEW",

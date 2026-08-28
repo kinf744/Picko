@@ -31,12 +31,19 @@ class V2RayDnsTunnel(
   @Volatile private var lastDiagnosticAt = 0L
 
   override fun start() {
-    profile.validate()?.let { error(it) }
+    FileLogger.init(context); FileLogger.header(context, profile)
+    FileLogger.log(context, "V2RAY DNS", "=== START V2Ray DNS profil=${profile.name} id=${profile.id} xrayMode=${profile.xrayMode} dns=${profile.dnsServer}:${profile.dnsPort} ns=${profile.nameserver} dnsttPort=$dnsttPort socksPort=$socksPort ===")
+    profile.validate()?.let { FileLogger.log(context, "V2RAY DNS", "VALIDATE ERROR: $it"); error(it) }
     stopRequested.set(false); recovering = false
-    runtime = OpolNative.v2RayDnsRuntimePolicy(profile, dnsttPort, socksPort)
-    writeConfig()
+    try {
+      runtime = OpolNative.v2RayDnsRuntimePolicy(profile, dnsttPort, socksPort)
+      FileLogger.log(context, "V2RAY DNS", "Runtime libopol: dnsttReady=${runtime.dnsttReadyTimeoutMs}ms xrayReady=${runtime.xrayReadyTimeoutMs}ms probe=${runtime.probeIntervalMs}ms maxRetry=${runtime.maxRecoveryAttempts}")
+    } catch (e: Throwable) {
+      FileLogger.log(context, "V2RAY DNS", "RUNTIME ERROR: ${e.message}"); throw e
+    }
+    try { writeConfig() } catch (e: Throwable) { FileLogger.log(context, "V2RAY DNS", "WRITE CONFIG ERROR: ${e.message}"); throw e }
     try { launchComponents(); compactLog("connection", "V2Ray DNS prêt : DNSTT $dnsttPort, SOCKS $socksPort") }
-    catch (error: Throwable) { stop(); throw error }
+    catch (error: Throwable) { FileLogger.log(context, "V2RAY DNS", "LAUNCH ERROR: ${error.message}"); stop(); throw error }
   }
 
   override fun isHealthy(): Boolean = !recovering && dnsttProcess?.isAlive == true && xrayProcess?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort)
@@ -50,29 +57,48 @@ class V2RayDnsTunnel(
   private fun launchComponents() {
     val dnstt = File(context.applicationInfo.nativeLibraryDir, "libdnstt.so")
     val xray = File(context.applicationInfo.nativeLibraryDir, "libxray.so")
+    FileLogger.log(context, "V2RAY DNS", "Binaries: dnstt=${dnstt.absolutePath} exists=${dnstt.isFile} size=${dnstt.length()} xray=${xray.absolutePath} exists=${xray.isFile} size=${xray.length()} nativeDir=${context.applicationInfo.nativeLibraryDir}")
     require(dnstt.isFile && dnstt.length() > 0L) { "libdnstt.so absent de l’APK" }
     require(xray.isFile && xray.length() > 0L) { "libxray.so absent de l’APK" }
     xray.setExecutable(true)
+    FileLogger.log(context, "V2RAY DNS", "Xray executable set: canExecute=${xray.canExecute()}")
     startDnstt(dnstt)
-    if (!waitForTcp(dnsttPort, runtime.dnsttReadyTimeoutMs)) error("DNSTT n’a pas ouvert son flux local")
+    FileLogger.log(context, "V2RAY DNS", "DNSTT lancé, attente TCP 127.0.0.1:$dnsttPort timeout=${runtime.dnsttReadyTimeoutMs}ms")
+    if (!waitForTcp(dnsttPort, runtime.dnsttReadyTimeoutMs)) {
+      FileLogger.log(context, "V2RAY DNS", "DNSTT TIMEOUT: port $dnsttPort non joignable après ${runtime.dnsttReadyTimeoutMs}ms alive=${dnsttProcess?.isAlive}")
+      error("DNSTT n’a pas ouvert son flux local")
+    }
+    FileLogger.log(context, "V2RAY DNS", "DNSTT OK, lancement Xray config=${configFile?.absolutePath} size=${configFile?.length()}")
     startXray(xray, configFile ?: error("configuration Xray DNS absente"))
-    if (!waitForSocks(socksPort, runtime.xrayReadyTimeoutMs)) error("V2Ray DNS n’a pas ouvert le proxy SOCKS local")
+    FileLogger.log(context, "V2RAY DNS", "Xray lancé, attente SOCKS 127.0.0.1:$socksPort timeout=${runtime.xrayReadyTimeoutMs}ms")
+    if (!waitForSocks(socksPort, runtime.xrayReadyTimeoutMs)) {
+      val xAlive = xrayProcess?.isAlive
+      val exit = try { xrayProcess?.exitValue()?.toString() } catch (_: Throwable) { "actif" }
+      FileLogger.log(context, "V2RAY DNS", "XRAY SOCKS TIMEOUT: port $socksPort non joignable alive=$xAlive exit=$exit - voir logs Xray ci-dessus pour Trojan/VMess handshake")
+      error("V2Ray DNS n’a pas ouvert le proxy SOCKS local")
+    }
+    FileLogger.log(context, "V2RAY DNS", "SOCKS OK: 127.0.0.1:$socksPort prêt")
   }
 
   private fun startDnstt(binary: File) {
+    FileLogger.log(context, "V2RAY DNS", "DNSTT cmd: ${binary.absolutePath} ${runtime.argumentPrefix.joinToString(" ")}")
     val process = ProcessBuilder(listOf(binary.absolutePath) + runtime.argumentPrefix)
       .directory(context.filesDir).redirectErrorStream(true).apply {
         environment()["HOME"] = context.filesDir.absolutePath; environment()["TMPDIR"] = context.cacheDir.absolutePath
       }.start()
+    FileLogger.log(context, "V2RAY DNS", "DNSTT pid started, HOME=${context.filesDir.absolutePath}")
     dnsttProcess = process; observeDnstt(process)
   }
 
   private fun startXray(binary: File, config: File) {
+    FileLogger.log(context, "V2RAY DNS", "Xray cmd: ${binary.absolutePath} run -c ${config.absolutePath}")
+    FileLogger.logXrayJson(context, "V2RAY DNS", config.readText().take(6000))
     val process = ProcessBuilder(binary.absolutePath, "run", "-c", config.absolutePath)
       .directory(context.filesDir).redirectErrorStream(true).apply {
         environment()["HOME"] = context.filesDir.absolutePath; environment()["TMPDIR"] = context.cacheDir.absolutePath
         environment()["LD_LIBRARY_PATH"] = context.applicationInfo.nativeLibraryDir
       }.start()
+    FileLogger.log(context, "V2RAY DNS", "Xray pid started, LD_LIBRARY_PATH=${context.applicationInfo.nativeLibraryDir}")
     xrayProcess = process; observeXray(process)
   }
 
@@ -80,19 +106,35 @@ class V2RayDnsTunnel(
   private fun observeXray(running: Process) = observe(running, false)
 
   private fun observe(running: Process, dnstt: Boolean) {
+    val tag = if (dnstt) "DNSTT" else "XRAY"
     Thread {
       try {
-        running.inputStream.bufferedReader().useLines { lines -> lines.forEach { line ->
+        running.inputStream.bufferedReader().useLines { lines -> lines.forEach { raw ->
+          val line = raw.trim()
           val active = if (dnstt) dnsttProcess === running else xrayProcess === running
           if (stopRequested.get() || !active) return@forEach
-          when (OpolNative.classifyV2RayDnsOutput(line)) {
+          // Log fichier détaillé : chaque ligne brute pour debug Trojan/VMess handshake
+          FileLogger.log(context, "V2RAY DNS:$tag", line.take(600))
+          when (OpolNative.classifyV2RayDnsOutput(raw)) {
             "ready" -> if (!dnstt) compactLog("info", "Xray DNS démarré")
-            "retry" -> { compactLog("warning", if (dnstt) "DNSTT a signalé une erreur; reconnexion V2Ray DNS" else "Xray DNS a signalé une erreur; reconnexion"); scheduleRecovery() }
+            "retry" -> { FileLogger.log(context, "V2RAY DNS", "$tag RETRY: $line"); compactLog("warning", if (dnstt) "DNSTT a signalé une erreur; reconnexion V2Ray DNS" else "Xray DNS a signalé une erreur; reconnexion"); scheduleRecovery() }
+            else -> {
+              // Log aussi les erreurs Xray non classifiées (Trojan/VMess: failed to dial, handshake timeout etc.)
+              val lower = line.lowercase()
+              if (!dnstt && (lower.contains("error") || lower.contains("failed") || lower.contains("trojan") || lower.contains("vmess") || lower.contains("timeout") || lower.contains("rejected"))) {
+                FileLogger.log(context, "V2RAY DNS:XRAY-ERR", line)
+                compactLog("error", line.take(180))
+              }
+            }
           }
         } }
-      } catch (_: Throwable) {} finally {
+      } catch (e: Throwable) { FileLogger.log(context, "V2RAY DNS:$tag", "observe exception: ${e.message}") } finally {
         val active = if (dnstt) dnsttProcess === running else xrayProcess === running
-        if (!stopRequested.get() && active) scheduleRecovery()
+        if (!stopRequested.get() && active) {
+          val exit = try { running.exitValue().toString() } catch (_: Throwable) { "running?" }
+          FileLogger.log(context, "V2RAY DNS:$tag", "process exit/destroy, exitValue=$exit, scheduling recovery")
+          scheduleRecovery()
+        }
       }
     }.apply { isDaemon = true; name = "picko-v2dns-${if (dnstt) "dnstt" else "xray"}-${profile.id.takeLast(8)}"; start() }
   }
@@ -129,12 +171,33 @@ class V2RayDnsTunnel(
 
   private fun writeConfig() {
     val safeId = profile.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
-    configFile = File(context.cacheDir, "v2ray-dns-$safeId.json").also { it.writeText(buildConfig()) }
+    val raw = buildConfig()
+    FileLogger.log(context, "V2RAY DNS", "writeConfig safeId=$safeId rawLen=${raw.length} link=${profile.xrayLink.take(120)} mode=${profile.xrayMode}")
+    configFile = File(context.cacheDir, "v2ray-dns-$safeId.json").also { it.writeText(raw) }
+    FileLogger.log(context, "V2RAY DNS", "configFile=${configFile!!.absolutePath} len=${configFile!!.length()} inbounds/outbounds normalised, Download=${FileLogger.getPath(context)}")
+    FileLogger.logXrayJson(context, "V2RAY DNS", raw)
   }
 
   private fun buildConfig(): String {
-    val root = if (profile.xrayMode == "json") JSONObject(profile.xrayJson) else JSONObject(OpolNative.buildXrayConfig(profile, socksPort))
+    val rawXray = if (profile.xrayMode == "json") profile.xrayJson else try { OpolNative.buildXrayConfig(profile, socksPort) } catch (e: Throwable) { FileLogger.log(context, "V2RAY DNS", "buildXrayConfig ERROR Trojan/VMess link invalide: ${e.message} link=${profile.xrayLink.take(200)}"); throw e }
+    FileLogger.log(context, "V2RAY DNS", "buildXrayConfig ok mode=${profile.xrayMode} rawLen=${rawXray.length}")
+    val root = JSONObject(rawXray)
+    // Log avant redirect pour voir host/port d'origine Trojan/VMess
+    try {
+      val outs = root.optJSONArray("outbounds")
+      if (outs != null) for (i in 0 until outs.length()) {
+        val o = outs.optJSONObject(i) ?: continue
+        val proto = o.optString("protocol")
+        val s = o.optJSONObject("settings")
+        val addr = s?.optJSONArray("vnext")?.optJSONObject(0)?.optString("address") ?: s?.optJSONArray("servers")?.optJSONObject(0)?.optString("address") ?: "-"
+        val port = s?.optJSONArray("vnext")?.optJSONObject(0)?.optInt("port") ?: s?.optJSONArray("servers")?.optJSONObject(0)?.optInt("port") ?: -1
+        val sec = o.optJSONObject("streamSettings")?.optString("security") ?: "none"
+        val net = o.optJSONObject("streamSettings")?.optString("network") ?: "tcp"
+        FileLogger.log(context, "V2RAY DNS", "outbound[$i] proto=$proto addr=$addr port=$port net=$net sec=$sec (avant DNSTT redirect)")
+      }
+    } catch (_: Throwable) {}
     normalizeInbounds(root); redirectOutboundsThroughDnstt(root); normalizeRouting(root)
+    FileLogger.log(context, "V2RAY DNS", "après redirectOutboundsThroughDnstt: outbounds redirigés vers 127.0.0.1:$dnsttPort (TLS/transport conservés pour Trojan/VMess)")
     root.optJSONObject("log")?.put("loglevel", "warning") ?: root.put("log", JSONObject().put("loglevel", "warning"))
     return root.toString()
   }
@@ -165,8 +228,11 @@ class V2RayDnsTunnel(
       val outbound = outbounds.optJSONObject(index) ?: continue; val protocol = outbound.optString("protocol"); val tag = outbound.optString("tag")
       if (protocol in setOf("freedom", "blackhole", "socks") || tag == "direct") continue
       val settings = outbound.optJSONObject("settings")
+      val beforeV = settings?.optJSONArray("vnext")?.optJSONObject(0)?.let { "${it.optString("address")}:${it.optInt("port")}" } ?: "-"
+      val beforeS = settings?.optJSONArray("servers")?.optJSONObject(0)?.let { "${it.optString("address")}:${it.optInt("port")}" } ?: "-"
       settings?.optJSONArray("vnext")?.optJSONObject(0)?.apply { put("address", "127.0.0.1"); put("port", dnsttPort) }
       settings?.optJSONArray("servers")?.optJSONObject(0)?.apply { put("address", "127.0.0.1"); put("port", dnsttPort) }
+      FileLogger.log(context, "V2RAY DNS", "redirect outbound[$index] proto=$protocol tag=$tag $beforeV/$beforeS -> 127.0.0.1:$dnsttPort")
       // Ne pas altérer streamSettings : le TLS/Reality et le type de transport (tcp/ws/grpc/xhttp/h2/kcp/quic…)
       // doivent transiter chiffrés via le tunnel DNSTT, sinon trojan/vmess en TLS échouent (handshake timeout).
     }
@@ -180,7 +246,9 @@ class V2RayDnsTunnel(
 
   private fun compactLog(level: String, message: String) {
     val now = System.currentTimeMillis(); if (message == lastDiagnostic && now - lastDiagnosticAt < runtime.logDedupMs) return
-    lastDiagnostic = message; lastDiagnosticAt = now; log(level, "V2RAY DNS", message.take(180))
+    lastDiagnostic = message; lastDiagnosticAt = now
+    FileLogger.log(context, "V2RAY DNS:$level", message.take(500))
+    log(level, "V2RAY DNS", message.take(180))
   }
   private fun freePort(): Int = try { ServerSocket(0).use { it.localPort } } catch (_: Throwable) { 10808 }
 }

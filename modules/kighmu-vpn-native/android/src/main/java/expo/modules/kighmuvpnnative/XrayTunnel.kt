@@ -22,15 +22,21 @@ class XrayTunnel(
   @Volatile private var lastReportedIssueAt = 0L
 
   override fun start() {
-    profile.validate()?.let { error(it) }
+    FileLogger.init(service); FileLogger.header(service, profile)
+    FileLogger.log(service, "XRAY", "=== START Xray profil=${profile.name} id=${profile.id} mode=${profile.xrayMode} link=${profile.xrayLink.take(120)} socksPort TBD ===")
+    profile.validate()?.let { FileLogger.log(service, "XRAY", "VALIDATE ERROR: $it"); error(it) }
     check(process == null) { "Xray est déjà démarré pour ce profil" }
     socksPort = freePort()
     val binary = File(service.applicationInfo.nativeLibraryDir, "libxray.so")
+    FileLogger.log(service, "XRAY", "Binary: ${binary.absolutePath} exists=${binary.isFile} size=${binary.length()} nativeDir=${service.applicationInfo.nativeLibraryDir} socksPort=$socksPort Download=${FileLogger.getPath(service)}")
     check(binary.isFile && binary.length() > 0L) { "libxray.so est absent de l’APK" }
     binary.setExecutable(true)
     val safeId = profile.id.replace(Regex("[^A-Za-z0-9_-]"), "_")
     configFile = File(service.cacheDir, "xray-$safeId.json")
-    configFile!!.writeText(buildConfig())
+    val cfg = buildConfig()
+    configFile!!.writeText(cfg)
+    FileLogger.log(service, "XRAY", "Config écrite: ${configFile!!.absolutePath} len=${cfg.length}")
+    FileLogger.logXrayJson(service, "XRAY", cfg)
     log("connection", "XRAY", "Démarrage de ${profile.name} sur SOCKS 127.0.0.1:$socksPort")
     val started = ProcessBuilder(binary.absolutePath, "run", "-c", configFile!!.absolutePath)
       .redirectErrorStream(true)
@@ -40,6 +46,7 @@ class XrayTunnel(
         environment()["LD_LIBRARY_PATH"] = service.applicationInfo.nativeLibraryDir
       }.start()
     process = started
+    FileLogger.log(service, "XRAY", "Process Xray démarré: ${binary.absolutePath} run -c ${configFile!!.absolutePath} HOME=${service.filesDir.absolutePath}")
     consumeProcessLog(started)
     var ready = false
     repeat(30) {
@@ -47,9 +54,11 @@ class XrayTunnel(
     }
     if (!ready) {
       val exit = try { started.exitValue().toString() } catch (_: Throwable) { "actif" }
+      FileLogger.log(service, "XRAY", "SOCKS TIMEOUT: 127.0.0.1:$socksPort non joignable après 6s exit=$exit - cause fréquente Trojan/VMess: lien invalide, TLS/Reality mismatch, host/port bloqué")
       stop()
       error("Xray n’a pas ouvert son proxy SOCKS dans le délai imparti (processus $exit)")
     }
+    FileLogger.log(service, "XRAY", "SOCKS OK 127.0.0.1:$socksPort prêt pour ${profile.name}")
     log("info", "XRAY", "Proxy SOCKS Xray prêt pour ${profile.name}")
   }
 
@@ -69,17 +78,24 @@ class XrayTunnel(
   private fun consumeProcessLog(started: Process) {
     Thread {
       try {
-        started.inputStream.bufferedReader().forEachLine { line ->
-          val normalized = line.trim()
-          if (normalized.isBlank() || normalized.length > 700) return@forEachLine
+        started.inputStream.bufferedReader().forEachLine { raw ->
+          val normalized = raw.trim()
+          // Log fichier détaillé : chaque ligne Xray pour debug Trojan/VMess
+          if (normalized.isNotBlank()) FileLogger.log(service, "XRAY:RAW", normalized.take(800))
+          if (normalized.isBlank() || normalized.length > 2000) return@forEachLine
           val lower = normalized.lowercase()
           when {
             lower.contains("failed to read request") && lower.contains("eof") -> Unit
-            lower.contains("started") && lower.contains("xray") -> log("info", "XRAY", "Xray démarré pour ${profile.name}")
-            lower.contains("fatal") || lower.contains("panic") || lower.contains("failed") || lower.contains("error") -> reportIssue(normalized)
+            lower.contains("started") && lower.contains("xray") -> {
+              FileLogger.log(service, "XRAY", "Xray démarré pour ${profile.name}: $normalized")
+              log("info", "XRAY", "Xray démarré pour ${profile.name}")
+            }
+            lower.contains("fatal") || lower.contains("panic") || lower.contains("failed") || lower.contains("error") ||
+            lower.contains("trojan") || lower.contains("vmess") || lower.contains("timeout") || lower.contains("rejected") ||
+            lower.contains("handshake") || lower.contains("tls") -> reportIssue(normalized)
           }
         }
-      } catch (_: Throwable) {}
+      } catch (e: Throwable) { FileLogger.log(service, "XRAY", "consumeProcessLog exception: ${e.message}") }
     }.apply { isDaemon = true; name = "xray-log-${profile.id}"; start() }
   }
 
@@ -87,6 +103,7 @@ class XrayTunnel(
     val now = System.currentTimeMillis()
     if (message == lastReportedIssue && now - lastReportedIssueAt < 2_000L) return
     lastReportedIssue = message; lastReportedIssueAt = now
+    FileLogger.log(service, "XRAY:ERR", message.take(800))
     log("error", "XRAY", message.take(320))
   }
 
@@ -95,10 +112,15 @@ class XrayTunnel(
   private fun buildConfig(): String {
     val runtime = OpolNative.xrayRuntimePolicy(socksPort)
     val jsonMode = profile.xrayMode == "json"
+    FileLogger.log(service, "XRAY", "buildConfig mode=$jsonMode runtime socks=${runtime.socksListen}:${runtime.socksPort} log=${runtime.logLevel} domain=${runtime.domainStrategy}")
     val root = if (jsonMode) {
-      try { JSONObject(profile.xrayJson) } catch (_: Throwable) { error("JSON Xray invalide") }
+      try { JSONObject(profile.xrayJson) } catch (e: Throwable) { FileLogger.log(service, "XRAY", "JSON parse ERROR: ${e.message} json=${profile.xrayJson.take(500)}"); error("JSON Xray invalide") }
     } else {
-      JSONObject(OpolNative.buildXrayConfig(profile, socksPort))
+      try {
+        val raw = OpolNative.buildXrayConfig(profile, socksPort)
+        FileLogger.log(service, "XRAY", "buildXrayConfig libopol OK len=${raw.length} linkProto=${profile.xrayLink.take(20)}")
+        JSONObject(raw)
+      } catch (e: Throwable) { FileLogger.log(service, "XRAY", "buildXrayConfig ERROR link=${profile.xrayLink.take(200)} err=${e.message}"); throw e }
     }
     if (jsonMode) {
       normalizeInbounds(root, runtime)
@@ -107,6 +129,18 @@ class XrayTunnel(
       root.optJSONObject("log")?.put("loglevel", runtime.logLevel)
         ?: root.put("log", JSONObject().put("loglevel", runtime.logLevel))
     }
+    // Log résumé outbounds pour Trojan/VMess debug
+    try {
+      val outs = root.optJSONArray("outbounds")
+      if (outs != null) for (i in 0 until outs.length()) {
+        val o = outs.optJSONObject(i) ?: continue
+        val proto = o.optString("protocol")
+        val stream = o.optJSONObject("streamSettings")
+        val net = stream?.optString("network") ?: "tcp"
+        val sec = stream?.optString("security") ?: "none"
+        FileLogger.log(service, "XRAY", "outbound[$i] proto=$proto net=$net sec=$sec")
+      }
+    } catch (_: Throwable) {}
     return root.toString()
   }
 
