@@ -92,7 +92,7 @@ object FileLogger {
         val header = buildString {
           appendLine("========================================")
           appendLine("[$ts] KIGHMU VPN — V2Ray DNS DIAGNOSTIC")
-          appendLine("Profil: ${profile.name} (${profile.id}) kind=${profile.kind} xrayMode=${profile.xrayMode}")
+          appendLine("Profil: ${profile.name} (${profile.id}) method=${profile.method} xrayMode=${profile.xrayMode}")
           appendLine("Download: ${file.absolutePath}")
           appendLine("Android SDK: ${Build.VERSION.SDK_INT} Model: ${Build.MODEL}")
           appendLine("Heure: $ts")
