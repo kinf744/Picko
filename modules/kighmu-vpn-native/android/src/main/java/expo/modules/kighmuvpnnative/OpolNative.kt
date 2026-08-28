@@ -237,9 +237,17 @@ internal object OpolNative {
     return nativeClassifyV2RayDnsOutput(line).ifBlank { "ignore" }
   }
 
+  private fun cleanXrayLink(link: String): String {
+    // Retire le fragment #... (ex: #Lop-V2RAY-DNS-TROJAN) qui corrompt le parsing du transport
+    // trojan://...?type=tcp#label -> trojan://...?type=tcp
+    val hash = link.indexOf('#')
+    return if (hash >= 0) link.substring(0, hash).trim() else link.trim()
+  }
+
   fun buildXrayConfig(profile: TunnelProfile, socksPort: Int): String {
     check(available) { "libopol est absent de cette installation" }
-    return nativeBuildXrayConfig(profile.xrayMode, profile.xrayLink, profile.xrayJson, socksPort)
+    val cleanLink = cleanXrayLink(profile.xrayLink)
+    return nativeBuildXrayConfig(profile.xrayMode, cleanLink, profile.xrayJson, socksPort)
       ?: error("libopol a refusé la configuration Xray")
   }
 
