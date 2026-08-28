@@ -119,12 +119,23 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   const [logs, setLogs] = useState<DiagnosticLog[]>([]);
   const [lastError, setLastError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  // Journal : les activités de navigation et d'interface ne sont jamais affichées
-// (les warnings/erreurs passent toujours — voir shouldSkipJournalEntry).
-const addLog = useCallback((level: LogLevel, component: string, rawMessage: string) => {
+  // Journal filtré anti-verbeux (max 200, dedup 2s, rate-limit) + nettoyage fiable à limite fixe
+  const lastLogRef = React.useRef<Map<string, { msg: string; ts: number }>>(new Map());
+  const addLog = useCallback((level: LogLevel, component: string, rawMessage: string) => {
     const message = sanitizeDiagnosticMessage(component, rawMessage);
     if (shouldSkipJournalEntry(level, component, message)) return;
-    setLogs((current) => [{ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), level, component, message }, ...current].slice(0, 300));
+    // Dedup 2s par composant+message
+    const key = `${component}:${level}`;
+    const now = Date.now();
+    const last = lastLogRef.current.get(key);
+    if (last && last.msg === message && now - last.ts < 2000) return;
+    lastLogRef.current.set(key, { msg: message, ts: now });
+    if (lastLogRef.current.size > 50) lastLogRef.current.clear();
+    setLogs((current) => {
+      // Nettoyage fiable: si >200, garde 150 plus récents (évite verbeux infini)
+      const next = [{ id: `${now}-${Math.random().toString(36).slice(2, 8)}`, timestamp: new Date().toISOString(), level, component, message }, ...current];
+      return next.length > 200 ? next.slice(0, 150) : next.slice(0, 200);
+    });
   }, []);
 
   const persistKind = useCallback(async (kind: TunnelKind, profiles: TunnelProfile[], balancer: TunnelBalancer) => {
@@ -207,7 +218,16 @@ const addLog = useCallback((level: LogLevel, component: string, rawMessage: stri
       const level = payload.level === "error" || payload.level === "warning" || payload.level === "connection" ? payload.level : "info";
       const message = sanitizeDiagnosticMessage(component, payload.message);
       if (shouldSkipJournalEntry(level, component, message)) return;
-      setLogs((current) => [{ id: `${Date.now()}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component, message } as DiagnosticLog, ...current].slice(0, 300));
+      // Même filtre que addLog: dedup via lastLogRef
+      const key = `${component}:${level}`;
+      const now = Date.now();
+      const last = lastLogRef.current.get(key);
+      if (last && last.msg === message && now - last.ts < 2000) return;
+      lastLogRef.current.set(key, { msg: message, ts: now });
+      setLogs((current) => {
+        const next = [{ id: `${now}-native`, timestamp: new Date(Number(payload.timestamp) || Date.now()).toISOString(), level, component, message } as DiagnosticLog, ...current];
+        return next.length > 200 ? next.slice(0, 150) : next.slice(0, 200);
+      });
     },
     (payload) => { if (["connected", "connecting", "disconnected", "error"].includes(payload.status)) setStatus(payload.status as TunnelStatus); },
   ), []);

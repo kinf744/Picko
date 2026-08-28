@@ -13,15 +13,21 @@ import java.util.Locale
 /**
  * Logger fichier pour diagnostic V2Ray DNS / Trojan / VMess.
  * Écrit dans Download/kighmu.txt (public si possible, fallback scoped).
- * Rotation à 5 Mio -> kighmu.old.txt
+ * - Filtrage anti-verbeux: dedup 2s + rate-limit 5/s par composant + ignore keepalive
+ * - Nettoyage fiable: si > LIMITE (2M), garde seulement 800 dernières lignes (pas de old.txt infini)
  */
 object FileLogger {
   private const val FILENAME = "kighmu.txt"
-  private const val OLD_FILENAME = "kighmu.old.txt"
-  private const val MAX_SIZE_BYTES = 5L * 1024L * 1024L
+  private const val MAX_SIZE_BYTES = 2L * 1024L * 1024L // 2 Mio max (réduit pour éviter verbeux)
+  private const val KEEP_LINES_ON_CLEAN = 800
+  private const val DEDUP_MS = 2000L
+  private const val RATE_LIMIT_PER_SEC = 5
   @Volatile private var resolvedFile: File? = null
   private val lock = Any()
   private val tsFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.FRANCE)
+  // Filtre anti-verbeux
+  private val lastMsgByComponent = mutableMapOf<String, Pair<String, Long>>()
+  private val timestampsByComponent = mutableMapOf<String, MutableList<Long>>()
 
   fun init(context: Context) { resolveFile(context) }
 
@@ -61,25 +67,64 @@ object FileLogger {
 
   fun getPath(context: Context): String? = resolveFile(context)?.absolutePath
 
+  fun shouldLog(component: String, message: String): Boolean {
+    val now = System.currentTimeMillis()
+    val trimmed = message.trim()
+    // 1) Ignore lignes vides / keepalive ultra verbeux
+    if (trimmed.isEmpty() || trimmed.length > 2000) return false
+    val lower = trimmed.lowercase()
+    if (lower.contains("keepalive") && lower.length < 60) return false
+    // 2) Dedup: même message < 2s
+    synchronized(lock) {
+      val last = lastMsgByComponent[component]
+      if (last != null && last.first == trimmed && now - last.second < DEDUP_MS) return false
+      lastMsgByComponent[component] = trimmed to now
+      // 3) Rate-limit: max 5 logs/sec par composant
+      val list = timestampsByComponent.getOrPut(component) { mutableListOf() }
+      list.removeAll { now - it > 1000 }
+      if (list.size >= RATE_LIMIT_PER_SEC) return false
+      list.add(now)
+      // Nettoyage map si trop grande
+      if (lastMsgByComponent.size > 50) lastMsgByComponent.clear()
+      if (timestampsByComponent.size > 50) timestampsByComponent.clear()
+    }
+    return true
+  }
+
   fun log(context: Context, component: String, message: String) {
+    if (!shouldLog(component, message)) return
     try {
       val file = resolveFile(context) ?: return
       synchronized(lock) {
+        // Nettoyage fiable: si dépasse LIMITE, garde seulement 800 dernières lignes (évite verbeux infini)
         if (file.exists() && file.length() > MAX_SIZE_BYTES) {
           try {
-            val backup = File(file.parentFile, OLD_FILENAME)
-            if (backup.exists()) backup.delete()
-            file.renameTo(backup)
-          } catch (_: Throwable) {}
+            val lines = file.readLines()
+            val keep = if (lines.size > KEEP_LINES_ON_CLEAN) lines.takeLast(KEEP_LINES_ON_CLEAN) else lines.takeLast((lines.size * 0.5).toInt())
+            val ts = tsFormat.format(Date())
+            file.writeText(keep.joinToString("\n") + "\n")
+            file.appendText("[$ts] [SYSTEM] Nettoyage auto: limite ${MAX_SIZE_BYTES/1024}Ko atteinte, garde ${keep.size} dernières lignes\n", Charsets.UTF_8)
+          } catch (_: Throwable) {
+            try { file.writeText("") } catch (_: Throwable) {}
+          }
         }
         val ts = tsFormat.format(Date())
         val line = "[$ts] [$component] $message\n"
-        // Append atomically
         file.appendText(line, Charsets.UTF_8)
-        // Sur Q+, notifier MediaStore si fichier public (pour visibilité immédiate)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && file.absolutePath.contains(Environment.DIRECTORY_DOWNLOADS)) {
           try { file.setLastModified(System.currentTimeMillis()) } catch (_: Throwable) {}
         }
+      }
+    } catch (_: Throwable) {}
+  }
+
+  /** Log forcé sans filtre (header, erreurs critiques) */
+  fun logForce(context: Context, component: String, message: String) {
+    try {
+      val file = resolveFile(context) ?: return
+      synchronized(lock) {
+        val ts = tsFormat.format(Date())
+        file.appendText("[$ts] [$component] $message\n", Charsets.UTF_8)
       }
     } catch (_: Throwable) {}
   }
@@ -88,6 +133,14 @@ object FileLogger {
     try {
       val file = resolveFile(context) ?: return
       synchronized(lock) {
+        // Vérifie limite avant header
+        if (file.exists() && file.length() > MAX_SIZE_BYTES) {
+          try {
+            val lines = file.readLines()
+            val keep = lines.takeLast(KEEP_LINES_ON_CLEAN)
+            file.writeText(keep.joinToString("\n") + "\n")
+          } catch (_: Throwable) { try { file.writeText("") } catch (_: Throwable) {} }
+        }
         val ts = tsFormat.format(Date())
         val header = buildString {
           appendLine("========================================")
@@ -98,8 +151,18 @@ object FileLogger {
           appendLine("Heure: $ts")
           appendLine("========================================")
         }
-        // Nouveau header en tête de session, on append
         file.appendText(header, Charsets.UTF_8)
+      }
+    } catch (_: Throwable) {}
+  }
+
+  fun clear(context: Context) {
+    try {
+      val file = resolveFile(context) ?: return
+      synchronized(lock) {
+        file.writeText("")
+        lastMsgByComponent.clear()
+        timestampsByComponent.clear()
       }
     } catch (_: Throwable) {}
   }

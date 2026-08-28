@@ -80,19 +80,17 @@ class XrayTunnel(
       try {
         started.inputStream.bufferedReader().forEachLine { raw ->
           val normalized = raw.trim()
-          // Log fichier détaillé : chaque ligne Xray pour debug Trojan/VMess
-          if (normalized.isNotBlank()) FileLogger.log(service, "XRAY:RAW", normalized.take(800))
           if (normalized.isBlank() || normalized.length > 2000) return@forEachLine
           val lower = normalized.lowercase()
+          // Filtre anti-verbeux: ignore keepalive/eof, ne log RAW que sur erreurs importantes
+          if (lower.contains("failed to read request") && lower.contains("eof")) return@forEachLine
+          // Log fichier filtré: seulement erreurs/start, pas chaque ligne verbeuse
+          val isImportant = lower.contains("started") || lower.contains("fatal") || lower.contains("panic") || lower.contains("failed") || lower.contains("error") || lower.contains("timeout") || lower.contains("rejected") || lower.contains("handshake")
+          if (isImportant && normalized.isNotBlank()) FileLogger.log(service, "XRAY", normalized.take(800))
           when {
-            lower.contains("failed to read request") && lower.contains("eof") -> Unit
-            lower.contains("started") && lower.contains("xray") -> {
-              FileLogger.log(service, "XRAY", "Xray démarré pour ${profile.name}: $normalized")
-              log("info", "XRAY", "Xray démarré pour ${profile.name}")
-            }
+            lower.contains("started") && lower.contains("xray") -> log("info", "XRAY", "Xray démarré pour ${profile.name}")
             lower.contains("fatal") || lower.contains("panic") || lower.contains("failed") || lower.contains("error") ||
-            lower.contains("trojan") || lower.contains("vmess") || lower.contains("timeout") || lower.contains("rejected") ||
-            lower.contains("handshake") || lower.contains("tls") -> reportIssue(normalized)
+            lower.contains("timeout") || lower.contains("rejected") || lower.contains("handshake") -> reportIssue(normalized)
           }
         }
       } catch (e: Throwable) { FileLogger.log(service, "XRAY", "consumeProcessLog exception: ${e.message}") }

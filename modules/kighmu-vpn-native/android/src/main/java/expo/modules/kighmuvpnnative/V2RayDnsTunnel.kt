@@ -113,17 +113,18 @@ class V2RayDnsTunnel(
           val line = raw.trim()
           val active = if (dnstt) dnsttProcess === running else xrayProcess === running
           if (stopRequested.get() || !active) return@forEach
-          // Log fichier détaillé : chaque ligne brute pour debug Trojan/VMess handshake
-          FileLogger.log(context, "V2RAY DNS:$tag", line.take(600))
-          when (OpolNative.classifyV2RayDnsOutput(raw)) {
+          val cls = OpolNative.classifyV2RayDnsOutput(raw)
+          // Filtrage anti-verbeux: ne logge que ready/retry/erreurs, pas chaque keepalive/stream
+          val lower = line.lowercase()
+          val isImportant = cls != "ignore" || lower.contains("error") || lower.contains("failed") || lower.contains("mtu") || lower.contains("session") || lower.contains("timeout") || lower.contains("trojan") || lower.contains("vmess")
+          if (isImportant) FileLogger.log(context, "V2RAY DNS:$tag", line.take(600))
+          when (cls) {
             "ready" -> if (!dnstt) compactLog("info", "Xray DNS démarré")
-            "retry" -> { FileLogger.log(context, "V2RAY DNS", "$tag RETRY: $line"); compactLog("warning", if (dnstt) "DNSTT a signalé une erreur; reconnexion V2Ray DNS" else "Xray DNS a signalé une erreur; reconnexion"); scheduleRecovery() }
+            "retry" -> { FileLogger.logForce(context, "V2RAY DNS", "$tag RETRY: $line"); compactLog("warning", if (dnstt) "DNSTT a signalé une erreur; reconnexion V2Ray DNS" else "Xray DNS a signalé une erreur; reconnexion"); scheduleRecovery() }
             else -> {
-              // Log aussi les erreurs Xray non classifiées (Trojan/VMess: failed to dial, handshake timeout etc.)
-              val lower = line.lowercase()
-              if (!dnstt && (lower.contains("error") || lower.contains("failed") || lower.contains("trojan") || lower.contains("vmess") || lower.contains("timeout") || lower.contains("rejected"))) {
+              if (!dnstt && lower.contains("error") || lower.contains("failed") || lower.contains("timeout") || lower.contains("rejected")) {
                 FileLogger.log(context, "V2RAY DNS:XRAY-ERR", line)
-                compactLog("error", line.take(180))
+                if (lower.contains("failed to start") || lower.contains("unknown transport") || lower.contains("trojan") || lower.contains("vmess")) compactLog("error", line.take(180))
               }
             }
           }
