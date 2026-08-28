@@ -20,7 +20,6 @@ const familyIcons: Record<TunnelKind, MaterialIconName> = {
   "ssh-tls": "lock",
   "v2ray-slowdns": "hub",
   "xray-v2ray": "alt-route",
-  "xray-hysteria": "cell-tower",
 };
 
 export function AppHeader() {

@@ -25,7 +25,6 @@ const KIND_TO_METHOD: Record<TunnelKind, string> = {
   "ssh-tls": "ssh-ssl-tls",
   "v2ray-slowdns": "v2ray-dns",
   "xray-v2ray": "xray",
-  "xray-hysteria": "xray-hysteria",
 };
 
 /** Profil au format attendu par `TunnelProfile.parseMany` côté natif. */
@@ -101,21 +100,8 @@ export function toEngineProfile(profile: TunnelProfile): EngineProfile {
         xrayLink: profile.link,
         xrayJson: profile.json,
       };
-    case "xray-hysteria":
-      return {
-        ...base,
-        xrayMode: profile.inputMode,
-        xrayLink: profile.link,
-        xrayJson: profile.json,
-        hysteriaHost: profile.hysteriaHost,
-        hysteriaPort: profile.hysteriaPort,
-        hysteriaAuth: profile.hysteriaAuth,
-        hysteriaObfs: profile.hysteriaObfs,
-        hysteriaUpMbps: profile.hysteriaUpMbps,
-        hysteriaDownMbps: profile.hysteriaDownMbps,
-      };
   }
-  // Inatteignable : les sept familles sont couvertes ci-dessus. Le typage `never`
+  // Inatteignable : les 7 familles sont couvertes ci-dessus. Le typage `never`
   // provoque une erreur de compilation si une nouvelle famille est ajoutée sans mappage.
   const exhaustive: never = profile;
   throw new Error(`Type de tunnel non pris en charge : ${JSON.stringify(exhaustive)}`);

@@ -48,10 +48,10 @@ const secretStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.secrets.v1`;
 const balancerStoreKey = (kind: TunnelKind) => `kighmu.vpn.${kind}.balancer.v1`;
 
 const emptyProfiles = (): ProfilesByKind => ({
-  zivpn: [], slowdns: [], hysteria: [], "http-payload": [], "ssh-tls": [], "v2ray-slowdns": [], "xray-v2ray": [], "xray-hysteria": [],
+  zivpn: [], slowdns: [], hysteria: [], "http-payload": [], "ssh-tls": [], "v2ray-slowdns": [], "xray-v2ray": [],
 });
 const emptyBalancers = (): BalancersByKind => ({
-  zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "http-payload": defaultBalancer(), "ssh-tls": defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(), "xray-hysteria": defaultBalancer(),
+  zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "http-payload": defaultBalancer(), "ssh-tls": defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(),
 });
 const redact = (value: string) => (value ? tLog("logs.redacted") : tLog("logs.unset"));
 const secretGet = (key: string) => Platform.OS === "web" ? Promise.resolve(localStorage.getItem(key)) : SecureStore.getItemAsync(key);

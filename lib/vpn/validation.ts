@@ -112,15 +112,6 @@ export function validateTunnelProfile(profile: TunnelProfile): ProfileFieldError
       requiredI18n(errors, "publicKey", profile.publicKey, "valid.f.publicKey");
       if (!isSupportedV2RayLink(profile.link)) errors.link = tv("valid.linkFormat");
       break;
-    case "xray-hysteria":
-      if (profile.inputMode === "link") requiredI18n(errors, "link", profile.link, "valid.f.link");
-      else if (!isJsonObject(profile.json)) errors.json = tv("valid.json");
-      requiredI18n(errors, "hysteriaHost", profile.hysteriaHost, "valid.f.host");
-      if (!isValidPort(profile.hysteriaPort)) errors.hysteriaPort = tv("valid.port.range");
-      requiredI18n(errors, "hysteriaAuth", profile.hysteriaAuth, "valid.f.auth");
-      if (!/^\d+$/.test(profile.hysteriaUpMbps) || Number(profile.hysteriaUpMbps) < 1) errors.hysteriaUpMbps = tv("valid.upMbps");
-      if (!/^\d+$/.test(profile.hysteriaDownMbps) || Number(profile.hysteriaDownMbps) < 1) errors.hysteriaDownMbps = tv("valid.downMbps");
-      break;
   }
   return errors;
 }
