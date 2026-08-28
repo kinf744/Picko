@@ -84,6 +84,7 @@ class XrayTunnel(
           val lower = normalized.lowercase()
           // Filtre anti-verbeux: ignore keepalive/eof, ne log RAW que sur erreurs importantes
           if (lower.contains("failed to read request") && lower.contains("eof")) return@forEachLine
+          if (lower.contains("failed to read request") || lower.contains("rejected proxy/socks")) return@forEachLine
           // Log fichier filtré: seulement erreurs/start, pas chaque ligne verbeuse
           val isImportant = lower.contains("started") || lower.contains("fatal") || lower.contains("panic") || lower.contains("failed") || lower.contains("error") || lower.contains("timeout") || lower.contains("rejected") || lower.contains("handshake")
           if (isImportant && normalized.isNotBlank()) FileLogger.log(service, "XRAY", normalized.take(800))

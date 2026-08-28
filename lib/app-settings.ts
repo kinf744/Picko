@@ -24,6 +24,7 @@ export type AppSettings = {
   customDnsEnabled: boolean;
   dnsPrimary: string;
   dnsSecondary: string;
+  pingEnabled: boolean;
   httpPingEnabled: boolean;
   httpPingUrl: string;
   httpPingIntervalMs: number;
@@ -52,6 +53,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   customDnsEnabled: false,
   dnsPrimary: "1.1.1.1", // natif : trim + ≤255 caractères
   dnsSecondary: "1.0.0.1",
+  pingEnabled: true, // natif : toggle indépendant du check HTTP engine (affichage UI)
   httpPingEnabled: true,
   httpPingUrl: "https://www.google.com/generate_204", // natif : schéma http(s) exigé
   httpPingIntervalMs: 5000, // natif : coerceIn(1000, 120000)

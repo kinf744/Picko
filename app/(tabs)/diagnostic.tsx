@@ -4,7 +4,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { AppHeader } from "@/components/kighmu-ui";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
-import { diagnosticTone, formatDiagnosticTime, formatSshServerMessage, isSshBanner, isSshServerMessage } from "@/lib/vpn/diagnostic-format";
+import { diagnosticTone, formatDiagnosticTime, formatSshServerMessage, isSshBanner, isSshServerMessage, parsePingLatency } from "@/lib/vpn/diagnostic-format";
 import { useVpn, type DiagnosticLog } from "@/lib/vpn/vpn-context";
 import { useLang } from "@/lib/i18n-provider";
 
@@ -12,11 +12,15 @@ function JournalLine({ log }: { log: DiagnosticLog }) {
   const colors = useColors();
   const { t } = useLang();
   const tone = diagnosticTone(log.level);
-  const lineColor = tone === "error" ? colors.error : tone === "warning" ? colors.warning : tone === "connection" ? colors.primary : colors.foreground;
   const banner = isSshBanner(log.component);
   const serverMessage = isSshServerMessage(log.component);
   const serverSegments = serverMessage ? formatSshServerMessage(log.message) : [];
   const headline = banner ? t("diag.sshBannerHeadline") : serverMessage ? t("diag.sshServerHeadline") : log.message;
+  // Couleur du ping : vert si <300ms, orange si 300-800ms, rouge si >=800ms (et non-PING = tone normale)
+  const pingMs = parsePingLatency(log.message);
+  const isPing = log.component === "PING" && pingMs !== null;
+  const pingColor = !isPing ? null : pingMs < 300 ? colors.success : pingMs < 800 ? colors.warning : colors.error;
+  const lineColor = pingColor ?? (tone === "error" ? colors.error : tone === "warning" ? colors.warning : tone === "connection" ? colors.primary : colors.foreground);
   return <View style={[styles.line, { borderBottomColor: colors.border }]}><Text style={[styles.lineText, { color: lineColor }]}><Text style={[styles.time, { color: colors.muted }]}>[{formatDiagnosticTime(log.timestamp)}] </Text>{headline}</Text>{banner ? <View style={[styles.banner, { borderColor: colors.primary, backgroundColor: colors.surfaceRaised }]}><View style={styles.bannerHead}><MaterialIcons name="dns" size={17} color={colors.primary} /><Text style={[styles.bannerTitle, { color: colors.foreground }]}>{t("diag.bannerTitle")}</Text></View><Text selectable style={[styles.bannerText, { color: colors.foreground }]}>{log.message || t("diag.noBanner")}</Text></View> : null}{serverMessage ? <View style={[styles.serverMessage, { borderColor: colors.success, backgroundColor: colors.surfaceRaised }]}><View style={styles.bannerHead}><MaterialIcons name="campaign" size={17} color={colors.success} /><Text style={[styles.bannerTitle, { color: colors.foreground }]}>{t("diag.serverTitle")}</Text></View><Text selectable style={[styles.serverMessageText, { color: colors.foreground }]}>{serverSegments.map((segment, index) => <Text key={`${log.id}-${index}`} style={{ color: segment.color ?? colors.foreground, fontWeight: segment.bold ? "800" : "500", fontStyle: segment.italic ? "italic" : "normal", textDecorationLine: segment.underline ? "underline" : "none" }}>{segment.text}</Text>)}</Text></View> : null}</View>;
 }
 

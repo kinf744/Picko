@@ -105,3 +105,11 @@ export function diagnosticTone(level: DiagnosticLevel) {
   if (level === "connection") return "connection";
   return "info";
 }
+
+/** Détecte un log ping « Ping <code> OK (<ms>ms) » et extrait la latence en ms. */
+export function parsePingLatency(message: string): number | null {
+  const match = /Ping\s+\d+\s+OK\s+\((\d+)ms\)/.exec(message);
+  if (!match) return null;
+  const ms = Number.parseInt(match[1], 10);
+  return Number.isFinite(ms) && ms >= 0 ? ms : null;
+}

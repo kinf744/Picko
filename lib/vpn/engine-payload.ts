@@ -124,6 +124,7 @@ export type EngineSettings = {
   mtu: number;
   wakeLockEnabled: boolean;
   profileNameInNotification: boolean;
+  pingEnabled: boolean;
   httpPingEnabled: boolean;
   httpPingUrl: string;
   httpPingIntervalMs: number;
@@ -166,6 +167,7 @@ export function toEngineSettings(settings: AppSettings): EngineSettings {
     mtu: clampInt(settings.mtu, 1280, 1500),
     wakeLockEnabled: settings.wakeLockEnabled === true,
     profileNameInNotification: settings.profileNameInNotification !== false,
+    pingEnabled: settings.pingEnabled !== false,
     httpPingEnabled: settings.httpPingEnabled !== false,
     httpPingUrl: cleanHttpUrl(settings.httpPingUrl),
     httpPingIntervalMs: interval,

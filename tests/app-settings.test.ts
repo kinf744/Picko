@@ -55,6 +55,7 @@ describe("app-settings", () => {
       mtu: 1400,
       wakeLockEnabled: false,
       profileNameInNotification: true,
+      pingEnabled: true,
       httpPingEnabled: true,
       httpPingUrl: "https://www.google.com/generate_204",
       httpPingIntervalMs: 5000,

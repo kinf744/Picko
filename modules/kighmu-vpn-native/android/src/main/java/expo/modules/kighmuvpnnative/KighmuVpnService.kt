@@ -214,11 +214,22 @@ class KighmuVpnService : VpnService() {
           recoveryLogged = false
         }
         val now = System.currentTimeMillis()
-        if (runtimeSettings.httpPingEnabled && now >= nextPingAt && ports.isNotEmpty()) {
+        // Vérification HTTP active uniquement si l'utilisateur a activé pingEnabled ET httpPingEnabled
+        if (runtimeSettings.httpPingEnabled && runtimeSettings.pingEnabled && now >= nextPingAt && ports.isNotEmpty()) {
           nextPingAt = now + runtimeSettings.httpPingIntervalMs
-          if (httpPing()) {
+          val result = httpPing()
+          if (result.success) {
             if (pingFailures > 0) emitLog("connection", "PING", "Vérification HTTP rétablie via le balancier SOCKS")
             pingFailures = 0
+            // Émet un log ping avec latence (UI affichera couleur vert/rouge selon seuil)
+            val ms = result.latencyMs
+            val level = when {
+              ms <= 0L -> "warning"
+              ms < 300L -> "connection"
+              ms < 800L -> "info"
+              else -> "warning"
+            }
+            emitLog(level, "PING", "Ping ${result.code} OK (${ms}ms)")
           } else {
             pingFailures += 1
             emitLog("warning", "PING", "Échec HTTP $pingFailures/${runtimeSettings.reconnectAfterFailures.coerceAtLeast(1)}")
@@ -239,8 +250,11 @@ class KighmuVpnService : VpnService() {
     }
   }
 
-  private fun httpPing(): Boolean = try {
-    val socksPort = synchronized(lifecycleLock) { balancer?.port } ?: return false
+  private data class PingResult(val success: Boolean, val code: Int, val latencyMs: Long)
+
+  private fun httpPing(): PingResult = try {
+    val socksPort = synchronized(lifecycleLock) { balancer?.port } ?: return PingResult(false, 0, 0L)
+    val startNs = System.nanoTime()
     val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
     val connection = URL(runtimeSettings.httpPingUrl).openConnection(proxy) as HttpURLConnection
     connection.connectTimeout = runtimeSettings.httpPingTimeoutMs
@@ -249,10 +263,11 @@ class KighmuVpnService : VpnService() {
     connection.setRequestProperty("Connection", "close")
     val code = connection.responseCode
     connection.disconnect()
-    code in 200..399
+    val ms = (System.nanoTime() - startNs) / 1_000_000L
+    PingResult(code in 200..399, code, ms)
   } catch (error: Throwable) {
     emitLog("info", "PING", "Vérification HTTP indisponible : ${error.message ?: "erreur réseau"}")
-    false
+    PingResult(false, 0, 0L)
   }
 
   private fun restartVpn(generation: Long, reason: String) {

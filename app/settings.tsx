@@ -122,6 +122,7 @@ export default function SettingsScreen() {
       <ToggleRow icon="all-inclusive" title={t("settings.alwaysReconnect.title")} description={t("settings.alwaysReconnect.desc")} value={settings.alwaysReconnect} onChange={(value) => update({ alwaysReconnect: value })} />
       <View style={[styles.divider, { borderTopColor: colors.border }]} />
       <Text style={[styles.subTitle, { color: colors.muted }]}>{t("settings.appSubtitle")}</Text>
+      <ToggleRow icon="speed" title={t("settings.ping.title")} description={t("settings.ping.desc")} value={settings.pingEnabled} onChange={(value) => update({ pingEnabled: value })} disabled={!settings.httpPingEnabled} />
       <ToggleRow icon="sync" title={t("settings.autoReconnect.title")} description={t("settings.autoReconnect.desc")} value={settings.autoReconnect} onChange={(value) => update({ autoReconnect: value })} />
       <SettingNumberRow icon="timer" title={t("settings.delay.title")} description={t("settings.delay.desc")} value={settings.reconnectDelaySeconds} min={1} max={60} step={1} unit="s" onChange={(value) => update({ reconnectDelaySeconds: value })} />
       <ToggleRow icon="signal-wifi-off" title={t("settings.stopOnLoss.title")} description={t("settings.stopOnLoss.desc")} value={settings.stopOnNetworkLoss} onChange={(value) => update({ stopOnNetworkLoss: value })} />

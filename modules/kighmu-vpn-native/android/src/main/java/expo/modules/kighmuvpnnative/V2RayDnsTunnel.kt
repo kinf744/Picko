@@ -116,6 +116,9 @@ class V2RayDnsTunnel(
           val cls = OpolNative.classifyV2RayDnsOutput(raw)
           // Filtrage anti-verbeux: ne logge que ready/retry/erreurs, pas chaque keepalive/stream
           val lower = line.lowercase()
+          // Suppression totale des logs "failed to read request > EOF" / "rejected proxy/socks": Xray les
+          // émet en boucle dès qu'un client ferme sa connexion — pollue le journal sans valeur.
+          if (lower.contains("failed to read request") || lower.contains("rejected proxy/socks")) return@forEach
           val isImportant = cls != "ignore" || lower.contains("error") || lower.contains("failed") || lower.contains("mtu") || lower.contains("session") || lower.contains("timeout") || lower.contains("trojan") || lower.contains("vmess")
           if (isImportant) FileLogger.log(context, "V2RAY DNS:$tag", line.take(600))
           when (cls) {
