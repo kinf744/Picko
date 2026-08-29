@@ -177,11 +177,11 @@ abstract class SshTransportTunnel(
         if (banner.startsWith("SSH-")) {
           // Bannière SSH valide : affichée dans sa propre zone du journal de connexion.
           log("connection", "SSH_BANNER", banner.trim())
-          diag("Bannière SSH reçue : ${banner.trim().take(200)}")
+          logDiag("Bannière SSH reçue : ${banner.trim().take(200)}")
         } else {
           // Message serveur (EDOZTUNNEL) autre que SSH : affiché coloré (balise <font>).
           log("warning", "SSH_SERVER_MESSAGE", banner.trim())
-          diag("Message serveur (non-SSH) reçu : ${banner.trim().take(200)}")
+          logDiag("Message serveur (non-SSH) reçu : ${banner.trim().take(200)}")
           error("Bannière SSH invalide du proxy ($component) : ${banner.trim().take(80)}")
         }
         Thread { pipe(remoteInput, client.getOutputStream()) }.apply { isDaemon = true; name = "picko-$component-remote-${profile.id.takeLast(8)}" }.start()
