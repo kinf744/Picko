@@ -174,7 +174,16 @@ abstract class SshTransportTunnel(
         val remoteInput = remote.getInputStream()
         val banner = readSshBanner(remoteInput)
         client.getOutputStream().apply { write(banner.toByteArray(Charsets.ISO_8859_1)); flush() }
-        compactLog("info", "Bannière SSH reçue : ${banner.trim().take(120)}")
+        if (banner.startsWith("SSH-")) {
+          // Bannière SSH valide : affichée dans sa propre zone du journal de connexion.
+          log("connection", "SSH_BANNER", banner.trim())
+          diag("Bannière SSH reçue : ${banner.trim().take(200)}")
+        } else {
+          // Message serveur (EDOZTUNNEL) autre que SSH : affiché coloré (balise <font>).
+          log("warning", "SSH_SERVER_MESSAGE", banner.trim())
+          diag("Message serveur (non-SSH) reçu : ${banner.trim().take(200)}")
+          error("Bannière SSH invalide du proxy ($component) : ${banner.trim().take(80)}")
+        }
         Thread { pipe(remoteInput, client.getOutputStream()) }.apply { isDaemon = true; name = "picko-$component-remote-${profile.id.takeLast(8)}" }.start()
         pipe(client.getInputStream(), remote.getOutputStream())
       } catch (error: Throwable) {
@@ -312,13 +321,10 @@ abstract class SshTransportTunnel(
       if (next == '\n'.code) {
         val text = banner.toString()
         logDiag("SSH flux brut (hex des ${rawCount} premiers octets après le 101): ${raw.copyOf(rawCount).toHex()}")
-        if (!text.startsWith("SSH-")) {
-          // Le serveur (EDOZTUNNEL/OpenSSH) refuse la poignée de main, souvent
-          // "Exceeded MaxStartups" quand la connexion précédente n'est pas encore
-          // libérée côté serveur. On échoue vite pour laisser openAndAuthenticate
-          // réessayer avec un backoff (plutôt que d'attendre le kexTimeout de 30 s).
-          error("Bannière SSH invalide du proxy ($component) : ${text.trim().take(80)}")
-        }
+        // On ne rejette PAS ici : la bannière peut être un message serveur
+        // (ex. EDOZTUNNEL « Exceeded MaxStartups » ou « server Is Dined… »).
+        // L'appelant décide de l'affichage (SSH_BANNER vs SSH_SERVER_MESSAGE)
+        // et lève l'erreur si la poignée de main SSH ne peut pas continuer.
         return text
       }
     }
@@ -407,7 +413,9 @@ class HttpProxyPayloadTunnel(
       }
       consumeHeaders(socket.getInputStream())
       socket.soTimeout = 0
-      compactLog("info", "Proxy HTTP accepté : ${firstLine.take(120)}")
+      // Réponse 101 du proxy EDOZTUNNEL : affichée colorée dans le journal de
+      // connexion (la balise <font color> est interprétée par l'UI).
+      log("connection", "SSH_SERVER_MESSAGE", firstLine)
       diag("Proxy HTTP accepté: ${firstLine.take(200)}")
       return socket
     } catch (error: Throwable) {
