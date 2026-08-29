@@ -3,6 +3,8 @@ package expo.modules.kighmuvpnnative
 import android.content.Context
 import com.trilead.ssh2.Connection
 import com.trilead.ssh2.DebugLogger
+import com.trilead.ssh2.crypto.cipher.BlockCipherFactory
+import com.trilead.ssh2.crypto.digest.HMAC
 import java.io.InputStream
 import java.security.Security
 import org.bouncycastle.jce.provider.BouncyCastleProvider
@@ -59,18 +61,46 @@ abstract class SshTransportTunnel(
     try { FileLogger.logForce(context, "SSHDBG", "[$className] $message") } catch (_: Throwable) {}
   }
 
-  /** Enregistre BouncyCastle en position 1 pour fournir AES-256/CTR et Ed25519
+  /** Enregistre BouncyCastle en position 1 pour fournir AES/CTR et Ed25519
    *  sans restriction JCE (contourne "Fatal error during MAC startup" sur les
-   *  périphériques où le provider par défaut refuse AES-256). BC n'implémente
-   *  pas JSSE/SSLContext, donc le TLS de ssh-ssl-tls reste géré par Conscrypt. */
+   *  périphériques où le provider par défaut refuse AES). Android embarque un
+   *  provider "BC" système souvent limité : on le retire pour insérer le nôtre
+   *  (complet). BC n'implémente pas JSSE/SSLContext, donc le TLS de ssh-ssl-tls
+   *  reste géré par Conscrypt. */
   private fun ensureBouncyCastle() {
     try {
-      if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+      val ourName = BouncyCastleProvider.PROVIDER_NAME
+      if (Security.getProvider(ourName)?.javaClass?.name != BouncyCastleProvider::class.java.name) {
+        try { Security.removeProvider(ourName) } catch (_: Throwable) {}
         Security.insertProviderAt(BouncyCastleProvider(), 1)
-        logDiag("BouncyCastle enregistré (position 1) pour AES-256/Ed25519")
       }
+      logDiag("BouncyCastle prêt: ${Security.getProvider(ourName)?.javaClass?.name}")
     } catch (e: Throwable) {
       logDiag("BouncyCastle ignoré: ${e.message ?: "erreur"}")
+    }
+  }
+
+  /** Sonde décisive : teste directement BlockCipherFactory.createCipher et HMAC
+   *  sur le périphérique pour révéler l'exception réelle (sshlib la masque en
+   *  "Fatal error during MAC startup"). */
+  private fun probeCrypto() {
+    for (c in arrayOf("aes128-ctr", "aes256-ctr", "aes128-cbc", "3des-ctr", "blowfish-ctr")) {
+      try {
+        val ks = BlockCipherFactory.getKeySize(c)
+        val bs = BlockCipherFactory.getBlockSize(c)
+        BlockCipherFactory.createCipher(c, true, ByteArray(ks), ByteArray(bs))
+        logDiag("PROBE createCipher $c OK (ks=$ks bs=$bs)")
+      } catch (e: Throwable) {
+        logDiag("PROBE createCipher $c ÉCHEC: ${e::class.java.simpleName}: ${e.message ?: "sans message"}")
+      }
+    }
+    for (m in arrayOf("hmac-sha1", "hmac-sha2-256", "hmac-md5")) {
+      try {
+        HMAC(m, ByteArray(64))
+        logDiag("PROBE HMAC $m OK")
+      } catch (e: Throwable) {
+        logDiag("PROBE HMAC $m ÉCHEC: ${e::class.java.simpleName}: ${e.message ?: "sans message"}")
+      }
     }
   }
 
@@ -139,8 +169,10 @@ abstract class SshTransportTunnel(
       // Active le debug ganymed pour journaliser la négociation (algorithmes
       // choisis + erreur réelle) dans kighmu.txt [SSHDBG].
       try { ssh.enableDebugging(true, sshDebugLogger) } catch (_: Throwable) {}
-      // Enregistre BouncyCastle (AES-256/Ed25519 sans restriction JCE).
+      // Enregistre BouncyCastle (AES/Ed25519 sans restriction JCE).
       ensureBouncyCastle()
+      // Sonde : révèle l'exception réelle de createCipher/HMAC sur ce périphérique.
+      probeCrypto()
       // Contourne "Fatal error during MAC startup" sur les périphériques où le
       // provider JCE refuse AES-256 (InvalidKeyException: Illegal key size).
       // On force des chiffrements 128 bits (aes128-ctr/cbc, 3des, blowfish),
