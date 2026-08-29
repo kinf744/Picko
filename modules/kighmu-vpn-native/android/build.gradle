@@ -42,6 +42,11 @@ android {
         arguments "-DANDROID_STL=c++_shared"
       }
     }
+    // sshlib charge ses chiffrements par Class.forName(nom_en_chaine)
+    // (ex: com.trilead.ssh2.crypto.cipher.AES$CTR). Si R8 les obfusque,
+    // Class.forName échoue -> "Cannot instantiate aes128-ctr" ->
+    // "Fatal error during MAC startup". On préserve sshlib + BouncyCastle.
+    consumerProguardFiles "consumer-rules.pro"
   }
   externalNativeBuild {
     cmake {
