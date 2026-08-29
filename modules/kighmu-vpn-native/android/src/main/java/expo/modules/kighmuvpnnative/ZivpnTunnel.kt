@@ -14,7 +14,6 @@ class ZivpnTunnel(
   override val socksPort: Int = findFreePort()
   private var process: Process? = null
   private var configFile: File? = null
-  @Volatile private var authFailed = false
 
   override fun start() {
     profile.validate()?.let { throw IllegalArgumentException(it) }
@@ -39,34 +38,15 @@ class ZivpnTunnel(
     Thread {
       try {
         started.inputStream.bufferedReader().useLines { lines ->
-          lines.forEach { line ->
-            if (line.isBlank()) return@forEach
-            // Détection du rejet d'authentification par le serveur ZiVPN :
-            // uz_core signale le refus du mot de passe au handshake ; on affiche
-            // 4 fois le message rouge demandé avant que le service passe au
-            // profil suivant (ou n'arrête le VPN si c'était le seul profil).
-            if (AUTH_FAILURE_REGEX.containsMatchIn(line)) notifyAuthFailure()
-            log("info", "ZIVPN", line.take(runtime.logLineMaxChars))
-          }
+          lines.forEach { line -> if (line.isNotBlank()) log("info", "ZIVPN", line.take(runtime.logLineMaxChars)) }
         }
       } catch (_: Throwable) {}
     }.apply { isDaemon = true; name = "zivpn-log-$socksPort" }.start()
     if (!waitForPort(socksPort, runtime.startupTimeoutMs)) {
       stop()
-      // Mot de passe refusé : message déjà affiché 4× via notifyAuthFailure().
-      if (authFailed) error("Échec de l’authentification, mot de passe incorrect")
       error("ZiVPN n’a pas ouvert le proxy SOCKS local")
     }
     log("connection", "ZIVPN", "${profile.name} prêt sur 127.0.0.1:$socksPort")
-  }
-
-  /** Affiche 4 fois le message rouge d'échec d'authentification (une seule fois par profil). */
-  private fun notifyAuthFailure() {
-    if (authFailed) return
-    authFailed = true
-    repeat(4) {
-      log("error", "ZIVPN", "Échec de l’authentification, mot de passe incorrect")
-    }
   }
 
   override fun isHealthy(): Boolean = process?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort)
@@ -90,11 +70,6 @@ class ZivpnTunnel(
   }
 
   companion object {
-    // Mots-clés typiques d'un refus d'authentification uz_core (insensible à la casse).
-    private val AUTH_FAILURE_REGEX = Regex(
-      "(?i)(auth[^\\n]*(?:fail|invalid|incorrect|reject|denied)|password[^\\n]*(?:fail|invalid|incorrect|wrong|reject|denied)|unauthorized|403)",
-    )
-
     fun findFreePort(): Int = ServerSocket(0).use { it.localPort }
     fun safeToken(value: String) = value.replace(Regex("[^A-Za-z0-9_-]"), "_").take(80)
   }
