@@ -46,6 +46,11 @@ abstract class SshTransportTunnel(
 
   protected abstract fun openTransport(): Socket
 
+  /** Log de diagnostic forcé (sans filtre) dans Download/kighmu.txt. */
+  protected fun diag(message: String) {
+    try { FileLogger.logForce(context, "SSHBridge", "[$component] $message") } catch (_: Throwable) {}
+  }
+
   override fun start() {
     profile.validate()?.let { error(it) }
     stopRequested.set(false)
@@ -108,11 +113,22 @@ abstract class SshTransportTunnel(
 
     val ssh = Connection("127.0.0.1", listener.localPort)
     try {
+      diag("SSH connect -> 127.0.0.1:${listener.localPort} (timeout connect=${SSH_CONNECT_TIMEOUT_MS}ms kex=${SSH_KEX_TIMEOUT_MS}ms)")
       ssh.connect(null, SSH_CONNECT_TIMEOUT_MS, SSH_KEX_TIMEOUT_MS)
-      if (!ssh.authenticateWithPassword(profile.sshUser, profile.password)) error("authentification SSH refusée")
+      diag("SSH connect OK (version=${ssh.serverVersion ?: "?"}); auth user=${profile.sshUser}")
+      if (!ssh.authenticateWithPassword(profile.sshUser, profile.password)) {
+        diag("SSH AUTH REFUSÉE pour ${profile.sshUser}")
+        error("authentification SSH refusée")
+      }
       ssh.createDynamicPortForwarder(InetSocketAddress("127.0.0.1", socksPort))
       connection = ssh
+      diag("SSH port-forward SOCKS local créé sur 127.0.0.1:$socksPort")
     } catch (error: Throwable) {
+      // Capture l'exception SSH complète (message + cause) pour diagnostiquer
+      // la vraie cause (kex / host-key / identification) sans la masquer.
+      val chain = generateSequence(error as Throwable?) { it.cause }
+        .joinToString(" <- ") { "${it::class.java.simpleName}: ${it.message ?: "sans message"}" }
+      diag("SSH ÉCHEC connect/auth: $chain")
       try { ssh.close() } catch (_: Throwable) {}
       throw error
     }
@@ -181,14 +197,22 @@ abstract class SshTransportTunnel(
 
   private fun readSshBanner(input: InputStream): String {
     val banner = StringBuilder()
+    val raw = ByteArray(256)
+    var rawCount = 0
     while (banner.length < MAX_BANNER_BYTES) {
       val next = input.read()
       if (next < 0) error("bannière SSH absente")
+      if (rawCount < raw.size) raw[rawCount++] = next.toByte()
       banner.append(next.toChar())
-      if (next == '\n'.code) return banner.toString()
+      if (next == '\n'.code) {
+        diag("SSH flux brut (hex des ${rawCount} premiers octets après le 101): ${raw.copyOf(rawCount).toHex()}")
+        return banner.toString()
+      }
     }
     error("bannière SSH trop longue")
   }
+
+  private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
   private fun pipe(input: InputStream, output: OutputStream) {
     val buffer = ByteArray(64 * 1024)
