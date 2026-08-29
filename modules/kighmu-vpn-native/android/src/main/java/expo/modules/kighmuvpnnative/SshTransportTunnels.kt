@@ -4,6 +4,8 @@ import android.content.Context
 import com.trilead.ssh2.Connection
 import com.trilead.ssh2.DebugLogger
 import java.io.InputStream
+import java.security.Security
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.OutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -55,6 +57,21 @@ abstract class SshTransportTunnel(
   /** Transmet les logs de debug ganymed/sshlib vers kighmu.txt (composant SSHDBG). */
   private val sshDebugLogger = DebugLogger { level, className, message ->
     try { FileLogger.logForce(context, "SSHDBG", "[$className] $message") } catch (_: Throwable) {}
+  }
+
+  /** Enregistre BouncyCastle en position 1 pour fournir AES-256/CTR et Ed25519
+   *  sans restriction JCE (contourne "Fatal error during MAC startup" sur les
+   *  périphériques où le provider par défaut refuse AES-256). BC n'implémente
+   *  pas JSSE/SSLContext, donc le TLS de ssh-ssl-tls reste géré par Conscrypt. */
+  private fun ensureBouncyCastle() {
+    try {
+      if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+        Security.insertProviderAt(BouncyCastleProvider(), 1)
+        logDiag("BouncyCastle enregistré (position 1) pour AES-256/Ed25519")
+      }
+    } catch (e: Throwable) {
+      logDiag("BouncyCastle ignoré: ${e.message ?: "erreur"}")
+    }
   }
 
   override fun start() {
@@ -122,6 +139,20 @@ abstract class SshTransportTunnel(
       // Active le debug ganymed pour journaliser la négociation (algorithmes
       // choisis + erreur réelle) dans kighmu.txt [SSHDBG].
       try { ssh.enableDebugging(true, sshDebugLogger) } catch (_: Throwable) {}
+      // Enregistre BouncyCastle (AES-256/Ed25519 sans restriction JCE).
+      ensureBouncyCastle()
+      // Contourne "Fatal error during MAC startup" sur les périphériques où le
+      // provider JCE refuse AES-256 (InvalidKeyException: Illegal key size).
+      // On force des chiffrements 128 bits (aes128-ctr/cbc, 3des, blowfish),
+      // tous gérés nativement par Conscrypt, et on évite aes256-*.
+      try {
+        val ciphers = arrayOf("aes128-ctr", "aes128-cbc", "3des-ctr", "3des-cbc", "blowfish-ctr", "blowfish-cbc")
+        ssh.setClient2ServerCiphers(ciphers)
+        ssh.setServer2ClientCiphers(ciphers)
+        logDiag("SSH ciphers restreints à AES-128/3DES/Blowfish (contourne aes256 JCE)")
+      } catch (cipherError: Throwable) {
+        logDiag("SSH setCiphers ignoré: ${cipherError.message ?: "erreur"}")
+      }
       // Restreint les MAC à hmac-sha1/md5 (que sshlib gère) pour éviter d'éventuels
       // algos ETM/hmac-sha2 que cette lib ne sait pas initialiser.
       try {
