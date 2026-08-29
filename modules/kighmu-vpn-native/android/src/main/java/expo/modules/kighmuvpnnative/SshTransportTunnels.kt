@@ -2,6 +2,7 @@ package expo.modules.kighmuvpnnative
 
 import android.content.Context
 import com.trilead.ssh2.Connection
+import com.trilead.ssh2.DebugLogger
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
@@ -49,6 +50,11 @@ abstract class SshTransportTunnel(
   /** Log de diagnostic forcé (sans filtre) dans Download/kighmu.txt. */
   protected fun logDiag(message: String) {
     try { FileLogger.logForce(context, "SSHBridge", "[$component] $message") } catch (_: Throwable) {}
+  }
+
+  /** Transmet les logs de debug ganymed/sshlib vers kighmu.txt (composant SSHDBG). */
+  private val sshDebugLogger = DebugLogger { level, className, message ->
+    try { FileLogger.logForce(context, "SSHDBG", "[$className] $message") } catch (_: Throwable) {}
   }
 
   override fun start() {
@@ -113,15 +119,16 @@ abstract class SshTransportTunnel(
 
     val ssh = Connection("127.0.0.1", listener.localPort)
     try {
-      // Contourne le bug ganymed/sshlib : OpenSSH 8.2 préfère hmac-sha2-256,
-      // que cette lib ne sait pas initialiser ("Fatal error during MAC startup").
-      // On force les MAC à hmac-sha1/md5 (que sshlib gère) — OpenSSH 8.2 propose
-      // encore hmac-sha1, donc la négociation aboutit sans toucher au chiffrement.
+      // Active le debug ganymed pour journaliser la négociation (algorithmes
+      // choisis + erreur réelle) dans kighmu.txt [SSHDBG].
+      try { ssh.enableDebugging(true, sshDebugLogger) } catch (_: Throwable) {}
+      // Restreint les MAC à hmac-sha1/md5 (que sshlib gère) pour éviter d'éventuels
+      // algos ETM/hmac-sha2 que cette lib ne sait pas initialiser.
       try {
         val macs = arrayOf("hmac-sha1", "hmac-sha1-96", "hmac-md5", "hmac-md5-96")
         ssh.setClient2ServerMACs(macs)
         ssh.setServer2ClientMACs(macs)
-        logDiag("SSH MAC restreint à hmac-sha1/md5 (contourne bug hmac-sha2 OpenSSH 8.2)")
+        logDiag("SSH MAC restreint à hmac-sha1/md5")
       } catch (macError: Throwable) {
         logDiag("SSH setMAC ignoré: ${macError.message ?: "erreur"}")
       }
