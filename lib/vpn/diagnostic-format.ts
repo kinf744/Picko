@@ -1,4 +1,4 @@
-export type DiagnosticLevel = "info" | "connection" | "warning" | "error";
+export type DiagnosticLevel = "info" | "connection" | "warning" | "error" | "success";
 export type ServerMessageSegment = { text: string; bold?: boolean; italic?: boolean; underline?: boolean; color?: string };
 
 const secretPattern = /((?:password|mot de passe|auth|auth_str|obfs|token|secret|private[_ -]?key|uuid|pkey|publicKey|sshPassword)\s*(?:=|:|\s)\s*)([\s\S]*?)(?=(?:[,;}]|\s+[A-Za-z_][A-Za-z0-9_]*\s*[:=]|$))/gi;
@@ -103,6 +103,7 @@ export function diagnosticTone(level: DiagnosticLevel) {
   if (level === "error") return "error";
   if (level === "warning") return "warning";
   if (level === "connection") return "connection";
+  if (level === "success") return "success";
   return "info";
 }
 

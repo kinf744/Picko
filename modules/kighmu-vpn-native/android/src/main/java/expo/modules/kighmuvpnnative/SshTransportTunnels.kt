@@ -35,6 +35,7 @@ abstract class SshTransportTunnel(
   protected val profile: TunnelProfile,
   private val component: String,
   protected val log: (String, String, String) -> Unit,
+  protected val dnsServers: List<String> = emptyList(),
 ) : LocalTunnel {
   override val label: String = profile.name
   override val socksPort: Int = freePort()
@@ -180,7 +181,7 @@ abstract class SshTransportTunnel(
           logDiag("Bannière SSH reçue : ${banner.trim().take(200)}")
         } else {
           // Message serveur (EDOZTUNNEL) autre que SSH : affiché coloré (balise <font>).
-          log("warning", "SSH_SERVER_MESSAGE", banner.trim())
+          log("warning", "SSH_SERVER_MESSAGE", "Server Message:\n\n${banner.trim()}")
           logDiag("Message serveur (non-SSH) reçu : ${banner.trim().take(200)}")
           error("Bannière SSH invalide du proxy ($component) : ${banner.trim().take(80)}")
         }
@@ -234,9 +235,12 @@ abstract class SshTransportTunnel(
         logDiag("SSH AUTH REFUSÉE pour ${profile.sshUser}")
         error("authentification SSH refusée")
       }
+      log("success", "SSH", "Auth complete")
       ssh.createDynamicPortForwarder(InetSocketAddress("127.0.0.1", socksPort))
       connection = ssh
       logDiag("SSH port-forward SOCKS local créé sur 127.0.0.1:$socksPort")
+      dnsServers.forEach { log("connection", "SSH", "DNS $it") }
+      log("success", "SSH", "Connected")
     } catch (error: Throwable) {
       // Capture l'exception SSH complète (message + cause) pour diagnostiquer
       // la vraie cause (kex / host-key / identification) sans la masquer.
@@ -384,7 +388,8 @@ class HttpProxyPayloadTunnel(
   context: Context,
   profile: TunnelProfile,
   log: (String, String, String) -> Unit,
-) : SshTransportTunnel(context, profile, "HTTP PROXY", log) {
+  dnsServers: List<String> = emptyList(),
+) : SshTransportTunnel(context, profile, "HTTP PROXY", log, dnsServers) {
   private val runtime by lazy { OpolNative.httpProxyPayloadRuntimePolicy(profile) }
 
   override fun openTransport(): Socket {
@@ -415,7 +420,7 @@ class HttpProxyPayloadTunnel(
       socket.soTimeout = 0
       // Réponse 101 du proxy EDOZTUNNEL : affichée colorée dans le journal de
       // connexion (la balise <font color> est interprétée par l'UI).
-      log("connection", "SSH_SERVER_MESSAGE", firstLine)
+      log("connection", "SSH_SERVER_MESSAGE", "Response: $firstLine")
       diag("Proxy HTTP accepté: ${firstLine.take(200)}")
       return socket
     } catch (error: Throwable) {
@@ -487,7 +492,8 @@ class SshSslTlsTunnel(
   context: Context,
   profile: TunnelProfile,
   log: (String, String, String) -> Unit,
-) : SshTransportTunnel(context, profile, "SSH SSL/TLS", log) {
+  dnsServers: List<String> = emptyList(),
+) : SshTransportTunnel(context, profile, "SSH SSL/TLS", log, dnsServers) {
   private val runtime by lazy { OpolNative.sshSslTlsRuntimePolicy(profile) }
 
   override fun openTransport(): Socket {
