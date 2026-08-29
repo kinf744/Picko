@@ -133,10 +133,31 @@ abstract class SshTransportTunnel(
   }
 
   private fun openAndAuthenticate() {
-    val opened = openTransport()
-    transport = opened
-    establishSshBridge(opened)
-    if (!waitForSocks(SSH_SOCKS_TIMEOUT_MS)) error("$component n’a pas ouvert le proxy SOCKS local")
+    var lastError: Throwable? = null
+    for (attempt in 0 until CONNECT_RETRY_ATTEMPTS) {
+      if (stopRequested.get()) error(lastError?.message ?: "$component arrêté avant connexion")
+      try {
+        val opened = openTransport()
+        transport = opened
+        establishSshBridge(opened)
+        if (!waitForSocks(SSH_SOCKS_TIMEOUT_MS)) error("$component n’a pas ouvert le proxy SOCKS local")
+        return
+      } catch (error: Throwable) {
+        lastError = error
+        logDiag("openAndAuthenticate tentative ${attempt + 1}/$CONNECT_RETRY_ATTEMPTS échouée : ${error.message}")
+        compactLog("warning", "$component tentative ${attempt + 1}/$CONNECT_RETRY_ATTEMPTS échouée : ${error.message?.take(120)}")
+        closeResources()
+        if (attempt < CONNECT_RETRY_ATTEMPTS - 1) {
+          // Le serveur (ex. EDOZTUNNEL/OpenSSH) renvoie parfois "Exceeded MaxStartups"
+          // quand une nouvelle poignée de main SSH arrive trop tôt après la précédente :
+          // on attend (backoff croissant) que sa fenêtre de connexions se libère.
+          val delay = (CONNECT_BACKOFF_START_MS * (1 shl attempt)).coerceAtMost(CONNECT_BACKOFF_MAX_MS)
+          compactLog("info", "$component nouvel essai dans ${delay / 1000}s…")
+          try { Thread.sleep(delay) } catch (_: InterruptedException) { /* réveil anticipé, on continue */ }
+        }
+      }
+    }
+    error(lastError?.message ?: "$component échec de la connexion SSH")
   }
 
   private fun establishSshBridge(remote: Socket) {
@@ -159,7 +180,9 @@ abstract class SshTransportTunnel(
       } catch (error: Throwable) {
         if (!stopRequested.get()) compactLog("warning", "Pont $component interrompu : ${error.message ?: "connexion fermée"}")
       } finally {
-        if (!stopRequested.get()) scheduleRecovery()
+        // La reprise est assurée par la boucle de retry de openAndAuthenticate
+        // (backoff) lors du démarrage, et par le health watcher en cours de route.
+        // On n'enchaîne pas ici pour éviter une double reprise concurrentielle.
       }
     }.apply { isDaemon = true; name = "picko-$component-bridge-${profile.id.takeLast(8)}" }.start()
     bridgeReady.await(1, TimeUnit.SECONDS)
@@ -287,8 +310,16 @@ abstract class SshTransportTunnel(
       if (rawCount < raw.size) raw[rawCount++] = next.toByte()
       banner.append(next.toChar())
       if (next == '\n'.code) {
+        val text = banner.toString()
         logDiag("SSH flux brut (hex des ${rawCount} premiers octets après le 101): ${raw.copyOf(rawCount).toHex()}")
-        return banner.toString()
+        if (!text.startsWith("SSH-")) {
+          // Le serveur (EDOZTUNNEL/OpenSSH) refuse la poignée de main, souvent
+          // "Exceeded MaxStartups" quand la connexion précédente n'est pas encore
+          // libérée côté serveur. On échoue vite pour laisser openAndAuthenticate
+          // réessayer avec un backoff (plutôt que d'attendre le kexTimeout de 30 s).
+          error("Bannière SSH invalide du proxy ($component) : ${text.trim().take(80)}")
+        }
+        return text
       }
     }
     error("bannière SSH trop longue")
@@ -331,6 +362,13 @@ abstract class SshTransportTunnel(
     private const val RECOVERY_DELAY_MS = 2_000L
     private const val LOG_DEDUP_MS = 5_000L
     private const val MAX_BANNER_BYTES = 1_024
+    // Réessais avec backoff au démarrage : le serveur SSH (EDOZTUNNEL/OpenSSH)
+    // renvoie parfois "Exceeded MaxStartups" si une nouvelle poignée de main arrive
+    // trop tôt après une déconnexion. On attend (backoff croissant) que la fenêtre
+    // de connexions du serveur se libère avant de rejouer le proxy+SSH.
+    private const val CONNECT_RETRY_ATTEMPTS = 6
+    private const val CONNECT_BACKOFF_START_MS = 6_000L
+    private const val CONNECT_BACKOFF_MAX_MS = 30_000L
 
     fun freePort(): Int = try { ServerSocket(0).use { it.localPort } } catch (_: Throwable) { 10808 }
   }
