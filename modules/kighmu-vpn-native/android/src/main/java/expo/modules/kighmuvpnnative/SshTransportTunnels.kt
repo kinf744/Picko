@@ -113,6 +113,18 @@ abstract class SshTransportTunnel(
 
     val ssh = Connection("127.0.0.1", listener.localPort)
     try {
+      // Contourne le bug ganymed/sshlib : OpenSSH 8.2 préfère hmac-sha2-256,
+      // que cette lib ne sait pas initialiser ("Fatal error during MAC startup").
+      // On force les MAC à hmac-sha1/md5 (que sshlib gère) — OpenSSH 8.2 propose
+      // encore hmac-sha1, donc la négociation aboutit sans toucher au chiffrement.
+      try {
+        val macs = arrayOf("hmac-sha1", "hmac-sha1-96", "hmac-md5", "hmac-md5-96")
+        ssh.setClient2ServerMACs(macs)
+        ssh.setServer2ClientMACs(macs)
+        logDiag("SSH MAC restreint à hmac-sha1/md5 (contourne bug hmac-sha2 OpenSSH 8.2)")
+      } catch (macError: Throwable) {
+        logDiag("SSH setMAC ignoré: ${macError.message ?: "erreur"}")
+      }
       logDiag("SSH connect -> 127.0.0.1:${listener.localPort} (timeout connect=${SSH_CONNECT_TIMEOUT_MS}ms kex=${SSH_KEX_TIMEOUT_MS}ms)")
       ssh.connect(null, SSH_CONNECT_TIMEOUT_MS, SSH_KEX_TIMEOUT_MS)
       logDiag("SSH connect OK ; auth user=${profile.sshUser}")
