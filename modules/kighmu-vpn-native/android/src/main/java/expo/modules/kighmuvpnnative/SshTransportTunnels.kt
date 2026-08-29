@@ -47,7 +47,7 @@ abstract class SshTransportTunnel(
   protected abstract fun openTransport(): Socket
 
   /** Log de diagnostic forcé (sans filtre) dans Download/kighmu.txt. */
-  protected fun diag(message: String) {
+  protected fun logDiag(message: String) {
     try { FileLogger.logForce(context, "SSHBridge", "[$component] $message") } catch (_: Throwable) {}
   }
 
@@ -113,22 +113,22 @@ abstract class SshTransportTunnel(
 
     val ssh = Connection("127.0.0.1", listener.localPort)
     try {
-      diag("SSH connect -> 127.0.0.1:${listener.localPort} (timeout connect=${SSH_CONNECT_TIMEOUT_MS}ms kex=${SSH_KEX_TIMEOUT_MS}ms)")
+      logDiag("SSH connect -> 127.0.0.1:${listener.localPort} (timeout connect=${SSH_CONNECT_TIMEOUT_MS}ms kex=${SSH_KEX_TIMEOUT_MS}ms)")
       ssh.connect(null, SSH_CONNECT_TIMEOUT_MS, SSH_KEX_TIMEOUT_MS)
-      diag("SSH connect OK (version=${ssh.serverVersion ?: "?"}); auth user=${profile.sshUser}")
+      logDiag("SSH connect OK ; auth user=${profile.sshUser}")
       if (!ssh.authenticateWithPassword(profile.sshUser, profile.password)) {
-        diag("SSH AUTH REFUSÉE pour ${profile.sshUser}")
+        logDiag("SSH AUTH REFUSÉE pour ${profile.sshUser}")
         error("authentification SSH refusée")
       }
       ssh.createDynamicPortForwarder(InetSocketAddress("127.0.0.1", socksPort))
       connection = ssh
-      diag("SSH port-forward SOCKS local créé sur 127.0.0.1:$socksPort")
+      logDiag("SSH port-forward SOCKS local créé sur 127.0.0.1:$socksPort")
     } catch (error: Throwable) {
       // Capture l'exception SSH complète (message + cause) pour diagnostiquer
       // la vraie cause (kex / host-key / identification) sans la masquer.
       val chain = generateSequence(error as Throwable?) { it.cause }
         .joinToString(" <- ") { "${it::class.java.simpleName}: ${it.message ?: "sans message"}" }
-      diag("SSH ÉCHEC connect/auth: $chain")
+      logDiag("SSH ÉCHEC connect/auth: $chain")
       try { ssh.close() } catch (_: Throwable) {}
       throw error
     }
