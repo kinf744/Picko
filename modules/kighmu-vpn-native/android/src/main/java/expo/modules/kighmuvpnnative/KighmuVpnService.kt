@@ -287,9 +287,26 @@ class KighmuVpnService : VpnService() {
       try {
         startTunnelsInternal(payload, nextGeneration)
       } catch (error: Throwable) {
-        fail(nextGeneration, error.message ?: "reconnexion impossible")
+        // Réseau physique absent (données mobiles coupées, mode avion, etc.) :
+        // on NE ferme PAS le VPN, on re-boucle avec backoff jusqu'au retour du
+        // réseau ou jusqu'à un arrêt manuel de l'utilisateur. Sinon l'app se
+        // fermait au premier essai de reconnexion sans réseau.
+        if (isActive(nextGeneration) && isNetworkUnavailable(error)) {
+          restartVpn(nextGeneration, "Réseau indisponible, en attente de sa remise en service")
+        } else {
+          fail(nextGeneration, error.message ?: "reconnexion impossible")
+        }
       }
     }
+  }
+
+  /** Vrai si l'échec vient de l'absence de réseau physique (données coupées). */
+  private fun isNetworkUnavailable(error: Throwable): Boolean {
+    if (error.message?.contains("Aucun réseau physique") == true) return true
+    return try {
+      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+      connectivity.activeNetwork == null
+    } catch (_: Throwable) { false }
   }
 
   /**

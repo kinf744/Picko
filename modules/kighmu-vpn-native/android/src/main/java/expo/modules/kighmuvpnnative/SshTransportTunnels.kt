@@ -245,23 +245,50 @@ class HttpProxyPayloadTunnel(
     socket.receiveBufferSize = 128 * 1024
     socket.sendBufferSize = 128 * 1024
     socket.soTimeout = runtime.responseTimeoutMs
+    diag("TENTATIVE connexion proxy ${profile.proxyHost}:${profile.proxyPort} connectMs=${runtime.connectTimeoutMs} responseMs=${runtime.responseTimeoutMs} split=${runtime.split} delay=${runtime.delay}")
+    diag("PAYLOAD envoyé (masqué):\n${redactAuth(runtime.payload)}")
+    val t0 = System.nanoTime()
     socket.connect(InetSocketAddress(profile.proxyHost, profile.proxyPort.toInt()), runtime.connectTimeoutMs)
+    diag("Connecté au proxy en ${(System.nanoTime() - t0) / 1_000_000L} ms")
     try {
       sendPayload(socket.getOutputStream(), runtime.payload, runtime.split, runtime.delay)
       val firstLine = readHttpLine(socket.getInputStream())
+      diag("RÉPONSE proxy (ligne 1 brute): $firstLine")
       val isConnect = runtime.payload.trimStart().startsWith("CONNECT", ignoreCase = true)
       val isError = listOf(" 400", " 403", " 404", " 407", " 500", " 502").any { firstLine.contains(it) }
       if ((isConnect && !firstLine.contains(" 200") && !firstLine.contains(" 101")) || isError) {
         consumeHeaders(socket.getInputStream())
+        diag("REFUS proxy détecté: isConnect=$isConnect isError=$isError -> ${firstLine.take(300)}")
         error("Proxy HTTP a refusé la requête : ${firstLine.take(160)}")
       }
       consumeHeaders(socket.getInputStream())
       socket.soTimeout = 0
       compactLog("info", "Proxy HTTP accepté : ${firstLine.take(120)}")
+      diag("Proxy HTTP accepté: ${firstLine.take(200)}")
       return socket
     } catch (error: Throwable) {
+      diag("EXCEPTION openTransport: ${error::class.java.simpleName}: ${error.message ?: "sans message"} ; cause=${error.cause?.message ?: "-"}")
       try { socket.close() } catch (_: Throwable) {}
       throw error
+    }
+  }
+
+  /** Log de diagnostic forcé (sans filtre anti-verbeux) dans Download/kighmu.txt. */
+  private fun diag(message: String) {
+    try { FileLogger.logForce(context, "HTTPPAYLOAD", message) } catch (_: Throwable) {}
+  }
+
+  /** Masque les valeurs d'en-têtes d'authentification pour ne pas les écrire en clair. */
+  private fun redactAuth(payload: String): String {
+    return payload.lines().joinToString("\n") { line ->
+      val idx = line.indexOf(':')
+      if (idx > 0) {
+        val name = line.substring(0, idx).trim()
+        if (name.equals("Authorization", true) || name.equals("Proxy-Authorization", true)) {
+          return@joinToString "${name}: ***MASQUÉ***"
+        }
+      }
+      line
     }
   }
 
