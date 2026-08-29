@@ -205,7 +205,7 @@ abstract class SshTransportTunnel(
       if (rawCount < raw.size) raw[rawCount++] = next.toByte()
       banner.append(next.toChar())
       if (next == '\n'.code) {
-        diag("SSH flux brut (hex des ${rawCount} premiers octets après le 101): ${raw.copyOf(rawCount).toHex()}")
+        logDiag("SSH flux brut (hex des ${rawCount} premiers octets après le 101): ${raw.copyOf(rawCount).toHex()}")
         return banner.toString()
       }
     }
