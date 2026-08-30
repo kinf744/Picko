@@ -42,6 +42,39 @@ function JournalLine({ log }: { log: DiagnosticLog }) {
     indicator = "·";
     indicatorColor = lineColor;
   }
+
+  // Message serveur post-auth (banner SSH) : centralisé avec couleurs HTML
+  if (serverMessage && !log.message.startsWith("Response:")) {
+    const bodySegments = serverSegments.filter((s) => !s.text.includes("Server Message:"));
+    return (
+      <View style={[styles.line, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.lineText, { color: lineColor }]}>
+          <Text style={[styles.time, { color: colors.muted }]}>[{formatDiagnosticTime(log.timestamp)}] </Text>
+          <Text style={{ color: indicatorColor }}>{indicator}  </Text>
+          <Text>Server Message:</Text>
+        </Text>
+        <View style={[styles.serverMessageCentered, { backgroundColor: colors.surfaceRaised, borderColor: colors.border }]}>
+          <Text style={{ textAlign: "center" }}>
+            {bodySegments.map((segment, index) => (
+              <Text
+                key={`${log.id}-${index}`}
+                style={{
+                  color: segment.color ?? colors.foreground,
+                  fontWeight: segment.bold ? "800" : "500",
+                  fontStyle: segment.italic ? "italic" : "normal",
+                  textDecorationLine: segment.underline ? "underline" : "none",
+                  textAlign: "center",
+                }}
+              >
+                {segment.text}
+              </Text>
+            ))}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.line, { borderBottomColor: colors.border }]}>
       <Text style={[styles.lineText, { color: lineColor }]}>
@@ -71,5 +104,5 @@ export default function DiagnosticScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { paddingBottom: 32 }, heading: { marginTop: 18, marginBottom: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, title: { fontSize: 18, fontWeight: "900" }, subtitle: { marginTop: 5, fontSize: 12, lineHeight: 17 }, clear: { width: 42, height: 42, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center" }, line: { paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth }, lineText: { fontSize: 12, lineHeight: 18, fontWeight: "500" }, time: { fontVariant: ["tabular-nums"] }, banner: { marginTop: 9, borderLeftWidth: 3, borderRadius: 12, padding: 13 }, serverMessage: { marginTop: 9, borderLeftWidth: 3, borderRadius: 12, padding: 13 }, bannerHead: { flexDirection: "row", alignItems: "center", gap: 7 }, bannerTitle: { fontSize: 12, fontWeight: "900" }, bannerText: { marginTop: 8, fontSize: 12, lineHeight: 17, fontWeight: "700" }, serverMessageText: { marginTop: 9, fontSize: 13, lineHeight: 20, fontWeight: "500" }, empty: { paddingTop: 72, alignItems: "center" }, emptyTitle: { marginTop: 12, fontSize: 15, fontWeight: "900" }, emptyText: { marginTop: 7, maxWidth: 260, textAlign: "center", fontSize: 12, lineHeight: 18 }, pressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },
+  content: { paddingBottom: 32 }, heading: { marginTop: 18, marginBottom: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, title: { fontSize: 18, fontWeight: "900" }, subtitle: { marginTop: 5, fontSize: 12, lineHeight: 17 }, clear: { width: 42, height: 42, borderRadius: 13, borderWidth: 1, alignItems: "center", justifyContent: "center" }, line: { paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth }, lineText: { fontSize: 12, lineHeight: 18, fontWeight: "500" }, time: { fontVariant: ["tabular-nums"] }, banner: { marginTop: 9, borderLeftWidth: 3, borderRadius: 12, padding: 13 }, serverMessage: { marginTop: 9, borderLeftWidth: 3, borderRadius: 12, padding: 13 }, serverMessageCentered: { marginTop: 8, borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, alignItems: "center" }, bannerHead: { flexDirection: "row", alignItems: "center", gap: 7 }, bannerTitle: { fontSize: 12, fontWeight: "900" }, bannerText: { marginTop: 8, fontSize: 12, lineHeight: 17, fontWeight: "700" }, serverMessageText: { marginTop: 9, fontSize: 13, lineHeight: 20, fontWeight: "500" }, empty: { paddingTop: 72, alignItems: "center" }, emptyTitle: { marginTop: 12, fontSize: 15, fontWeight: "900" }, emptyText: { marginTop: 7, maxWidth: 260, textAlign: "center", fontSize: 12, lineHeight: 18 }, pressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },
 });

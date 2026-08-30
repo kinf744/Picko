@@ -235,6 +235,21 @@ abstract class SshTransportTunnel(
         logDiag("SSH AUTH REFUSÉE pour ${profile.sshUser}")
         error("authentification SSH refusée")
       }
+      // Banner serveur post-auth (SSH_MSG_USERAUTH_BANNER) — ex. Edoztunnel :
+      // "<h3><font color='blue'>This server is owned by Edoztunnel VPN...</font></h3>"
+      // Centralisé dans le journal et coloré si HTML présent.
+      try {
+        val amField = ssh.javaClass.getDeclaredField("am")
+        amField.isAccessible = true
+        val am = amField.get(ssh)
+        val bannerField = am.javaClass.getDeclaredField("banner")
+        bannerField.isAccessible = true
+        val serverBanner = bannerField.get(am) as? String
+        if (!serverBanner.isNullOrBlank()) {
+          log("warning", "SSH_SERVER_MESSAGE", "Server Message:\n\n${serverBanner.trim()}")
+          logDiag("SSH banner serveur (post-auth): ${serverBanner.trim().take(500)}")
+        }
+      } catch (_: Throwable) {}
       log("success", "SSH", "Auth complete")
       ssh.createDynamicPortForwarder(InetSocketAddress("127.0.0.1", socksPort))
       connection = ssh
