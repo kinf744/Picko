@@ -21,6 +21,7 @@ function JournalLine({ log }: { log: DiagnosticLog }) {
   // Option 1 minimaliste : pastille propre
   let indicator = "●";
   let indicatorColor: string = lineColor;
+  const compUpper = log.component.trim().toUpperCase();
   if (serverMessage) {
     const isResponse = log.message.startsWith("Response:");
     indicator = isResponse ? "●" : "┆";
@@ -34,6 +35,12 @@ function JournalLine({ log }: { log: DiagnosticLog }) {
   } else if (log.message.startsWith("DNS ")) {
     indicator = "·";
     indicatorColor = colors.muted;
+  } else if (compUpper === "TUNNEL") {
+    indicator = "■";
+    indicatorColor = colors.muted;
+  } else if (compUpper === "PING") {
+    indicator = "·";
+    indicatorColor = lineColor;
   }
   return (
     <View style={[styles.line, { borderBottomColor: colors.border }]}>
@@ -58,7 +65,9 @@ export default function DiagnosticScreen() {
   const colors = useColors();
   const { t } = useLang();
   const { logs, clearLogs } = useVpn();
-  return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}><FlatList data={logs} keyExtractor={(item) => item.id} renderItem={({ item }) => <JournalLine log={item} />} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} ListHeaderComponent={<><AppHeader /><View style={styles.heading}><View><Text style={[styles.title, { color: colors.foreground }]}>{t("diag.title")}</Text><Text style={[styles.subtitle, { color: colors.muted }]}>{t("diag.subtitle")}</Text></View><Pressable accessibilityLabel={t("diag.clearA11y")} onPress={clearLogs} style={({ pressed }) => [styles.clear, { borderColor: colors.border, backgroundColor: colors.surface }, pressed && styles.pressed]}><MaterialIcons name="delete-outline" size={18} color={colors.error} /></Pressable></View></>} ListEmptyComponent={<View style={styles.empty}><MaterialIcons name="terminal" size={25} color={colors.primary} /><Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t("diag.emptyTitle")}</Text><Text style={[styles.emptyText, { color: colors.muted }]}>{t("diag.emptyText")}</Text></View>} /></ScreenContainer>;
+  // Les logs sont stockés du plus récent au plus ancien ; on affiche du plus ancien au plus récent pour un ordre chronologique
+  const displayLogs = [...logs].reverse();
+  return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right", "bottom"]}><FlatList data={displayLogs} keyExtractor={(item) => item.id} renderItem={({ item }) => <JournalLine log={item} />} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} ListHeaderComponent={<><AppHeader /><View style={styles.heading}><View><Text style={[styles.title, { color: colors.foreground }]}>{t("diag.title")}</Text><Text style={[styles.subtitle, { color: colors.muted }]}>{t("diag.subtitle")}</Text></View><Pressable accessibilityLabel={t("diag.clearA11y")} onPress={clearLogs} style={({ pressed }) => [styles.clear, { borderColor: colors.border, backgroundColor: colors.surface }, pressed && styles.pressed]}><MaterialIcons name="delete-outline" size={18} color={colors.error} /></Pressable></View></>} ListEmptyComponent={<View style={styles.empty}><MaterialIcons name="terminal" size={25} color={colors.primary} /><Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t("diag.emptyTitle")}</Text><Text style={[styles.emptyText, { color: colors.muted }]}>{t("diag.emptyText")}</Text></View>} /></ScreenContainer>;
 }
 
 const styles = StyleSheet.create({
