@@ -28,16 +28,15 @@ const NAVIGATION_COMPONENTS = new Set(["NAVIGATION", "STORAGE", "IMPORT", "EXPOR
 const navigationMessagePattern = /\b(navigat\w*|routers?\b|routes?\b|onglets?\b|balayag\w*|swip\w*|screen[- ]?(?:focus|blur|mount)|goBack|tab(?:s)? (?:change|switch))\b/i;
 
 /**
- * Décide si une entrée de journal doit être ignorée. Les activités de navigation
- * et d'interface ne sont JAMAIS affichées dans le diagnostic (choix produit) :
- * - composant lié à la navigation/stockage/import → silencieux ;
- * - message évoquant la navigation (FR/EN) → silencieux ;
- * - les warnings et erreurs passent TOUJOURS (un vrai problème doit rester visible).
+ * Journal propre — Option 1 minimaliste : seules les lignes SSH sont affichées,
+ * dans l'ordre : Response, SSH banner, Server Message, Auth complete, DNS, Connected.
+ * Tout autre composant est filtré pour un journal épuré et professionnel.
  */
 export function shouldSkipJournalEntry(level: DiagnosticLevel, component: string, message: string): boolean {
-  if (level === "warning" || level === "error") return false;
-  if (NAVIGATION_COMPONENTS.has(component.trim().toUpperCase())) return true;
-  return navigationMessagePattern.test(message);
+  const comp = component.trim().toUpperCase();
+  if (isSshBanner(comp) || isSshServerMessage(comp)) return false;
+  if (comp === "SSH") return false;
+  return true;
 }
 
 export function isSshBanner(component: string) {

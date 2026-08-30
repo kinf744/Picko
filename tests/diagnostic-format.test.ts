@@ -54,14 +54,22 @@ describe("filtre anti-navigation du journal", () => {
   });
 
   it("garde toujours les warnings et erreurs, même liés à la navigation", () => {
-    expect(shouldSkipJournalEntry("warning", "STORAGE", "Une collection n'a pas pu être chargée.")).toBe(false);
-    expect(shouldSkipJournalEntry("error", "NAVIGATION", "Échec de navigation")).toBe(false);
+    // Journal propre Option 1 : seules les lignes SSH passent
+    expect(shouldSkipJournalEntry("warning", "STORAGE", "Une collection n'a pas pu être chargée.")).toBe(true);
+    expect(shouldSkipJournalEntry("error", "NAVIGATION", "Échec de navigation")).toBe(true);
   });
 
-  it("garde les entrées utiles du tunnel (SESSION/NATIVE/ANDROID/VALIDATION)", () => {
-    expect(shouldSkipJournalEntry("connection", "SESSION", "Journal de connexion réinitialisé pour UDP-ZIVPN.")).toBe(false);
-    expect(shouldSkipJournalEntry("warning", "ANDROID", "L'autorisation VPN doit être confirmée dans la fenêtre système.")).toBe(false);
-    expect(shouldSkipJournalEntry("error", "NATIVE", "Échec du démarrage natif : timeout")).toBe(false);
-    expect(shouldSkipJournalEntry("info", "CATALOG", "UDP-ZIVPN : 2 profil(s) sélectionné(s), balancier=round robin automatique.")).toBe(false);
+  it("garde uniquement les entrées utiles du tunnel SSH (journal propre Option 1)", () => {
+    expect(shouldSkipJournalEntry("connection", "SSH_BANNER", "SSH-2.0-OpenSSH_8.2p1")).toBe(false);
+    expect(shouldSkipJournalEntry("connection", "SSH_SERVER_MESSAGE", "Response: HTTP/1.1 101 EDOZTUNNEL VPN")).toBe(false);
+    expect(shouldSkipJournalEntry("warning", "SSH_SERVER_MESSAGE", "Server Message:\n\nThis server is owned by Edostunnel VPN")).toBe(false);
+    expect(shouldSkipJournalEntry("success", "SSH", "Auth complete")).toBe(false);
+    expect(shouldSkipJournalEntry("connection", "SSH", "DNS 8.8.8.8")).toBe(false);
+    expect(shouldSkipJournalEntry("success", "SSH", "Connected")).toBe(false);
+    // Les autres composants sont filtrés pour un journal épuré
+    expect(shouldSkipJournalEntry("connection", "SESSION", "Journal de connexion réinitialisé pour UDP-ZIVPN.")).toBe(true);
+    expect(shouldSkipJournalEntry("warning", "ANDROID", "L'autorisation VPN doit être confirmée dans la fenêtre système.")).toBe(true);
+    expect(shouldSkipJournalEntry("error", "NATIVE", "Échec du démarrage natif : timeout")).toBe(true);
+    expect(shouldSkipJournalEntry("info", "CATALOG", "UDP-ZIVPN : 2 profil(s) sélectionné(s)")).toBe(true);
   });
 });

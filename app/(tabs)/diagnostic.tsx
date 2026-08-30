@@ -14,15 +14,32 @@ function JournalLine({ log }: { log: DiagnosticLog }) {
   const banner = isSshBanner(log.component);
   const serverMessage = isSshServerMessage(log.component);
   const serverSegments = serverMessage ? formatSshServerMessage(log.message) : [];
-  // Couleur du ping : vert si <300ms, orange si 300-800ms, rouge si >=800ms.
   const pingMs = parsePingLatency(log.message);
   const isPing = log.component === "PING" && pingMs !== null;
   const pingColor = !isPing ? null : pingMs < 300 ? colors.success : pingMs < 800 ? colors.warning : colors.error;
   const lineColor = pingColor ?? (tone === "error" ? colors.error : tone === "warning" ? colors.warning : tone === "connection" ? colors.primary : tone === "success" ? colors.success : colors.foreground);
+  // Option 1 minimaliste : pastille propre
+  let indicator = "●";
+  let indicatorColor: string = lineColor;
+  if (serverMessage) {
+    const isResponse = log.message.startsWith("Response:");
+    indicator = isResponse ? "●" : "┆";
+    indicatorColor = isResponse ? colors.primary : colors.warning;
+  } else if (banner) {
+    indicator = "●";
+    indicatorColor = colors.primary;
+  } else if (log.message === "Auth complete" || log.message === "Connected") {
+    indicator = "✓";
+    indicatorColor = colors.success;
+  } else if (log.message.startsWith("DNS ")) {
+    indicator = "·";
+    indicatorColor = colors.muted;
+  }
   return (
     <View style={[styles.line, { borderBottomColor: colors.border }]}>
       <Text style={[styles.lineText, { color: lineColor }]}>
         <Text style={[styles.time, { color: colors.muted }]}>[{formatDiagnosticTime(log.timestamp)}] </Text>
+        <Text style={{ color: indicatorColor }}>{indicator}  </Text>
         {banner ? (
           <Text>{log.message}</Text>
         ) : serverMessage ? (

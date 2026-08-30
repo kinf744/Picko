@@ -30,7 +30,7 @@ import { getActiveLang, translate } from "../i18n";
 const tLog = (key: Parameters<typeof translate>[1], params?: Record<string, string | number>) => translate(getActiveLang(), key, params);
 
 export type TunnelStatus = "disconnected" | "connecting" | "connected" | "error";
-export type LogLevel = "info" | "connection" | "warning" | "error";
+export type LogLevel = "info" | "connection" | "warning" | "error" | "success";
 export type DiagnosticLog = { id: string; timestamp: string; level: LogLevel; component: string; message: string };
 export type ProfilesByKind = Record<TunnelKind, TunnelProfile[]>;
 export type BalancersByKind = Record<TunnelKind, TunnelBalancer>;
@@ -215,7 +215,7 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => subscribeNativeVpn(
     (payload) => {
       const component = payload.component || "NATIVE";
-      const level = payload.level === "error" || payload.level === "warning" || payload.level === "connection" ? payload.level : "info";
+      const level = payload.level === "error" || payload.level === "warning" || payload.level === "connection" || payload.level === "success" ? payload.level : "info";
       const message = sanitizeDiagnosticMessage(component, payload.message);
       if (shouldSkipJournalEntry(level, component, message)) return;
       // Même filtre que addLog: dedup via lastLogRef
