@@ -166,7 +166,12 @@ class KighmuVpnService : VpnService() {
       startForeground(NOTIFICATION_ID, notification("Connecté : ${started.size} tunnel(s) équilibrés"))
       monitorTunnels(generation)
     } catch (error: Throwable) {
-      fail(generation, error.message ?: error::class.java.simpleName)
+      // Coupure réseau brève : rester actif et attendre le retour du réseau (comportement VPN pro)
+      if (isActive(generation) && isNetworkUnavailable(error)) {
+        restartVpn(generation, error.message ?: "Réseau indisponible, en attente")
+      } else {
+        fail(generation, error.message ?: error::class.java.simpleName)
+      }
     }
   }
 
