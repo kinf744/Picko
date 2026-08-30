@@ -9,6 +9,7 @@ class ZivpnTunnel(
   private val context: Context,
   private val profile: TunnelProfile,
   private val log: (String, String, String) -> Unit,
+  private val dnsServers: List<String> = emptyList(),
 ) : LocalTunnel {
   override val label: String = profile.name
   override val socksPort: Int = findFreePort()
@@ -18,6 +19,7 @@ class ZivpnTunnel(
 
   override fun start() {
     profile.validate()?.let { throw IllegalArgumentException(it) }
+    log("connection", "ZIVPN", "ZiVPN")
     val binary = File(context.applicationInfo.nativeLibraryDir, "libuz_core.so")
     require(binary.exists() && binary.length() > 0L) { "libuz_core.so absent de l’APK" }
     val runtime = OpolNative.ziVpnRuntimePolicy(profile.obfs)
@@ -41,23 +43,20 @@ class ZivpnTunnel(
         started.inputStream.bufferedReader().useLines { lines ->
           lines.forEach { line ->
             if (line.isBlank()) return@forEach
-            // Détection du refus d'authentification par le serveur ZiVPN :
-            // uz_core signale le mot de passe rejeté au handshake ; on affiche
-            // 4 fois le message rouge demandé, puis le service passe au profil
-            // suivant (ou n'arrête pas le VPN si un autre profil est valide).
             if (AUTH_FAILURE_REGEX.containsMatchIn(line)) notifyAuthFailure()
-            log("info", "ZIVPN", line.take(runtime.logLineMaxChars))
+            // Journal propre : on n'affiche plus chaque ligne verbeuse du natif
           }
         }
       } catch (_: Throwable) {}
     }.apply { isDaemon = true; name = "zivpn-log-$socksPort" }.start()
     if (!waitForPort(socksPort, runtime.startupTimeoutMs)) {
       stop()
-      // Mot de passe refusé : message déjà affiché 4× via notifyAuthFailure().
       if (authFailed) error("Échec de l’authentification, mot de passe incorrect")
       error("ZiVPN n’a pas ouvert le proxy SOCKS local")
     }
-    log("connection", "ZIVPN", "${profile.name} prêt sur 127.0.0.1:$socksPort")
+    log("success", "ZIVPN", "Auth complete")
+    dnsServers.forEach { log("connection", "ZIVPN", "DNS $it") }
+    log("success", "ZIVPN", "Connected")
   }
 
   /** Affiche 4 fois le message rouge d'échec d'authentification (une seule fois par profil). */

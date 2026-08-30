@@ -10,6 +10,7 @@ class HysteriaTunnel(
   private val context: Context,
   private val profile: TunnelProfile,
   private val log: (String, String, String) -> Unit,
+  private val dnsServers: List<String> = emptyList(),
 ) : LocalTunnel {
   override val label: String = profile.name
   override val socksPort: Int = ServerSocket(0).use { it.localPort }
@@ -27,6 +28,7 @@ class HysteriaTunnel(
     profile.validate()?.let { error(it) }
     stopRequested.set(false)
     recovering = false
+    log("connection", "HYSTERIA", "Hysteria")
     val policy = OpolNative.hysteriaRuntimePolicy()
     runtimePolicy = policy
     val config = writeConfig()
@@ -36,7 +38,8 @@ class HysteriaTunnel(
     try {
       launchProcess(binary, config, policy)
       waitForSocks(policy.startupTimeoutMs)
-      compactLog("info", "Hysteria connecté; proxy SOCKS prêt sur 127.0.0.1:$socksPort")
+      log("success", "HYSTERIA", "Connected")
+      dnsServers.forEach { log("connection", "HYSTERIA", "DNS $it") }
     } catch (error: Throwable) {
       stop()
       throw error

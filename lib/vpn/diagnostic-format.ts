@@ -35,7 +35,7 @@ const navigationMessagePattern = /\b(navigat\w*|routers?\b|routes?\b|onglets?\b|
 export function shouldSkipJournalEntry(level: DiagnosticLevel, component: string, message: string): boolean {
   const comp = component.trim().toUpperCase();
   if (isSshBanner(comp) || isSshServerMessage(comp)) return false;
-  if (comp === "SSH" || comp === "PING" || comp === "TUNNEL") return false;
+  if (comp === "SSH" || comp === "PING" || comp === "TUNNEL" || comp === "ZIVPN" || comp === "HYSTERIA" || comp === "V2RAY DNS" || comp === "XRAY") return false;
   return true;
 }
 

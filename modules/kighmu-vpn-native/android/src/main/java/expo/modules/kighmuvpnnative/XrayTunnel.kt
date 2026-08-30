@@ -11,6 +11,7 @@ class XrayTunnel(
   private val service: VpnService,
   private val profile: TunnelProfile,
   private val log: (String, String, String) -> Unit,
+  private val dnsServers: List<String> = emptyList(),
 ) : LocalTunnel {
   override val label: String = profile.name
   override var socksPort: Int = 0
@@ -37,7 +38,7 @@ class XrayTunnel(
     configFile!!.writeText(cfg)
     FileLogger.log(service, "XRAY", "Config écrite: ${configFile!!.absolutePath} len=${cfg.length}")
     FileLogger.logXrayJson(service, "XRAY", cfg)
-    log("connection", "XRAY", "Démarrage de ${profile.name} sur SOCKS 127.0.0.1:$socksPort")
+    log("connection", "XRAY", "Xray")
     val started = ProcessBuilder(binary.absolutePath, "run", "-c", configFile!!.absolutePath)
       .redirectErrorStream(true)
       .apply {
@@ -59,7 +60,8 @@ class XrayTunnel(
       error("Xray n’a pas ouvert son proxy SOCKS dans le délai imparti (processus $exit)")
     }
     FileLogger.log(service, "XRAY", "SOCKS OK 127.0.0.1:$socksPort prêt pour ${profile.name}")
-    log("info", "XRAY", "Proxy SOCKS Xray prêt pour ${profile.name}")
+    dnsServers.forEach { log("connection", "XRAY", "DNS $it") }
+    log("success", "XRAY", "Connected")
   }
 
   override fun isHealthy(): Boolean = process?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort)

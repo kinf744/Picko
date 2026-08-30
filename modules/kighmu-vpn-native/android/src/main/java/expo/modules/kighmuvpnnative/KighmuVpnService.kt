@@ -119,11 +119,11 @@ class KighmuVpnService : VpnService() {
         if (!isActive(generation)) return@forEach
         try {
           val tunnel: LocalTunnel = when (profile.method) {
-            "zivpn-udp" -> ZivpnTunnel(this, profile, ::emitLog)
+            "zivpn-udp" -> ZivpnTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
             "ssh-slowdns" -> SshSlowDnsTunnel(this, profile, ::emitLog)
-            "hysteria-udp" -> HysteriaTunnel(this, profile, ::emitLog)
-            "xray" -> XrayTunnel(this, profile, ::emitLog)
-            "v2ray-dns" -> V2RayDnsTunnel(this, profile, ::emitLog)
+            "hysteria-udp" -> HysteriaTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
+            "xray" -> XrayTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
+            "v2ray-dns" -> V2RayDnsTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
             "http-proxy-payload" -> HttpProxyPayloadTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
             "ssh-ssl-tls" -> SshSslTlsTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
             else -> error("Méthode non prise en charge")

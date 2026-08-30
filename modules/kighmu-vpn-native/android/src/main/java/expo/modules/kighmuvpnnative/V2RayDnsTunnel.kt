@@ -15,6 +15,7 @@ class V2RayDnsTunnel(
   private val context: Context,
   private val profile: TunnelProfile,
   private val log: (String, String, String) -> Unit,
+  private val dnsServers: List<String> = emptyList(),
 ) : LocalTunnel {
   override val label: String = profile.name
   override val socksPort: Int = freePort()
@@ -42,8 +43,13 @@ class V2RayDnsTunnel(
       FileLogger.log(context, "V2RAY DNS", "RUNTIME ERROR: ${e.message}"); throw e
     }
     try { writeConfig() } catch (e: Throwable) { FileLogger.log(context, "V2RAY DNS", "WRITE CONFIG ERROR: ${e.message}"); throw e }
-    try { launchComponents(); compactLog("connection", "V2Ray DNS prêt : DNSTT $dnsttPort, SOCKS $socksPort") }
-    catch (error: Throwable) { FileLogger.log(context, "V2RAY DNS", "LAUNCH ERROR: ${error.message}"); stop(); throw error }
+    log("connection", "V2RAY DNS", "V2Ray DNS")
+    try {
+      launchComponents()
+      log("success", "V2RAY DNS", "DNSTT ready")
+      dnsServers.forEach { log("connection", "V2RAY DNS", "DNS $it") }
+      log("success", "V2RAY DNS", "Connected")
+    } catch (error: Throwable) { FileLogger.log(context, "V2RAY DNS", "LAUNCH ERROR: ${error.message}"); stop(); throw error }
   }
 
   override fun isHealthy(): Boolean = !recovering && dnsttProcess?.isAlive == true && xrayProcess?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort)
