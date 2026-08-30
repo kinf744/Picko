@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -302,10 +303,22 @@ class KighmuVpnService : VpnService() {
 
   /** Vrai si l'échec vient de l'absence de réseau physique (données coupées). */
   private fun isNetworkUnavailable(error: Throwable): Boolean {
-    if (error.message?.contains("Aucun réseau physique") == true) return true
+    val msg = error.message?.lowercase().orEmpty()
+    if (msg.contains("aucun réseau physique") || msg.contains("aucun tunnel n'a pu établir") ||
+        msg.contains("network is unreachable") || msg.contains("unable to resolve host") ||
+        msg.contains("no address associated with hostname") || msg.contains("software caused connection abort")) return true
     return try {
-      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
-      connectivity.activeNetwork == null
+      val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+      // Le VPN lui-même apparaît comme activeNetwork ; on cherche un réseau physique (non-VPN) avec INTERNET
+      val hasPhysicalInternet = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        cm.allNetworks.any { net ->
+          val caps = cm.getNetworkCapabilities(net) ?: return@any false
+          caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        }
+      } else {
+        @Suppress("DEPRECATION") cm.activeNetworkInfo?.isConnected == true
+      }
+      !hasPhysicalInternet
     } catch (_: Throwable) { false }
   }
 
