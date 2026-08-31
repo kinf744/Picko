@@ -12,7 +12,7 @@ const emptyBalancers = () => ({
   zivpn: defaultBalancer(), slowdns: defaultBalancer(), hysteria: defaultBalancer(), "http-payload": defaultBalancer(), "ssh-tls": defaultBalancer(), "v2ray-slowdns": defaultBalancer(), "xray-v2ray": defaultBalancer(),
 });
 
-const makeZivpn = (patch: Partial<ZivpnProfile> = {}): ZivpnProfile => ({ ...createProfile("zivpn"), ...patch, kind: "zivpn" } as ZivpnProfile);
+const makeZivpn = (patch: Partial<ZivpnProfile> = {}): ZivpnProfile => ({ ...createProfile("zivpn"), selected: true, ...patch, kind: "zivpn" } as ZivpnProfile);
 
 describe("transfert de configurations KIGHMU VPN", () => {
   it("exporte uniquement les familles sélectionnées et retire les secrets par défaut", () => {
@@ -48,7 +48,7 @@ describe("transfert de configurations KIGHMU VPN", () => {
 
   it("produit et relit la structure Clipboard VLESS directe attendue", () => {
     const profiles = emptyProfiles();
-    profiles["xray-v2ray"] = [{ ...createProfile("xray-v2ray"), kind: "xray-v2ray", name: "Jivo", inputMode: "link", link: "vless://1a3829ce-f01e-4899-8537-1b4d188408ef@jiovod.cdn.jio.com:443?type=ws&security=none&path=%2FTELEGRAM&host=pane2.global.ssl.fastly.net#Jivo", json: "" } as XrayProfile];
+    profiles["xray-v2ray"] = [{ ...createProfile("xray-v2ray"), selected: true, kind: "xray-v2ray", name: "Jivo", inputMode: "link", link: "vless://1a3829ce-f01e-4899-8537-1b4d188408ef@jiovod.cdn.jio.com:443?type=ws&security=none&path=%2FTELEGRAM&host=pane2.global.ssl.fastly.net#Jivo", json: "" } as XrayProfile];
     const restrictions = { ...DEFAULT_EXPORT_RESTRICTIONS, lockConfiguration: true, blockRootedDevice: true, bindDeviceId: true, allowedHardwareIds: ["B1CDCFA839525E38B3B8B6DBCD28DA5F"], userNote: "VLESS autorisé" };
     const clipboard = buildClipboardPayload(buildConfigExport(profiles, emptyBalancers(), ["xray-v2ray"], true, restrictions));
     const decoded = JSON.parse(Buffer.from(clipboard.slice("kighmu://".length), "base64").toString("utf-8"));
@@ -100,5 +100,38 @@ describe("transfert de configurations KIGHMU VPN", () => {
 
   it("refuse un fichier qui ne suit pas le schéma KIGHMU VPN", () => {
     expect(() => parseConfigImport(JSON.stringify({ schemaVersion: 1, application: "Autre application", tunnels: [] }))).toThrow("configuration KIGHMU VPN compatible");
+  });
+
+  it("n'exporte jamais un profil dont selected vaut false", () => {
+    const profiles = emptyProfiles();
+    profiles.zivpn = [
+      makeZivpn({ name: "Coché", host: "203.0.113.10", port: "5667", password: "secret-A", selected: true }),
+      { ...makeZivpn({ name: "Décoché", host: "198.51.100.5", port: "5668", password: "secret-B", selected: false }) },
+    ];
+    const exported = buildConfigExport(profiles, emptyBalancers(), ["zivpn"], false);
+
+    expect(exported.tunnels).toHaveLength(1);
+    expect(exported.tunnels[0].profiles).toHaveLength(1);
+    expect(exported.tunnels[0].profiles[0].name).toBe("Coché");
+    expect(exported.tunnels[0].profiles[0]).not.toMatchObject({ host: "198.51.100.5" });
+  });
+
+  it("filtre chaque famille par selected et n'inclut que les profils cochés", () => {
+    const profiles = emptyProfiles();
+    profiles.zivpn = [
+      makeZivpn({ name: "Z-A", host: "203.0.113.10", port: "5667", selected: true }),
+      makeZivpn({ name: "Z-B", host: "203.0.113.11", port: "5668", selected: false }),
+    ];
+    profiles.hysteria = [
+      { ...createProfile("hysteria"), kind: "hysteria", name: "H-A", host: "h.example.com", port: "443", auth: "auth-A", obfs: "obfs-A", uploadMbps: "10", downloadMbps: "50", selected: true } as TunnelProfile,
+      { ...createProfile("hysteria"), kind: "hysteria", name: "H-B", host: "h.example.com", port: "443", auth: "auth-B", obfs: "obfs-B", uploadMbps: "10", downloadMbps: "50", selected: false } as TunnelProfile,
+    ];
+    const exported = buildConfigExport(profiles, emptyBalancers(), ["zivpn", "hysteria"], true);
+
+    expect(exported.tunnels).toHaveLength(2);
+    const zivpnTunnel = exported.tunnels.find((t) => t.kind === "zivpn")!;
+    const hysteriaTunnel = exported.tunnels.find((t) => t.kind === "hysteria")!;
+    expect(zivpnTunnel.profiles.map((p) => p.name)).toEqual(["Z-A"]);
+    expect(hysteriaTunnel.profiles.map((p) => p.name)).toEqual(["H-A"]);
   });
 });

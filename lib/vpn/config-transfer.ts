@@ -175,7 +175,9 @@ export function buildConfigExport(
     restrictions: normalizeExportRestrictions(restrictions),
     tunnels: uniqueKinds.map((kind) => ({
       kind,
-      profiles: profilesByKind[kind].map((profile) => includeSecrets ? { ...profile } : omitSecrets(profile)),
+      profiles: profilesByKind[kind]
+        .filter((profile) => profile.selected)
+        .map((profile) => includeSecrets ? { ...profile } : omitSecrets(profile)),
       balancer: { ...balancersByKind[kind] },
     })),
   };

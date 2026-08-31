@@ -11,16 +11,16 @@ import { Panel, PrimaryAction, SectionLabel } from "@/components/kighmu-ui";
 import { useColors } from "@/hooks/use-colors";
 import { buildClipboardPayload } from "@/lib/vpn/config-transfer";
 import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, restrictionCount, type ExportRestrictions } from "@/lib/vpn/export-restrictions";
-import { TUNNEL_KINDS, type TunnelKind } from "@/lib/vpn/tunnel-profiles";
+import { TUNNEL_KINDS, type TunnelKind, type TunnelProfile } from "@/lib/vpn/tunnel-profiles";
 import { useVpn } from "@/lib/vpn/vpn-context";
 import { useLang } from "@/lib/i18n-provider";
 
 type RestrictionKey = Exclude<keyof ExportRestrictions, "expiresAt" | "userNote" | "allowedHardwareIds" | "allowedMobileOperators">;
 
-function CheckRow({ checked, title, description, icon, onPress }: { checked: boolean; title: string; description: string; icon: ComponentProps<typeof MaterialIcons>["name"]; onPress: () => void }) {
+function CheckRow({ checked, title, description, icon, onPress, disabled = false }: { checked: boolean; title: string; description: string; icon: ComponentProps<typeof MaterialIcons>["name"]; onPress: () => void; disabled?: boolean }) {
   const colors = useColors();
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.checkRow, { borderTopColor: colors.border }, pressed && styles.pressed]}>
-    <View style={[styles.check, { borderColor: checked ? colors.primary : colors.border, backgroundColor: checked ? colors.primary : "transparent" }]}>{checked ? <MaterialIcons name="check" size={17} color="#FFFFFF" /> : null}</View>
+  return <Pressable onPress={onPress} disabled={disabled} accessibilityRole="checkbox" accessibilityState={{ checked, disabled }} style={({ pressed }) => [styles.checkRow, { borderTopColor: colors.border }, pressed && !disabled && styles.pressed]}>
+    <View style={[styles.check, { borderColor: checked ? colors.primary : colors.border, backgroundColor: checked ? colors.primary : "transparent", opacity: disabled ? 0.35 : 1 }]}>{checked ? <MaterialIcons name="check" size={17} color="#FFFFFF" /> : null}</View>
     <View style={styles.rowCopy}><View style={styles.rowTitleLine}><MaterialIcons name={icon} size={17} color={colors.primary} /><Text style={[styles.rowTitle, { color: colors.foreground }]}>{title}</Text></View><Text style={[styles.rowDescription, { color: colors.muted }]}>{description}</Text></View>
   </Pressable>;
 }
@@ -30,11 +30,41 @@ function ListInput({ label, value, placeholder, helper, onChangeText }: { label:
   return <View style={[styles.listInput, { borderTopColor: colors.border }]}><Text style={[styles.inlineLabel, { color: colors.foreground }]}>{label}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.muted} multiline autoCapitalize="characters" style={[styles.listText, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surfaceRaised }]} /><Text style={[styles.helper, { color: colors.muted }]}>{helper}</Text></View>;
 }
 
+function TunnelCheckRow({
+  checked,
+  total,
+  ticked,
+  onPress,
+  title,
+  description,
+}: {
+  checked: boolean;
+  total: number;
+  ticked: number;
+  onPress: () => void;
+  title: string;
+  description: string;
+}) {
+  const colors = useColors();
+  const disabled = ticked === 0;
+  const badgeColor = ticked > 0 ? colors.primary : colors.border;
+  return <Pressable onPress={onPress} disabled={disabled} accessibilityRole="checkbox" accessibilityState={{ checked, disabled }} style={({ pressed }) => [styles.checkRow, { borderTopColor: colors.border }, pressed && !disabled && styles.pressed]}>
+    <View style={[styles.check, { borderColor: checked ? colors.primary : colors.border, backgroundColor: checked ? colors.primary : "transparent", opacity: disabled ? 0.4 : 1 }]}>{checked ? <MaterialIcons name="check" size={17} color="#FFFFFF" /> : null}</View>
+    <View style={styles.rowCopy}>
+      <View style={styles.rowTitleLine}>
+        <MaterialIcons name="tune" size={17} color={colors.primary} />
+        <Text style={[styles.rowTitle, { color: colors.foreground }]}>{title}</Text>
+        <View style={[styles.badge, { backgroundColor: badgeColor }]}><Text style={styles.badgeText}>{ticked}/{total}</Text></View>
+      </View>
+      <Text style={[styles.rowDescription, { color: disabled ? colors.warning : colors.muted }]}>{description}</Text>
+    </View>
+  </Pressable>;
+}
+
 export default function ConfigExportScreen() {
   const colors = useColors();
   const { t } = useLang();
   const { profilesByKind, buildConfigExport } = useVpn();
-  const availableKinds = useMemo(() => TUNNEL_KINDS.filter((kind) => profilesByKind[kind].length > 0), [profilesByKind]);
   const [selected, setSelected] = useState<TunnelKind[]>([]);
   const [includeSecrets, setIncludeSecrets] = useState(false);
   const [fileName, setFileName] = useState("kighmu-vpn-config");
@@ -43,14 +73,34 @@ export default function ConfigExportScreen() {
   const [operators, setOperators] = useState("");
   const [working, setWorking] = useState(false);
 
-  useEffect(() => setSelected(availableKinds), [availableKinds]);
-  const toggleKind = (kind: TunnelKind) => setSelected((current) => current.includes(kind) ? current.filter((item) => item !== kind) : [...current, kind]);
+  const statsByKind = useMemo(() => {
+    const map: Record<TunnelKind, { total: number; ticked: number }> = {} as Record<TunnelKind, { total: number; ticked: number }>;
+    TUNNEL_KINDS.forEach((kind) => {
+      const profiles: TunnelProfile[] = profilesByKind[kind] ?? [];
+      const ticked = profiles.filter((profile) => profile.selected).length;
+      map[kind] = { total: profiles.length, ticked };
+    });
+    return map;
+  }, [profilesByKind]);
+
+  const exportableKinds = useMemo(() => TUNNEL_KINDS.filter((kind) => statsByKind[kind].ticked > 0), [statsByKind]);
+
+  useEffect(() => {
+    setSelected(exportableKinds);
+  }, [exportableKinds]);
+
+  const toggleKind = (kind: TunnelKind) => {
+    if (statsByKind[kind].ticked === 0) return;
+    setSelected((current) => current.includes(kind) ? current.filter((item) => item !== kind) : [...current, kind]);
+  };
   const toggleRestriction = (key: RestrictionKey) => setRestrictions((current) => ({ ...current, [key]: !current[key] }));
   const setExpiry = (enabled: boolean) => setRestrictions((current) => ({ ...current, expiresAt: enabled ? (current.expiresAt ?? new Date().toISOString().slice(0, 10)) : null }));
   const exportRestrictions = () => normalizeExportRestrictions({ ...restrictions, allowedHardwareIds: hardwareIds, allowedMobileOperators: operators });
   const validateExport = () => {
     const readyRestrictions = exportRestrictions();
     if (selected.length === 0) { Alert.alert(t("export.selRequiredTitle"), t("export.selRequiredBody")); return null; }
+    const emptySelected = selected.filter((kind) => statsByKind[kind].ticked === 0);
+    if (emptySelected.length > 0) { Alert.alert(t("export.families.empty"), emptySelected.map((kind) => t(`tunnels.${kind}.label`)).join(", ")); return null; }
     if (readyRestrictions.bindDeviceId && readyRestrictions.allowedHardwareIds.length === 0) { Alert.alert(t("export.hwRequiredTitle"), t("export.hwRequiredBody")); return null; }
     if (readyRestrictions.lockMobileOperator && readyRestrictions.allowedMobileOperators.length === 0) { Alert.alert(t("export.opRequiredTitle"), t("export.opRequiredBody")); return null; }
     if (readyRestrictions.expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(readyRestrictions.expiresAt)) { Alert.alert(t("export.dateInvalidTitle"), t("export.dateInvalidBody")); return null; }
@@ -88,9 +138,113 @@ export default function ConfigExportScreen() {
     else void execute();
   };
 
-  return <ScreenContainer edges={["top", "bottom", "left", "right"]} className="px-5"><View style={styles.top}><Pressable onPress={() => router.back()} style={({ pressed }) => [styles.back, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="arrow-back" size={20} color={colors.foreground} /></Pressable><Text style={[styles.title, { color: colors.foreground }]}>{t("export.title")}</Text><View style={styles.back} /></View><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><Text style={[styles.intro, { color: colors.muted }]}>{t("export.intro")}</Text><Panel style={styles.namePanel}><Text style={[styles.label, { color: colors.foreground }]}>{t("export.fileName")}</Text><TextInput value={fileName} onChangeText={setFileName} placeholder="kighmu-vpn-config" placeholderTextColor={colors.muted} autoCapitalize="none" style={[styles.input, { backgroundColor: colors.surfaceRaised, borderColor: colors.border, color: colors.foreground }]} /><Text style={[styles.helper, { color: colors.muted }]}>{t("export.fileName.helper")}</Text></Panel><Panel style={styles.selection}><View style={styles.selectionHead}><View><Text style={[styles.label, { color: colors.foreground }]}>{t("export.families")}</Text><Text style={[styles.helper, { color: colors.muted }]}>{t("export.selectedCount", { n: selected.length })}</Text></View><Pressable onPress={() => setSelected(selected.length === availableKinds.length ? [] : availableKinds)}><Text style={[styles.selectAll, { color: colors.primary }]}>{selected.length === availableKinds.length ? t("export.clearAll") : t("export.selectAll")}</Text></Pressable></View>{availableKinds.length === 0 ? <Text style={[styles.helper, { color: colors.muted }]}>{t("export.noneAvailable")}</Text> : availableKinds.map((kind) => <CheckRow key={kind} checked={selected.includes(kind)} title={t(`tunnels.${kind}.label`)} description={t("export.profileCount", { n: profilesByKind[kind].length })} icon="tune" onPress={() => toggleKind(kind)} />)}</Panel><SectionLabel>{t("export.secSection")}</SectionLabel><Panel style={styles.panel}><CheckRow checked={includeSecrets} title={t("export.includeSecrets.title")} description={t("export.includeSecrets.desc")} icon="key" onPress={() => setIncludeSecrets((value) => !value)} /><CheckRow checked={restrictions.lockConfiguration} title={t("export.lockConfig.title")} description={t("export.lockConfig.desc")} icon="lock" onPress={() => toggleRestriction("lockConfiguration")} /><CheckRow checked={restrictions.lockPolicyControls} title={t("export.lockPolicy.title")} description={t("export.lockPolicy.desc")} icon="admin-panel-settings" onPress={() => toggleRestriction("lockPolicyControls")} /></Panel><SectionLabel>{t("export.devSection")}</SectionLabel><Panel style={styles.panel}><CheckRow checked={restrictions.mobileDataOnly} title={t("export.mobileDataOnly.title")} description={t("export.mobileDataOnly.desc")} icon="signal-cellular-alt" onPress={() => toggleRestriction("mobileDataOnly")} /><CheckRow checked={restrictions.lockMobileOperator} title={t("export.blockOperators.title")} description={t("export.blockOperators.desc")} icon="sim-card" onPress={() => toggleRestriction("lockMobileOperator")} />{restrictions.lockMobileOperator ? <ListInput label={t("export.allowedOperators.label")} value={operators} onChangeText={setOperators} placeholder="Ex. 20801, 310260" helper={t("export.allowedOperators.helper")} /> : null}<CheckRow checked={restrictions.blockRootedDevice} title={t("export.blockRoot.title")} description={t("export.blockRoot.desc")} icon="security" onPress={() => toggleRestriction("blockRootedDevice")} /><CheckRow checked={restrictions.bindDeviceId} title={t("export.bindHwId.title")} description={t("export.bindHwId.desc")} icon="phonelink-lock" onPress={() => toggleRestriction("bindDeviceId")} />{restrictions.bindDeviceId ? <ListInput label={t("export.allowedIds.label")} value={hardwareIds} onChangeText={setHardwareIds} placeholder="B1CDCFA839525E38B3B8B6DBCD28DA5F" helper={t("export.allowedIds.helper")} /> : null}<CheckRow checked={restrictions.requireDeviceAttestation} title={t("export.attestation.title")} description={t("export.attestation.desc")} icon="verified-user" onPress={() => toggleRestriction("requireDeviceAttestation")} /></Panel><SectionLabel>{t("export.complianceSection")}</SectionLabel><Panel style={styles.panel}><CheckRow checked={Boolean(restrictions.expiresAt)} title={t("export.expiry.title")} description={t("export.expiry.desc")} icon="event-busy" onPress={() => setExpiry(!restrictions.expiresAt)} />{restrictions.expiresAt ? <View style={styles.inlineField}><Text style={[styles.inlineLabel, { color: colors.foreground }]}>{t("export.expiry.label")}</Text><TextInput value={restrictions.expiresAt} onChangeText={(value) => setRestrictions((current) => ({ ...current, expiresAt: value }))} placeholder="YYYY-MM-DD" placeholderTextColor={colors.muted} autoCapitalize="none" style={[styles.dateInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surfaceRaised }]} /></View> : null}<CheckRow checked={restrictions.sshBindToDevice} title={t("export.sshBind.title")} description={t("export.sshBind.desc")} icon="terminal" onPress={() => toggleRestriction("sshBindToDevice")} /><CheckRow checked={restrictions.blockTorrent} title={t("export.noTorrent.title")} description={t("export.noTorrent.desc")} icon="block" onPress={() => toggleRestriction("blockTorrent")} /></Panel><Panel style={styles.notePanel}><View style={styles.noteHead}><MaterialIcons name="notes" size={18} color={colors.primary} /><Text style={[styles.label, { color: colors.foreground }]}>{t("export.notes.label")}</Text></View><TextInput value={restrictions.userNote} onChangeText={(value) => setRestrictions((current) => ({ ...current, userNote: value }))} placeholder={t("export.notes.ph")} placeholderTextColor={colors.muted} multiline style={[styles.noteInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surfaceRaised }]} /><Text style={[styles.helper, { color: colors.muted }]}>{t("export.rulesCount", { n: restrictionCount(exportRestrictions()) })}</Text></Panel></ScrollView><View style={[styles.action, { borderTopColor: colors.border }]}><PrimaryAction label={working ? t("export.preparing") : t("export.createFile")} icon="ios-share" loading={working} disabled={availableKinds.length === 0} onPress={() => void createFile()} /><Pressable disabled={working || availableKinds.length === 0} onPress={() => void createClipboard()} style={({ pressed }) => [styles.clipboardAction, { borderColor: colors.border, backgroundColor: colors.surface }, pressed && !working && styles.pressed, (working || availableKinds.length === 0) && styles.disabled]}><MaterialIcons name="content-copy" size={18} color={colors.primary} /><Text style={[styles.clipboardText, { color: colors.primary }]}>{t("export.clipboard")}</Text></Pressable></View></ScreenContainer>;
+  const totalTicked = useMemo(() => TUNNEL_KINDS.reduce((sum, kind) => sum + statsByKind[kind].ticked, 0), [statsByKind]);
+  const totalProfiles = useMemo(() => TUNNEL_KINDS.reduce((sum, kind) => sum + statsByKind[kind].total, 0), [statsByKind]);
+  const allToggled = exportableKinds.length > 0 && selected.length === exportableKinds.length;
+  const selectAllLabel = allToggled ? t("export.clearAll") : t("export.selectAll");
+
+  return <ScreenContainer edges={["top", "bottom", "left", "right"]} className="px-5">
+    <View style={styles.top}>
+      <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.back, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="arrow-back" size={20} color={colors.foreground} /></Pressable>
+      <Text style={[styles.title, { color: colors.foreground }]}>{t("export.title")}</Text>
+      <View style={styles.back} />
+    </View>
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <Text style={[styles.intro, { color: colors.muted }]}>{t("export.intro")}</Text>
+      <Panel style={styles.namePanel}>
+        <Text style={[styles.label, { color: colors.foreground }]}>{t("export.fileName")}</Text>
+        <TextInput value={fileName} onChangeText={setFileName} placeholder="kighmu-vpn-config" placeholderTextColor={colors.muted} autoCapitalize="none" style={[styles.input, { backgroundColor: colors.surfaceRaised, borderColor: colors.border, color: colors.foreground }]} />
+        <Text style={[styles.helper, { color: colors.muted }]}>{t("export.fileName.helper")}</Text>
+      </Panel>
+      <Panel style={styles.selection}>
+        <View style={styles.selectionHead}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.label, { color: colors.foreground }]}>{t("export.families")}</Text>
+            <Text style={[styles.helper, { color: colors.muted, marginTop: 4 }]}>{t("export.families.helper")}</Text>
+          </View>
+          <Pressable disabled={exportableKinds.length === 0} onPress={() => setSelected(allToggled ? [] : exportableKinds)}><Text style={[styles.selectAll, { color: exportableKinds.length === 0 ? colors.muted : colors.primary }]}>{selectAllLabel}</Text></Pressable>
+        </View>
+        <View style={styles.selectionSummary}>
+          <Text style={[styles.summaryPrimary, { color: colors.foreground }]}>{t("export.selectedCount", { n: selected.length })}</Text>
+          <Text style={[styles.summarySecondary, { color: colors.muted }]}>{t("export.families.checked", { checked: totalTicked, total: totalProfiles })}</Text>
+        </View>
+        {TUNNEL_KINDS.map((kind) => {
+          const stats = statsByKind[kind];
+          const description = stats.ticked === 0 ? t("export.families.empty") : t("export.families.checked", { checked: stats.ticked, total: stats.total });
+          return <TunnelCheckRow key={kind} checked={selected.includes(kind)} total={stats.total} ticked={stats.ticked} onPress={() => toggleKind(kind)} title={t(`tunnels.${kind}.label`)} description={description} />;
+        })}
+        {exportableKinds.length === 0 ? <Text style={[styles.helper, { color: colors.warning, marginTop: 8 }]}>{t("export.noneAvailable")}</Text> : null}
+      </Panel>
+      <Panel style={styles.panel}>
+        <SectionLabel>{t("export.secSection")}</SectionLabel>
+        <CheckRow checked={includeSecrets} onPress={() => setIncludeSecrets((value) => !value)} title={t("export.includeSecrets.title")} description={t("export.includeSecrets.desc")} icon="vpn-key" />
+        <CheckRow checked={restrictions.lockConfiguration} onPress={() => toggleRestriction("lockConfiguration")} title={t("export.lockConfig.title")} description={t("export.lockConfig.desc")} icon="lock" />
+        <CheckRow checked={restrictions.lockPolicyControls} onPress={() => toggleRestriction("lockPolicyControls")} title={t("export.lockPolicy.title")} description={t("export.lockPolicy.desc")} icon="policy" />
+      </Panel>
+      <Panel style={styles.panel}>
+        <SectionLabel>{t("export.devSection")}</SectionLabel>
+        <CheckRow checked={restrictions.mobileDataOnly} onPress={() => toggleRestriction("mobileDataOnly")} title={t("export.mobileDataOnly.title")} description={t("export.mobileDataOnly.desc")} icon="mobile-friendly" />
+        <CheckRow checked={restrictions.lockMobileOperator} onPress={() => toggleRestriction("lockMobileOperator")} title={t("export.blockOperators.title")} description={t("export.blockOperators.desc")} icon="sim-card" />
+        {restrictions.lockMobileOperator ? <ListInput label={t("export.allowedOperators.label")} value={operators} onChangeText={setOperators} placeholder="20801" helper={t("export.allowedOperators.helper")} /> : null}
+        <CheckRow checked={restrictions.blockRootedDevice} onPress={() => toggleRestriction("blockRootedDevice")} title={t("export.blockRoot.title")} description={t("export.blockRoot.desc")} icon="report" />
+        <CheckRow checked={restrictions.bindDeviceId} onPress={() => toggleRestriction("bindDeviceId")} title={t("export.bindHwId.title")} description={t("export.bindHwId.desc")} icon="fingerprint" />
+        {restrictions.bindDeviceId ? <ListInput label={t("export.allowedIds.label")} value={hardwareIds} onChangeText={setHardwareIds} placeholder="B1CDCFA839525E38B3B8B6DBCD28DA5F" helper={t("export.allowedIds.helper")} /> : null}
+        <CheckRow checked={restrictions.requireDeviceAttestation} onPress={() => toggleRestriction("requireDeviceAttestation")} title={t("export.attestation.title")} description={t("export.attestation.desc")} icon="verified-user" />
+      </Panel>
+      <Panel style={styles.panel}>
+        <SectionLabel>{t("export.complianceSection")}</SectionLabel>
+        <CheckRow checked={Boolean(restrictions.expiresAt)} onPress={() => setExpiry(!restrictions.expiresAt)} title={t("export.expiry.title")} description={t("export.expiry.desc")} icon="event-busy" />
+        {restrictions.expiresAt ? <View style={[styles.inlineField, { borderTopColor: colors.border }]}><Text style={[styles.inlineLabel, { color: colors.foreground }]}>{t("export.expiry.label")}</Text><TextInput value={restrictions.expiresAt ?? ""} onChangeText={(value) => setRestrictions((current) => ({ ...current, expiresAt: value }))} placeholder="AAAA-MM-JJ" placeholderTextColor={colors.muted} autoCapitalize="none" style={[styles.dateInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surfaceRaised }]} /></View> : null}
+        <CheckRow checked={restrictions.sshBindToDevice} onPress={() => toggleRestriction("sshBindToDevice")} title={t("export.sshBind.title")} description={t("export.sshBind.desc")} icon="link" />
+        <CheckRow checked={restrictions.blockTorrent} onPress={() => toggleRestriction("blockTorrent")} title={t("export.noTorrent.title")} description={t("export.noTorrent.desc")} icon="block" />
+      </Panel>
+      <Panel style={styles.notePanel}>
+        <View style={styles.noteHead}><MaterialIcons name="edit-note" size={18} color={colors.primary} /><Text style={[styles.label, { color: colors.foreground }]}>{t("export.notes.label")}</Text></View>
+        <TextInput value={restrictions.userNote ?? ""} onChangeText={(value) => setRestrictions((current) => ({ ...current, userNote: value }))} placeholder={t("export.notes.ph")} placeholderTextColor={colors.muted} multiline style={[styles.noteInput, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.surfaceRaised }]} />
+      </Panel>
+      <Text style={[styles.rulesCount, { color: colors.muted }]}>{t("export.rulesCount", { n: restrictionCount(restrictions) })}</Text>
+      <PrimaryAction label={working ? t("export.preparing") : t("export.createFile")} icon="file-upload" disabled={working || selected.length === 0} onPress={createFile} />
+      <Pressable onPress={createClipboard} disabled={working || selected.length === 0} style={({ pressed }) => [styles.clipboard, { borderColor: colors.border, backgroundColor: colors.surface }, (working || selected.length === 0) && styles.disabled, pressed && styles.pressed]}><MaterialIcons name="content-paste" size={18} color={(working || selected.length === 0) ? colors.muted : colors.primary} /><Text style={[styles.clipboardText, { color: (working || selected.length === 0) ? colors.muted : colors.primary }]}>{t("export.clipboard")}</Text></Pressable>
+    </ScrollView>
+  </ScreenContainer>;
 }
 
 const styles = StyleSheet.create({
-  top: { height: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, back: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" }, title: { fontSize: 17, fontWeight: "900" }, content: { gap: 16, paddingTop: 14, paddingBottom: 20 }, intro: { fontSize: 14, lineHeight: 20 }, namePanel: { padding: 16 }, label: { fontSize: 13, fontWeight: "900" }, input: { marginTop: 10, minHeight: 48, borderWidth: 1, borderRadius: 14, paddingHorizontal: 13, fontSize: 14, fontWeight: "700" }, helper: { marginTop: 7, fontSize: 11, lineHeight: 16 }, selection: { padding: 16 }, selectionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 7 }, selectAll: { fontSize: 12, fontWeight: "900" }, panel: { paddingHorizontal: 16 }, checkRow: { minHeight: 65, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 11 }, check: { width: 25, height: 25, borderRadius: 8, borderWidth: 1.5, alignItems: "center", justifyContent: "center" }, rowCopy: { flex: 1, paddingVertical: 10 }, rowTitleLine: { flexDirection: "row", alignItems: "center", gap: 8 }, rowTitle: { flex: 1, fontSize: 13, fontWeight: "900" }, rowDescription: { marginTop: 4, marginLeft: 25, fontSize: 11, lineHeight: 15 }, inlineField: { paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 10 }, inlineLabel: { flex: 1, fontSize: 12, fontWeight: "800" }, dateInput: { width: 124, minHeight: 40, borderRadius: 11, borderWidth: 1, paddingHorizontal: 10, fontSize: 12, fontWeight: "800" }, listInput: { borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 12 }, listText: { minHeight: 74, marginTop: 8, borderWidth: 1, borderRadius: 12, padding: 11, textAlignVertical: "top", fontSize: 13, lineHeight: 18 }, notePanel: { padding: 16 }, noteHead: { flexDirection: "row", alignItems: "center", gap: 8 }, noteInput: { minHeight: 92, marginTop: 11, borderWidth: 1, borderRadius: 14, padding: 12, textAlignVertical: "top", fontSize: 13, lineHeight: 18 }, action: { borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 14, gap: 9 }, clipboardAction: { minHeight: 48, borderWidth: 1, borderRadius: 15, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, clipboardText: { fontSize: 13, fontWeight: "900" }, disabled: { opacity: 0.45 }, pressed: { opacity: 0.78, transform: [{ scale: 0.985 }] },
+  top: { height: 58, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  back: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  title: { fontSize: 17, fontWeight: "900" },
+  content: { gap: 16, paddingTop: 14, paddingBottom: 20 },
+  intro: { fontSize: 14, lineHeight: 20 },
+  namePanel: { padding: 16 },
+  label: { fontSize: 13, fontWeight: "900" },
+  input: { marginTop: 10, minHeight: 48, borderWidth: 1, borderRadius: 14, paddingHorizontal: 13, fontSize: 14, fontWeight: "700" },
+  helper: { marginTop: 7, fontSize: 11, lineHeight: 16 },
+  selection: { padding: 16 },
+  selectionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 },
+  selectionSummary: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#0001" },
+  summaryPrimary: { fontSize: 12, fontWeight: "900" },
+  summarySecondary: { fontSize: 11, fontWeight: "700" },
+  selectAll: { fontSize: 12, fontWeight: "900" },
+  panel: { paddingHorizontal: 16 },
+  checkRow: { minHeight: 65, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 11 },
+  check: { width: 25, height: 25, borderRadius: 8, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+  badge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, marginLeft: 6 },
+  badgeText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
+  rowCopy: { flex: 1, paddingVertical: 10 },
+  rowTitleLine: { flexDirection: "row", alignItems: "center", gap: 8 },
+  rowTitle: { flex: 1, fontSize: 13, fontWeight: "900" },
+  rowDescription: { marginTop: 4, marginLeft: 25, fontSize: 11, lineHeight: 15 },
+  inlineField: { paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", gap: 10 },
+  inlineLabel: { flex: 1, fontSize: 12, fontWeight: "800" },
+  dateInput: { width: 124, minHeight: 40, borderRadius: 11, borderWidth: 1, paddingHorizontal: 10, fontSize: 12, fontWeight: "800" },
+  listInput: { borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 12 },
+  listText: { minHeight: 74, marginTop: 8, borderWidth: 1, borderRadius: 12, padding: 11, textAlignVertical: "top", fontSize: 13, lineHeight: 18 },
+  notePanel: { padding: 16 },
+  noteHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  noteInput: { minHeight: 92, marginTop: 10, borderWidth: 1, borderRadius: 14, padding: 12, textAlignVertical: "top", fontSize: 13, lineHeight: 18 },
+  rulesCount: { fontSize: 12, textAlign: "center", marginTop: 4 },
+  clipboard: { marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 13, borderRadius: 14, borderWidth: 1 },
+  clipboardText: { fontSize: 13, fontWeight: "900" },
+  disabled: { opacity: 0.5 },
+  pressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },
 });
