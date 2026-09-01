@@ -87,6 +87,11 @@ class XrayTunnel(
           // Filtre anti-verbeux: ignore keepalive/eof, ne log RAW que sur erreurs importantes
           if (lower.contains("failed to read request") && lower.contains("eof")) return@forEachLine
           if (lower.contains("failed to read request") || lower.contains("rejected proxy/socks")) return@forEachLine
+          // Avertissement de dépréciation Xray-core: "The feature Trojan (with no Flow, etc.) is
+          // deprecated... Please migrate to VLESS". Sans objet pour l'utilisateur (le profil
+          // marche) et sans impact sur la connexion. Les autres mentions de "trojan" (handshake,
+          // config invalide, etc.) passent toujours pour le diagnostic utile.
+          if (lower.contains("migrate to vless")) return@forEachLine
           // Log fichier filtré: seulement erreurs/start, pas chaque ligne verbeuse
           val isImportant = lower.contains("started") || lower.contains("fatal") || lower.contains("panic") || lower.contains("failed") || lower.contains("error") || lower.contains("timeout") || lower.contains("rejected") || lower.contains("handshake")
           if (isImportant && normalized.isNotBlank()) FileLogger.log(service, "XRAY", normalized.take(800))

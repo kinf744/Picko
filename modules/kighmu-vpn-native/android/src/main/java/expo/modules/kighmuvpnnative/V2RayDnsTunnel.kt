@@ -125,6 +125,11 @@ class V2RayDnsTunnel(
           // Suppression totale des logs "failed to read request > EOF" / "rejected proxy/socks": Xray les
           // émet en boucle dès qu'un client ferme sa connexion — pollue le journal sans valeur.
           if (lower.contains("failed to read request") || lower.contains("rejected proxy/socks")) return@forEach
+          // Avertissement de dépréciation Xray-core: "The feature Trojan (with no Flow, etc.) is
+          // deprecated... Please migrate to VLESS". Sans objet pour l'utilisateur (le profil
+          // marche) et sans impact sur la connexion. Les autres mentions de "trojan" (handshake,
+          // config invalide, etc.) passent toujours pour le diagnostic utile.
+          if (lower.contains("migrate to vless")) return@forEach
           val isImportant = cls != "ignore" || lower.contains("error") || lower.contains("failed") || lower.contains("mtu") || lower.contains("session") || lower.contains("timeout") || lower.contains("trojan") || lower.contains("vmess")
           if (isImportant) FileLogger.log(context, "V2RAY DNS:$tag", line.take(600))
           when (cls) {
