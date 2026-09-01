@@ -40,7 +40,6 @@ export default function HotspotScreen() {
   const [wdError, setWdError] = useState<"perms" | "failed" | null>(null);
   const wdIpRef = useRef("");
   const prevThirdActive = useRef(false);
-  const baseTotals = useRef({ rx: 0, tx: 0 });
   const previousStatus = useRef(status);
 
   // Source du partage : tunnels KIGHMU si notre VPN est connecté, sinon
@@ -100,13 +99,21 @@ export default function HotspotScreen() {
     void getWifiDirectInfo().then((info) => {
       if (info?.active) { setWd(info); wdIpRef.current = info.ip || "192.168.49.1"; }
     });
-    baseTotals.current = getTrafficTotals();
+  }, []);
+
+  // Compteur de trafic : on ne mesure que les octets reellement relayes par la
+  // passerelle LanShareGateway. Le polling ne tourne que si le partage est
+  // arme ET la passerelle demarree. Sinon, on remet le compteur a 0 et on
+  // attend un evenement de demarrage.
+  useEffect(() => {
+    const active = settings.shareArmed && lanState.running;
+    if (!active) { setTotals({ rx: 0, tx: 0 }); return; }
     const timer = setInterval(() => {
       const now = getTrafficTotals();
-      setTotals({ rx: Math.max(0, now.rx - baseTotals.current.rx), tx: Math.max(0, now.tx - baseTotals.current.tx) });
+      setTotals({ rx: Math.max(0, now.rx), tx: Math.max(0, now.tx) });
     }, 2000);
     return () => clearInterval(timer);
-  }, []);
+  }, [settings.shareArmed, lanState.running]);
 
   // Sonde d'IP de sortie : via nos tunnels (mode KIGHMU) ou via le routage
   // système (mode VPN tiers) ; automatique + rafraîchie toutes les 30 s si armé.
@@ -337,13 +344,13 @@ export default function HotspotScreen() {
     </Panel>
 
     <SectionLabel>{t("hs.traffic.section")}</SectionLabel>
-    <Panel style={styles.panel}>
+    {settings.shareArmed && lanState.running ? <Panel style={styles.panel}>
       <View style={styles.trafficRow}>
         <View style={[styles.trafficCell, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name="south" size={17} color={colors.success} /><Text style={[styles.trafficValue, { color: colors.foreground }]}>{formatBytes(totals.rx)}</Text></View>
         <View style={[styles.trafficCell, { backgroundColor: colors.surfaceRaised }]}><MaterialIcons name="north" size={17} color={colors.primary} /><Text style={[styles.trafficValue, { color: colors.foreground }]}>{formatBytes(totals.tx)}</Text></View>
       </View>
       <Text style={[styles.note, { color: colors.muted }]}>{t("hs.traffic.global")}</Text>
-    </Panel>
+    </Panel> : <Panel style={styles.panel}><Text style={[styles.note, { color: colors.muted }]}>{t("hs.traffic.idle")}</Text></Panel>}
   </ScrollView></ScreenContainer>;
 }
 

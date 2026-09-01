@@ -99,10 +99,11 @@ class KighmuVpnNativeModule : Module() {
       HotspotProbe.fetchExitIpViaSocks(port)
     }
 
-    // Compteurs globaux de l'appareil (octets) — pas de détail par client sans root.
+    // Compteurs reellement relayes par la passerelle Hotspot (octets cumules
+    // depuis le dernier start()). Hors session, (0, 0) — donc l'UI n'affiche
+    // rien tant que le partage n'est pas reellement actif.
     Function("getTrafficTotals") {
-      val rx = android.net.TrafficStats.getTotalRxBytes()
-      val tx = android.net.TrafficStats.getTotalTxBytes()
+      val (rx, tx) = LanShareGateway.getTrafficTotals()
       mapOf("rx" to rx, "tx" to tx)
     }
 

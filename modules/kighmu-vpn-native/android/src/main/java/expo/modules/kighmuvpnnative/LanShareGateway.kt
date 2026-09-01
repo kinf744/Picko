@@ -2,11 +2,14 @@ package expo.modules.kighmuvpnnative
 
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Passerelle de partage Hotspot (100 % sans root).
@@ -30,6 +33,10 @@ object LanShareGateway {
   private var server: ServerSocket? = null
   @Volatile private var running = false
   @Volatile private var activePort: Int = 0
+  // Compteurs cumules depuis le dernier start(). AtomicLong pour permettre
+  // une lecture concurrente depuis n'importe quel thread.
+  private val rxBytes = AtomicLong(0)
+  private val txBytes = AtomicLong(0)
 
   /**
    * Source des connexions clientes :
@@ -53,6 +60,9 @@ object LanShareGateway {
     server = socket
     activePort = socket.localPort
     running = true
+    // Reset des compteurs : toute session precedente ne doit pas etre comptée.
+    rxBytes.set(0)
+    txBytes.set(0)
     Thread {
       while (running) {
         try {
@@ -71,11 +81,24 @@ object LanShareGateway {
     try { server?.close() } catch (_: Throwable) {}
     server = null
     activePort = 0
+    rxBytes.set(0)
+    txBytes.set(0)
   }
 
   fun isRunning(): Boolean = running && server?.isClosed == false
 
   fun portOrNull(): Int? = if (isRunning()) server?.localPort else null
+
+  /**
+   * Octets reellement relayés par la passerelle depuis le dernier start().
+   *  - rx : client -> balancier (octets que les clients du hotspot ont emis)
+   *  - tx : balancier -> client (octets que les clients du hotspot ont recus)
+   * Hors session, retourne (0, 0).
+   */
+  fun getTrafficTotals(): Pair<Long, Long> {
+    if (!isRunning()) return 0L to 0L
+    return rxBytes.get() to txBytes.get()
+  }
 
   private fun handle(client: Socket) {
     try {
@@ -103,16 +126,32 @@ object LanShareGateway {
 
   private fun pumpBoth(a: Socket, b: Socket) {
     val toRemote = Thread {
-      try { a.getInputStream().copyTo(b.getOutputStream()) } catch (_: Throwable) {} finally { try { b.shutdownOutput() } catch (_: Throwable) {} }
+      try { copyCounting(a.getInputStream(), b.getOutputStream(), rxBytes) } catch (_: Throwable) {} finally { try { b.shutdownOutput() } catch (_: Throwable) {} }
     }
     val toClient = Thread {
-      try { b.getInputStream().copyTo(a.getOutputStream()) } catch (_: Throwable) {} finally { try { a.shutdownOutput() } catch (_: Throwable) {} }
+      try { copyCounting(b.getInputStream(), a.getOutputStream(), txBytes) } catch (_: Throwable) {} finally { try { a.shutdownOutput() } catch (_: Throwable) {} }
     }
     toRemote.isDaemon = true; toClient.isDaemon = true
     toRemote.start(); toClient.start()
     try { toRemote.join(); toClient.join() } finally {
       try { a.close() } catch (_: Throwable) {}
       try { b.close() } catch (_: Throwable) {}
+    }
+  }
+
+  /**
+   * Copie un flux en incrementant le compteur a chaque bloc transfere.
+   * AtomicLong.addAndGet est lock-free : pas de contention entre les workers
+   * qui pompent en parallele et le thread UI qui lit via getTrafficTotals().
+   */
+  private fun copyCounting(input: InputStream, output: OutputStream, counter: AtomicLong) {
+    val buffer = ByteArray(16 * 1024)
+    while (!Thread.currentThread().isInterrupted) {
+      val read = try { input.read(buffer) } catch (_: Throwable) { break }
+      if (read < 0) break
+      if (read == 0) continue
+      try { output.write(buffer, 0, read); output.flush() } catch (_: Throwable) { break }
+      counter.addAndGet(read.toLong())
     }
   }
 
