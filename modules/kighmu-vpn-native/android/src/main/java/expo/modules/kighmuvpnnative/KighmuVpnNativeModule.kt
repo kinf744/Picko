@@ -65,18 +65,6 @@ class KighmuVpnNativeModule : Module() {
       )
     }
 
-    fun assessTamperRisk(context: Context): Boolean {
-      val debugger = android.os.Debug.isDebuggerConnected()
-      val frida = try {
-        java.net.Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", 27042), 200); true }
-      } catch (_: Throwable) { false }
-      val installerTrusted = try {
-        val installer = context.packageManager.getInstallerPackageName(context.packageName)
-        installer == null || installer == context.packageName || installer == "com.android.vending"
-      } catch (_: Throwable) { true }
-      return debugger || frida || !installerTrusted
-    }
-
     AsyncFunction("prepareVpn") {
       val activity = appContext.currentActivity ?: return@AsyncFunction false
       val intent = VpnService.prepare(activity)
@@ -204,5 +192,17 @@ class KighmuVpnNativeModule : Module() {
         .filter { it.isNotBlank() }
       mapOf("ips" to ips)
     }
+  }
+
+  private fun assessTamperRisk(context: Context): Boolean {
+    val debugger = android.os.Debug.isDebuggerConnected()
+    val frida = try {
+      java.net.Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", 27042), 200); true }
+    } catch (_: Throwable) { false }
+    val installerTrusted = try {
+      val installer = context.packageManager.getInstallerPackageName(context.packageName)
+      installer == null || installer == context.packageName || installer == "com.android.vending"
+    } catch (_: Throwable) { true }
+    return debugger || frida || !installerTrusted
   }
 }
