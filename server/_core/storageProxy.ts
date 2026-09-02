@@ -1,12 +1,31 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
+import type { RateLimitRequestHandler } from "express-rate-limit";
 import { ENV } from "./env";
+import { sdk } from "./sdk";
+import { log } from "./logger";
 
-export function registerStorageProxy(app: Express) {
-  app.get("/manus-storage/*", async (req, res) => {
+function isPublicKey(key: string): boolean {
+  return key.startsWith("public/") || key.startsWith("avatars/");
+}
+
+export function registerStorageProxy(
+  app: Express,
+  limiter: RateLimitRequestHandler,
+) {
+  app.get("/manus-storage/*", limiter, async (req: Request, res: Response) => {
     const key = (req.params as Record<string, string>)[0];
     if (!key) {
       res.status(400).send("Missing storage key");
       return;
+    }
+
+    if (!isPublicKey(key)) {
+      try {
+        await sdk.authenticateRequest(req);
+      } catch {
+        res.status(401).send("Authentication required");
+        return;
+      }
     }
 
     if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
@@ -27,7 +46,7 @@ export function registerStorageProxy(app: Express) {
 
       if (!forgeResp.ok) {
         const body = await forgeResp.text().catch(() => "");
-        console.error(`[StorageProxy] forge error: ${forgeResp.status} ${body}`);
+        log.error("StorageProxy", `${forgeResp.status} ${body}`);
         res.status(502).send("Storage backend error");
         return;
       }
@@ -41,7 +60,7 @@ export function registerStorageProxy(app: Express) {
       res.set("Cache-Control", "no-store");
       res.redirect(307, url);
     } catch (err) {
-      console.error("[StorageProxy] failed:", err);
+      log.error("StorageProxy", err);
       res.status(502).send("Storage proxy error");
     }
   });

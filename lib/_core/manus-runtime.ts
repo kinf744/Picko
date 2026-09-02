@@ -10,18 +10,30 @@
 
 import { Platform } from "react-native";
 import type { Metrics } from "react-native-safe-area-context";
+import { secureLog } from "./log";
 
 // Debug logging with timestamps
 const DEBUG = false;
 const log = (msg: string) => {
   if (!DEBUG) return;
-  const ts = new Date().toISOString();
-  console.log(`[ManusRuntime ${ts}] ${msg}`);
+  secureLog.dev(`[ManusRuntime ${new Date().toISOString()}] ${msg}`);
 };
 
 type MessageType = "appDevServerReady";
 type SafeAreaInsets = { top: number; right: number; bottom: number; left: number };
 type SafeAreaCallback = (metrics: Metrics) => void;
+
+const TRUSTED_PARENT_ORIGINS: readonly string[] = [
+  "https://manus.im",
+  "https://www.manus.im",
+  "https://manus.space",
+  "https://www.manus.space",
+  "http://localhost:3000",
+];
+
+function isTrustedOrigin(origin: string): boolean {
+  return TRUSTED_PARENT_ORIGINS.includes(origin);
+}
 
 interface SpacePreviewerMessage {
   type: "SpacePreviewerChannel";
@@ -50,12 +62,23 @@ function sendToParent(type: MessageType, payload: Record<string, unknown> = {}):
   // NOTE: Validate parent origin if we need to transfer sensitive data
   if (!isWeb() || !isInIframe()) return;
 
+  const parentOrigin = (() => {
+    try {
+      return new URL(document.referrer).origin;
+    } catch {
+      return "*";
+    }
+  })();
+
+  const targetOrigin =
+    parentOrigin !== "*" && isTrustedOrigin(parentOrigin) ? parentOrigin : "*";
+
   const message: SpacePreviewerMessage = {
     type: "SpacePreviewerChannel",
     payload: { type, from: "content", to: "container", payload },
   };
-  window.parent.postMessage(message, "*");
-  log(`Sent to parent: ${type}`);
+  window.parent.postMessage(message, targetOrigin);
+  log(`Sent to parent: ${type} (origin=${targetOrigin})`);
 }
 
 let initialized = false;
@@ -71,7 +94,7 @@ function isValidInsets(payload: Record<string, unknown>): payload is SafeAreaIns
 }
 
 function handleMessage(event: MessageEvent<unknown>): void {
-  // NOTE: Validate event.origin if we need to transfer sensitive data
+  if (!isTrustedOrigin(event.origin)) return;
   const data = event.data as SpacePreviewerMessage | undefined;
   if (!data || data.type !== "SpacePreviewerChannel") return;
 

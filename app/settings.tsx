@@ -1,7 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
@@ -60,8 +60,12 @@ export default function SettingsScreen() {
     Alert.alert(t("settings.copyOkTitle"), t("settings.copyOkBody"));
   };
   const reset = () => Alert.alert(t("settings.reset.title"), t("settings.reset.body"), [{ text: t("common.cancel"), style: "cancel" }, { text: t("settings.reset.confirm"), style: "destructive", onPress: () => { setSettings(DEFAULT_APP_SETTINGS); void saveAppSettings(DEFAULT_APP_SETTINGS); setThemePreference(DEFAULT_APP_SETTINGS.theme); setLanguagePreference(DEFAULT_APP_SETTINGS.language); } }]);
+  const safeBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  }, []);
 
-  return <ScreenContainer edges={["top", "bottom", "left", "right"]} className="px-5"><View style={styles.top}><Pressable onPress={() => router.back()} style={({ pressed }) => [styles.back, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="arrow-back" size={20} color={colors.foreground} /></Pressable><Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("settings.title")}</Text><View style={styles.back} /></View><ScrollView contentContainerStyle={styles.content}>
+  return <ScreenContainer edges={["top", "bottom", "left", "right"]} className="px-5"><View style={styles.top}><Pressable onPress={() => safeBack()} style={({ pressed }) => [styles.back, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="arrow-back" size={20} color={colors.foreground} /></Pressable><Text style={[styles.headerTitle, { color: colors.foreground }]}>{t("settings.title")}</Text><View style={styles.back} /></View><ScrollView contentContainerStyle={styles.content}>
     <Text style={[styles.intro, { color: colors.muted }]}>{t("settings.intro")}</Text>
 
     <SectionLabel>{t("settings.lang.section")}</SectionLabel>

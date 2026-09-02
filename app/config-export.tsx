@@ -3,13 +3,13 @@ import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { router } from "expo-router";
-import { type ComponentProps, useEffect, useMemo, useState } from "react";
+import { type ComponentProps, useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { Panel, PrimaryAction, SectionLabel } from "@/components/kighmu-ui";
 import { useColors } from "@/hooks/use-colors";
-import { buildClipboardPayload } from "@/lib/vpn/config-transfer";
+import { buildClipboardPayloadAsync } from "@/lib/vpn/config-transfer";
 import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, restrictionCount, type ExportRestrictions } from "@/lib/vpn/export-restrictions";
 import { TUNNEL_KINDS, type TunnelKind, type TunnelProfile } from "@/lib/vpn/tunnel-profiles";
 import { useVpn } from "@/lib/vpn/vpn-context";
@@ -65,6 +65,10 @@ export default function ConfigExportScreen() {
   const colors = useColors();
   const { t } = useLang();
   const { profilesByKind, buildConfigExport } = useVpn();
+  const safeBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  }, []);
   const [selected, setSelected] = useState<TunnelKind[]>([]);
   const [includeSecrets, setIncludeSecrets] = useState(false);
   const [fileName, setFileName] = useState("kighmu-vpn-config");
@@ -130,7 +134,7 @@ export default function ConfigExportScreen() {
     const execute = async () => {
       try {
         setWorking(true);
-        await Clipboard.setStringAsync(buildClipboardPayload(buildConfigExport(selected, includeSecrets, readyRestrictions)));
+        await Clipboard.setStringAsync(await buildClipboardPayloadAsync(buildConfigExport(selected, includeSecrets, readyRestrictions)));
         Alert.alert(t("export.copiedTitle"), t("export.copiedBody"));
       } catch (error) { Alert.alert(t("export.copyFailTitle"), error instanceof Error ? error.message : t("export.copyFailBody")); } finally { setWorking(false); }
     };
@@ -145,7 +149,7 @@ export default function ConfigExportScreen() {
 
   return <ScreenContainer edges={["top", "bottom", "left", "right"]} className="px-5">
     <View style={styles.top}>
-      <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.back, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="arrow-back" size={20} color={colors.foreground} /></Pressable>
+      <Pressable onPress={() => safeBack()} style={({ pressed }) => [styles.back, { backgroundColor: colors.surfaceRaised }, pressed && styles.pressed]}><MaterialIcons name="arrow-back" size={20} color={colors.foreground} /></Pressable>
       <Text style={[styles.title, { color: colors.foreground }]}>{t("export.title")}</Text>
       <View style={styles.back} />
     </View>

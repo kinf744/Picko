@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 
 type NativeSubscription = { remove: () => void };
-export type DeviceSecurityInfo = { hardwareId: string; mobileOperator: string; rooted: boolean };
+export type DeviceSecurityInfo = { hardwareId: string; mobileOperator: string; rooted: boolean; tamperRisk?: boolean };
 export type TrafficTotals = { rx: number; tx: number };
 
 type NativeVpnModule = {

@@ -73,6 +73,18 @@ jobs:
           NODE_ENV: development
         run: pnpm install --frozen-lockfile --prod=false
 
+      - name: Audit JavaScript dependencies
+        env:
+          NODE_ENV: development
+        run: |
+          set -euo pipefail
+          if ! pnpm audit --prod --json > /tmp/audit.json 2>/tmp/audit.err; then
+            echo "## pnpm audit summary" >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/audit.err >> "$GITHUB_STEP_SUMMARY" || true
+            cat /tmp/audit.json >> "$GITHUB_STEP_SUMMARY" || true
+            echo "::warning::pnpm audit a remonté des vulnérabilités (voir résumé)."
+          fi
+
       - name: Validate TypeScript and tests
         env:
           NODE_ENV: development
