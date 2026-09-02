@@ -65,7 +65,7 @@ class KighmuVpnNativeModule : Module() {
       )
     }
 
-    private fun assessTamperRisk(context: Context): Boolean {
+    fun assessTamperRisk(context: Context): Boolean {
       val debugger = android.os.Debug.isDebuggerConnected()
       val frida = try {
         java.net.Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", 27042), 200); true }
