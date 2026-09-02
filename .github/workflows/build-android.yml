@@ -78,12 +78,16 @@ jobs:
           NODE_ENV: development
         run: |
           set -euo pipefail
-          if ! pnpm audit --prod --json > /tmp/audit.json 2>/tmp/audit.err; then
-            echo "## pnpm audit summary" >> "$GITHUB_STEP_SUMMARY"
-            cat /tmp/audit.err >> "$GITHUB_STEP_SUMMARY" || true
-            cat /tmp/audit.json >> "$GITHUB_STEP_SUMMARY" || true
+          echo "## pnpm audit summary" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if pnpm audit --prod 2>&1 | tee /tmp/audit.txt; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Aucune vulnérabilité détectée." >> "$GITHUB_STEP_SUMMARY"
+          else
             echo "::warning::pnpm audit a remonté des vulnérabilités (voir résumé)."
+            head -c 1000000 /tmp/audit.txt >> "$GITHUB_STEP_SUMMARY" || true
           fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate TypeScript and tests
         env:
