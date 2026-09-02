@@ -7,61 +7,63 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import android.provider.Settings
-import android.telephony.TelephonyManager
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
-import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.net.InetAddress
-import java.net.Socket
-import java.security.MessageDigest
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.concurrent.TimeUnit
+import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.URL
 import kotlin.concurrent.thread
 
-/** Android VPN host for two isolated modes: legacy UDP-ZIVPN and one SSH/SlowDNS session. */
 class KighmuVpnService : VpnService() {
   private val lifecycleLock = Any()
   private var tunFd = -1
-  private var zivpnProcess: Process? = null
-  private var slowDnsTunnel: SlowDnsSshTunnel? = null
-  private var familyBalancer: SocksProfileBalancer? = null
-  private val familyStopActions = mutableListOf<() -> Unit>()
-  private var activeMode = "zivpn"
+  private var tunnels: List<LocalTunnel> = emptyList()
+  private var balancer: LocalSocksBalancer? = null
   private var attemptGeneration = 0L
-  @Volatile private var lastStopMs = 0L
-  @Volatile private var watchdogRunning = false
-
-  override fun onCreate() {
-    super.onCreate()
-    PersistentDiagnosticLog.initialize(this)
-    emitLog("info", "SERVICE", "Service VPN Android créé")
-  }
+  @Volatile private var runtimeSettings = VpnRuntimeSettings()
+  @Volatile private var activeProfilesJson = ""
+  @Volatile private var primaryProfileName = ""
+  private var vpnWakeLock: PowerManager.WakeLock? = null
+  @Volatile private var restartAttempts = 0
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    emitLog("info", "SERVICE", "Commande reçue : ${intent?.action ?: "inconnue"}")
     when (intent?.action) {
-      ACTION_STOP -> stopVpn()
+      ACTION_STOP -> {
+        clearSavedPayload()
+        stopVpn()
+      }
       ACTION_START -> {
-        val generation = beginStart() ?: return START_NOT_STICKY
-        thread(isDaemon = true, name = "kighmu-vpn-start") { startTunnel(intent, generation) }
+        val payload = intent.getStringExtra(EXTRA_PROFILES_JSON).orEmpty().ifBlank { readSavedPayload() }
+        val generation = beginStart() ?: return START_STICKY
+        restartAttempts = 0
+        savePayload(payload)
+        thread(isDaemon = true, name = "picko-vpn-start") { startTunnelsInternal(payload, generation) }
+      }
+      // Redémarrage par le système après arrêt du processus (START_STICKY) :
+      // relance immédiate avec le dernier payload connu.
+      else -> {
+        val payload = readSavedPayload()
+        if (payload.isBlank()) return START_NOT_STICKY
+        val generation = beginStart() ?: return START_STICKY
+        thread(isDaemon = true, name = "picko-vpn-start") { startTunnelsInternal(payload, generation) }
       }
     }
-    return START_NOT_STICKY
+    return START_STICKY
   }
+
+  private fun statePrefs() = getSharedPreferences("kighmu_vpn_state", Context.MODE_PRIVATE)
+  private fun readSavedPayload(): String = try { statePrefs().getString(KEY_LAST_PAYLOAD, null).orEmpty() } catch (_: Throwable) { "" }
+  private fun savePayload(payload: String) { if (payload.isNotBlank()) try { statePrefs().edit().putString(KEY_LAST_PAYLOAD, payload).apply() } catch (_: Throwable) {} }
+  private fun clearSavedPayload() { try { statePrefs().edit().remove(KEY_LAST_PAYLOAD).apply() } catch (_: Throwable) {} }
 
   private fun beginStart(): Long? = synchronized(lifecycleLock) {
     if (currentStatus == STATUS_CONNECTED || currentStatus == STATUS_CONNECTING) return@synchronized null
-    val now = android.os.SystemClock.elapsedRealtime()
-    if (now - lastStopMs < 4_000) {
-      emitLog("warning", "SERVICE", "Reconnexion trop rapide — patientez ${4 - (now - lastStopMs)/1000}s")
-      return@synchronized null
-    }
     attemptGeneration += 1
     currentStatus = STATUS_CONNECTING
     stateSink?.invoke(STATUS_CONNECTING)
@@ -69,415 +71,352 @@ class KighmuVpnService : VpnService() {
   }
 
   private fun isActive(generation: Long): Boolean = synchronized(lifecycleLock) {
-    generation == attemptGeneration && currentStatus == STATUS_CONNECTING
+    generation == attemptGeneration && (currentStatus == STATUS_CONNECTING || currentStatus == STATUS_CONNECTED)
   }
 
-  private fun startTunnel(intent: Intent, generation: Long) {
+  private fun startTunnelsInternal(payloadJson: String, generation: Long) {
     try {
-      val root = JSONObject(intent.getStringExtra(EXTRA_CONFIG_JSON).orEmpty())
-      if (root.optInt("version", 0) >= 3) startCatalogTunnel(root, generation)
-      else when (root.optString("mode", "zivpn")) {
-        "slowdns" -> startSlowDns(root, generation)
-        else -> startZivpn(root, generation)
+      FileLogger.init(this)
+      FileLogger.log(this, "SERVICE", "=== startTunnelsInternal generation=$generation payloadLen=${payloadJson.length} payload=${payloadJson.take(800)} ===")
+      FileLogger.log(this, "SERVICE", "Download log: ${FileLogger.getPath(this)}")
+      val payload = JSONObject(payloadJson)
+      runtimeSettings = VpnRuntimeSettings.parse(payload)
+      activeProfilesJson = payloadJson
+      savePayload(payloadJson)
+      FileLogger.log(this, "SERVICE", "runtimeSettings mtu=${runtimeSettings.mtu} dns=${runtimeSettings.dnsServers()} httpPing=${runtimeSettings.httpPingEnabled}")
+      val profiles = TunnelProfile.parseMany(payloadJson)
+      primaryProfileName = profiles.firstOrNull()?.name.orEmpty()
+      if (profiles.isEmpty()) error("Aucun profil de tunnel utilisable n’a été reçu")
+      profiles.forEach { profile -> profile.validate()?.let { error("${profile.name} : $it") } }
+
+      createNotificationChannel()
+      startForeground(NOTIFICATION_ID, notification("Préparation de ${profiles.size} tunnel(s)"))
+      val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+      val physicalNetwork = connectivity.activeNetwork ?: error("Aucun réseau physique disponible")
+      if (!connectivity.bindProcessToNetwork(physicalNetwork)) error("Impossible de lier les tunnels au réseau physique")
+
+      val established = Builder()
+        .setSession("KIGHMU multi-tunnel")
+        .setMtu(runtimeSettings.mtu)
+        .addAddress("10.0.0.2", 24)
+        .addRoute("0.0.0.0", 0)
+        .setUnderlyingNetworks(arrayOf(physicalNetwork))
+        .apply {
+          runtimeSettings.dnsServers().forEach { addDnsServer(it) }
+          addDisallowedApplication(packageName)
+        }
+        .establish() ?: error("Android n’a pas fourni l’interface VPN")
+      val fd = established.detachFd()
+      synchronized(lifecycleLock) {
+        if (!isActive(generation)) {
+          ParcelFileDescriptor.adoptFd(fd).close()
+          return
+        }
+        tunFd = fd
       }
-    } catch (error: Throwable) {
-      PersistentDiagnosticLog.recordThrowable(this, "SERVICE", error)
-      fail(generation, error.message ?: error::class.java.simpleName)
-    }
-  }
 
-  private fun startZivpn(root: JSONObject, generation: Long) {
-    val host = root.optString("host").trim()
-    val port = root.optString("port").trim().replace(Regex("\\s+"), "")
-    val password = root.optString("password").trim()
-    if (host.isBlank() || port.isBlank() || password.isBlank()) {
-      error("Host, port et mot de passe sont obligatoires")
-    }
-    activeMode = "zivpn"
-    createNotificationChannel()
-    startForeground(NOTIFICATION_ID, notification("Préparation UDP-ZIVPN"))
-    val physicalNetwork = physicalNetwork()
-    val resolvedHost = try { InetAddress.getByName(host).hostAddress ?: host } catch (_: Throwable) { host }
-    val fd = establishVpn("UDP-ZIVPN", physicalNetwork)
-    bindToPhysicalNetwork(physicalNetwork, "ZIVPN")
-    val nativeDir = applicationInfo.nativeLibraryDir
-    val binary = File(nativeDir, "libuz_core.so")
-    if (!binary.exists() || binary.length() == 0L || !binary.canExecute()) error("libuz_core.so absent ou non exécutable")
-    if (!ZivpnTun2Socks.init()) error("hev_jni indisponible dans l’APK")
-    val config = File(cacheDir, "zivpn-client.json")
-    config.writeText(buildUzConfig(resolvedHost, port, password, ZIVPN_FIXED_OBFS))
-    val process = ProcessBuilder(binary.absolutePath, "-s", ZIVPN_FIXED_OBFS, "--config", config.readText())
-      .directory(filesDir)
-      .apply {
-        environment()["LD_LIBRARY_PATH"] = nativeDir
-        environment()["HOME"] = cacheDir.absolutePath
-        environment()["TMPDIR"] = cacheDir.absolutePath
-        redirectErrorStream(true)
-      }
-      .start()
-    synchronized(lifecycleLock) { zivpnProcess = process }
-    emitLog("info", "ZIVPN", "libuz_core.so démarré, ABI armeabi-v7a, serveur=$resolvedHost:$port")
-    thread(isDaemon = true, name = "zivpn-native-log") { readNativeLogs(process, "ZIVPN") }
-    if (!waitForLocalPort(process, 7778, 3500L)) error("Le relais SOCKS5 ZIVPN n’est pas apparu sur 127.0.0.1:7778")
-    if (!isActive(generation)) return
-    ZivpnTun2Socks.start(this, fd, 7778, ZIVPN_TUN_MTU)
-    emitLog("info", "ZIVPN", "Relais TUN→SOCKS5 actif sur 127.0.0.1:7778")
-    markConnected(generation, "UDP-ZIVPN connecté à $resolvedHost:$port")
-  }
-
-  private fun startSlowDns(root: JSONObject, generation: Long) {
-    activeMode = "slowdns"
-    createNotificationChannel()
-    startForeground(NOTIFICATION_ID, notification("Préparation SSH/SlowDNS"))
-    val settings = SlowDnsSshTunnel.Settings.fromJson(root)
-    settings.validate()
-    val physicalNetwork = physicalNetwork()
-    val fd = establishVpn("SSH/SlowDNS", physicalNetwork)
-    bindToPhysicalNetwork(physicalNetwork, "SLOWDNS")
-    emitLog("info", "SLOWDNS", "Profil validé ; démarrage d’une session unique sans balancer")
-    val tunnel = SlowDnsSshTunnel(this, this, { level, component, message -> emitLog(level, component, message) })
-    synchronized(lifecycleLock) { slowDnsTunnel = tunnel }
-    val socksPort = tunnel.start(settings)
-    if (!isActive(generation)) return
-    if (!ZivpnTun2Socks.init()) error("hev_jni indisponible pour le relais SlowDNS")
-    ZivpnTun2Socks.start(this, fd, socksPort, 1400)
-    emitLog("info", "SLOWDNS", "Relais TUN→SOCKS5 actif ; session SSH/SlowDNS mono-tunnel prête")
-    markConnected(generation, "SSH/SlowDNS connecté")
-  }
-
-  private fun startCatalogTunnel(root: JSONObject, generation: Long) {
-    val kind = root.optString("kind").trim()
-    require(kind in setOf("zivpn", "slowdns", "hysteria", "http-payload", "ssh-tls", "v2ray-slowdns", "xray-v2ray")) { "Famille de tunnel inconnue" }
-    val profiles = root.optJSONArray("profiles") ?: JSONArray()
-    require(profiles.length() > 0) { "Aucun profil sélectionné pour $kind" }
-    enforceRestrictions(root)
-    activeMode = kind
-    createNotificationChannel()
-    startForeground(NOTIFICATION_ID, notification("Préparation ${familyLabel(kind)}"))
-    val physicalNetwork = physicalNetwork()
-    val fd = establishVpn(familyLabel(kind), physicalNetwork)
-    bindToPhysicalNetwork(physicalNetwork, kind.uppercase())
-    emitLog("info", "CATALOG", "${familyLabel(kind)} : ${profiles.length()} profil(s) sélectionné(s), runtime indépendant")
-
-    val ports = mutableListOf<Int>()
-    try {
-      for (index in 0 until profiles.length()) {
-        val profile = profiles.optJSONObject(index) ?: continue
+      val started = mutableListOf<LocalTunnel>()
+      profiles.forEach { profile ->
+        if (!isActive(generation)) return@forEach
         try {
-          val port = startCatalogProfile(kind, profile)
-          ports.add(port)
-          emitLog("info", kind.uppercase(), "Profil ${index + 1}/${profiles.length()} prêt sur SOCKS local $port")
+          val tunnel: LocalTunnel = when (profile.method) {
+            "zivpn-udp" -> ZivpnTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
+            "ssh-slowdns" -> SshSlowDnsTunnel(this, profile, ::emitLog)
+            "hysteria-udp" -> HysteriaTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
+            "xray" -> XrayTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
+            "v2ray-dns" -> V2RayDnsTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
+            "http-proxy-payload" -> HttpProxyPayloadTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
+            "ssh-ssl-tls" -> SshSslTlsTunnel(this, profile, ::emitLog, runtimeSettings.dnsServers())
+            else -> error("Méthode non prise en charge")
+          }
+          emitLog("connection", "TUNNEL", "Démarrage de ${profile.name} (${profile.method})")
+          try { FileLogger.log(this, "TUNNEL", "start ${profile.name} method=${profile.method} id=${profile.id}") } catch (_: Throwable) {}
+          tunnel.start()
+          started.add(tunnel)
         } catch (error: Throwable) {
-          emitLog("warning", kind.uppercase(), "Profil ${index + 1}/${profiles.length()} indisponible : ${error.message ?: "erreur"}")
+          try { FileLogger.log(this, "TUNNEL", "FAILED ${profile.name}: ${error.message} stack=${error.stackTrace.take(3).joinToString()}") } catch (_: Throwable) {}
+          emitLog("warning", "TUNNEL", "${profile.name} indisponible : ${error.message ?: "erreur inconnue"}")
         }
       }
-      require(ports.isNotEmpty()) { "Aucun profil $kind n’a démarré" }
-      // Vérification séquentielle : chaque profil SOCKS est sondé à tour de rôle avant balancier
-      for ((idx, p) in ports.withIndex()) {
-        val ok = try { Socket("127.0.0.1", p).use { true } } catch (_: Throwable) { false }
-        if (!ok) emitLog("warning", kind.uppercase(), "Vérification séquentielle profil ${idx+1}/${ports.size} sur $p a échoué")
-        else emitLog("info", kind.uppercase(), "Vérification séquentielle profil ${idx+1}/${ports.size} sur $p OK — prêt pour round-robin")
-        Thread.sleep(120)
+      if (started.isEmpty()) error("Aucun tunnel n’a pu établir un proxy SOCKS local")
+      if (!isActive(generation)) {
+        started.forEach { it.stop() }
+        return
       }
-      // Le round robin est une propriété du nombre de profils prêts : il ne dépend pas
-      // d’un interrupteur UI persistant qui pourrait rester désactivé après un import.
-      val shouldBalance = profiles.length() >= 2 && ports.size > 1
-      val useZivpnLocalRelay = kind == "zivpn"
-      // Calcul débit agrégé attendu
-      val expectedDown = try { (0 until profiles.length()).sumOf { profiles.optJSONObject(it)?.optString("downloadMbps", "50")?.toIntOrNull() ?: 50 } } catch (_: Throwable) { 50 }
-      if (shouldBalance) emitLog("info", "BALANCER", "Débit agrégé attendu ~${expectedDown} Mbps via ${ports.size} profils (round-robin séquentiel)")
-      val targetPort = if (shouldBalance || useZivpnLocalRelay) {
-        SocksProfileBalancer(ports) { level, component, message -> emitLog(level, component, message) }.also { balancer ->
-          familyBalancer = balancer
-        }.start()
-      } else ports.first()
-      if (!ZivpnTun2Socks.init()) error("hev_jni indisponible pour le relais ${familyLabel(kind)}")
-      val relayMtu = if (useZivpnLocalRelay) ZIVPN_TUN_MTU else DEFAULT_TUN_MTU
-      ZivpnTun2Socks.start(this, fd, targetPort, relayMtu)
-      val relayMode = when {
-        shouldBalance -> "balancier multi-profils actif"
-        useZivpnLocalRelay -> "relais local direct ZIVPN actif"
-        else -> "relais direct actif"
+
+      val localBalancer = LocalSocksBalancer(::emitLog)
+      localBalancer.start(started.map { it.socksPort })
+      if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
+      ZivpnTun2Socks.start(this, fd, localBalancer.port, runtimeSettings.mtu)
+      synchronized(lifecycleLock) {
+        if (!isActive(generation)) {
+          localBalancer.stop()
+          started.forEach { it.stop() }
+          return
+        }
+        tunnels = started.toList()
+        balancer = localBalancer
+        currentBalancerPort = localBalancer.port
+        restartAttempts = 0
+        currentStatus = STATUS_CONNECTED
+        stateSink?.invoke(STATUS_CONNECTED)
       }
-      emitLog("info", "CATALOG", "TUN→SOCKS5 actif sur $targetPort ; $relayMode ; MTU=$relayMtu")
-      markConnected(generation, "${familyLabel(kind)} connecté")
+      if (runtimeSettings.wakeLockEnabled) acquireWakeLock()
+      emitLog("connection", "BALANCER", "VPN connecté avec ${started.size} tunnel(s) disponibles ; MTU ${runtimeSettings.mtu}")
+      startForeground(NOTIFICATION_ID, notification("Connecté : ${started.size} tunnel(s) équilibrés"))
+      monitorTunnels(generation)
     } catch (error: Throwable) {
-      releaseFamilyResources()
-      throw error
-    }
-  }
-
-  private fun enforceRestrictions(root: JSONObject) {
-    val restrictions = root.optJSONObject("restrictions") ?: return
-    val expiry = restrictions.opt("expiresAt")
-      ?.takeUnless { it == JSONObject.NULL }
-      ?.toString()
-      ?.trim()
-      ?.takeUnless { it.equals("null", ignoreCase = true) }
-      .orEmpty()
-    if (expiry.isNotBlank()) {
-      val format = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
-      val expiryDate = try { format.parse(expiry) } catch (_: Throwable) { null }
-      if (expiryDate == null) {
-        emitLog("warning", "POLITIQUE", "Date d’expiration ignorée : format invalide")
+      // Coupure réseau brève : rester actif et attendre le retour du réseau (comportement VPN pro)
+      if (isActive(generation) && isNetworkUnavailable(error)) {
+        restartVpn(generation, error.message ?: "Réseau indisponible, en attente")
       } else {
-        require(!java.util.Date().after(expiryDate)) { "Configuration expirée le $expiry" }
+        fail(generation, error.message ?: error::class.java.simpleName)
       }
     }
-    if (restrictions.optBoolean("blockRootedDevice", false)) require(!isDeviceRooted()) { "Appareil rooté bloqué par cette configuration" }
-    if (restrictions.optBoolean("bindDeviceId", false)) {
-      val allowed = jsonStringSet(restrictions.optJSONArray("allowedHardwareIds"))
-      require(allowed.isNotEmpty()) { "Aucun Hardware ID autorisé dans cette configuration" }
-      require(deviceHardwareId(this) in allowed) { "Hardware ID non autorisé pour cette configuration" }
-    }
-    if (restrictions.optBoolean("lockMobileOperator", false)) {
-      val allowed = jsonStringSet(restrictions.optJSONArray("allowedMobileOperators"))
-      require(allowed.isNotEmpty()) { "Aucun opérateur autorisé dans cette configuration" }
-      val current = mobileOperator(this)
-      require(current.isNotBlank()) { "Opérateur mobile indisponible" }
-      require(current in allowed) { "Opérateur mobile $current non autorisé" }
-    }
-    if (restrictions.optBoolean("mobileDataOnly", false)) {
-      val manager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
-      val capabilities = manager.activeNetwork?.let { manager.getNetworkCapabilities(it) }
-      require(capabilities?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) == true) { "Cette configuration exige les données mobiles" }
-    }
-    if (restrictions.optBoolean("requireDeviceAttestation", false)) emitLog("warning", "POLITIQUE", "Attestation déclarée : un service compatible reste nécessaire pour une vérification distante.")
-    if (restrictions.optBoolean("blockTorrent", false)) emitLog("warning", "POLITIQUE", "Règle anti-torrent déclarée : le filtrage complet dépend du moteur ou du serveur compatible.")
   }
 
-  private fun jsonStringSet(values: JSONArray?): Set<String> = buildSet {
-    if (values == null) return@buildSet
-    for (index in 0 until values.length()) values.optString(index).trim().uppercase(Locale.US).takeIf { it.isNotBlank() }?.let { add(it) }
-  }
-
-  private fun startCatalogProfile(kind: String, profile: JSONObject): Int = when (kind) {
-    "zivpn" -> startZivpnProfile(profile)
-    "slowdns" -> {
-      val tunnel = SlowDnsSshTunnel(this, this, { level, component, message -> emitLog(level, component, message) }, "libdnstt.so", "slowdns-${profile.optString("id", "profile")}")
-      familyStopActions.add { tunnel.stop() }
-      tunnel.start(SlowDnsSshTunnel.Settings.fromProfile(profile))
-    }
-    "hysteria" -> {
-      val tunnel = HysteriaProfileTunnel(this) { level, component, message -> emitLog(level, component, message) }
-      familyStopActions.add { tunnel.stop() }
-      tunnel.start(profile)
-    }
-    "http-payload" -> {
-      val tunnel = HttpPayloadSshTunnel(this, this, { level, component, message -> emitLog(level, component, message) }, "http-payload-${profile.optString("id", "profile")}")
-      familyStopActions.add { tunnel.stop() }
-      tunnel.start(HttpPayloadSshTunnel.Settings.fromProfile(profile))
-    }
-    "ssh-tls" -> {
-      val tunnel = SshTlsTunnel(this, this, { level, component, message -> emitLog(level, component, message) }, "ssh-tls-${profile.optString("id", "profile")}")
-      familyStopActions.add { tunnel.stop() }
-      tunnel.start(SshTlsTunnel.Settings.fromProfile(profile))
-    }
-    "xray-v2ray" -> {
-      val tunnel = XrayProfileTunnel(this, "libxray.so", "xray-${profile.optString("id", "profile")}") { level, component, message -> emitLog(level, component, message) }
-      familyStopActions.add { tunnel.stop() }
-      tunnel.start(profile)
-    }
-    "v2ray-slowdns" -> startDnsXrayProfile(profile, "libdnstt.so", "libxray.so", "v2rayslowdns")
-    else -> error("Famille de tunnel inconnue")
-  }
-
-  private fun startZivpnProfile(profile: JSONObject): Int {
-    val host = profile.optString("host").trim()
-    val port = profile.optString("port").trim().replace(Regex("\\s+"), "")
-    val password = profile.optString("password").trim()
-    require(host.isNotBlank() && port.isNotBlank() && password.isNotBlank()) { "Profil UDP-ZIVPN incomplet" }
-    val binary = File(applicationInfo.nativeLibraryDir, "libuz_core.so")
-    require(binary.exists() && binary.length() > 0L && binary.canExecute()) { "libuz_core.so absent ou non exécutable" }
-    val socksPort = freeLocalPort()
-    val resolvedHost = try { InetAddress.getByName(host).hostAddress ?: host } catch (_: Throwable) { host }
-    val safeId = profile.optString("id", "profile").replace(Regex("[^A-Za-z0-9_-]"), "_").take(64)
-    val config = File(cacheDir, "zivpn_${safeId}.json")
-    config.writeText(buildUzConfig(resolvedHost, port, password, ZIVPN_FIXED_OBFS, profile.optString("uploadMbps", "10"), profile.optString("downloadMbps", "50"), socksPort))
-    val process = ProcessBuilder(binary.absolutePath, "-s", ZIVPN_FIXED_OBFS, "--config", config.readText()).directory(filesDir).apply {
-      environment()["LD_LIBRARY_PATH"] = applicationInfo.nativeLibraryDir
-      environment()["HOME"] = cacheDir.absolutePath
-      environment()["TMPDIR"] = cacheDir.absolutePath
-      redirectErrorStream(true)
-    }.start()
-    familyStopActions.add {
-      try { process.destroy() } catch (_: Throwable) {}
-      try { process.waitFor(700, TimeUnit.MILLISECONDS) } catch (_: Throwable) {}
-      if (process.isAlive) try { process.destroyForcibly() } catch (_: Throwable) {}
-      try { config.delete() } catch (_: Throwable) {}
-    }
-    thread(isDaemon = true, name = "zivpn-$safeId-log") { readNativeLogs(process, "ZIVPN") }
-    if (!waitForLocalPort(process, socksPort, 4_500L)) error("Le SOCKS5 UDP-ZIVPN n’est pas apparu pour le profil $safeId")
-    return socksPort
-  }
-
-  private fun startDnsXrayProfile(profile: JSONObject, dnsttBinary: String, xrayBinary: String, label: String): Int {
-    val dnstt = DnsttLocalClient(this, dnsttBinary, "$label-${profile.optString("id", "profile")}") { level, component, message -> emitLog(level, component, message) }
-    val dnsttPort = dnstt.start(profile.optString("dnsServer").trim(), profile.optString("dnsPort", "53").toIntOrNull() ?: 53, profile.optString("nameserver").trim(), profile.optString("publicKey").trim())
-    val xray = XrayProfileTunnel(this, xrayBinary, "$label-${profile.optString("id", "profile")}") { level, component, message -> emitLog(level, component, message) }
-    familyStopActions.add { xray.stop(); dnstt.stop() }
-    return xray.start(profile, "127.0.0.1", dnsttPort)
-  }
-
-  private fun releaseFamilyResources() {
-    try { familyBalancer?.close() } catch (_: Throwable) {}
-    familyBalancer = null
-    val actions = familyStopActions.toList()
-    familyStopActions.clear()
-    actions.asReversed().forEach { action -> try { action() } catch (_: Throwable) {} }
-  }
-
-  private fun freeLocalPort(): Int = java.net.ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
-  private fun familyLabel(kind: String): String = when (kind) {
-    "zivpn" -> "UDP-ZIVPN"
-    "slowdns" -> "SSH/SlowDNS"
-    "hysteria" -> "Hysteria UDP"
-    "http-payload" -> "HTTP Proxy+Payload"
-    "ssh-tls" -> "SSH SSL/TLS"
-    "v2ray-slowdns" -> "V2Ray+SlowDNS"
-    else -> "Xray/V2Ray"
-  }
-
-  private fun physicalNetwork() = (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).activeNetwork
-    ?: error("Aucun réseau physique disponible")
-
-  private fun establishVpn(session: String, network: android.net.Network): Int {
-    val isZivpn = session == "UDP-ZIVPN"
-    val mtu = if (isZivpn) ZIVPN_TUN_MTU else DEFAULT_TUN_MTU
-    val builder = Builder()
-      .setSession(session)
-      .setMtu(mtu)
-      .addAddress("10.0.0.2", 24)
-      .addRoute("0.0.0.0", 0)
-      .addDnsServer("8.8.8.8")
-      .setUnderlyingNetworks(arrayOf(network))
-    if (isZivpn) {
-      // Correspond au parcours multi-profil de Zamois-tun : le trafic du moteur reste
-      // explicitement sur le réseau physique, sans modifier le serveur ou libuz_core.
-      builder.allowBypass()
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(false)
-    }
-    builder.addDisallowedApplication(packageName)
-    val fd = builder.establish()?.detachFd() ?: error("Android n’a pas fourni l’interface VPN")
-    synchronized(lifecycleLock) { tunFd = fd }
-    return fd
-  }
-
-  private fun bindToPhysicalNetwork(network: android.net.Network, component: String) {
-    val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
-    if (!connectivity.bindProcessToNetwork(network)) error("Impossible de lier le processus au réseau physique")
-    emitLog("info", component, "Application exclue du TUN et processus lié au réseau physique")
-  }
-
-  private fun markConnected(generation: Long, text: String) {
-    synchronized(lifecycleLock) {
-      if (!isActive(generation)) return
-      currentStatus = STATUS_CONNECTED
-      stateSink?.invoke(STATUS_CONNECTED)
-    }
-    startForeground(NOTIFICATION_ID, notification(text))
-    startWatchdog(generation)
-  }
-
-  private fun startWatchdog(generation: Long) {
-    watchdogRunning = true
-    thread(isDaemon = true, name = "kighmu-watchdog") {
-      var consecutiveFailures = 0
-      while (watchdogRunning && currentStatus == STATUS_CONNECTED && isActive(generation)) {
-        try { Thread.sleep(5_000) } catch (_: Throwable) { break }
-        if (!watchdogRunning || currentStatus != STATUS_CONNECTED) break
-        // Vérifie que le TUN est toujours vivant et qu'au moins une sortie SOCKS répond
-        val tunAlive = synchronized(lifecycleLock) { tunFd >= 0 }
-        if (!tunAlive) {
-          emitLog("error", "WATCHDOG", "TUN fermé — reconnexion nécessaire")
-          fail(generation, "TUN fermé")
-          break
+  private fun monitorTunnels(generation: Long) {
+    thread(isDaemon = true, name = "picko-vpn-health") {
+      var lastPorts = emptyList<Int>()
+      var recoveryLogged = false
+      var pingFailures = 0
+      var emptyStreak = 0
+      val strikes = HashMap<Int, Int>()
+      var nextPingAt = System.currentTimeMillis() + runtimeSettings.httpPingIntervalMs
+      while (isActive(generation)) {
+        Thread.sleep(2_500)
+        val snapshot = synchronized(lifecycleLock) { tunnels.toList() }
+        // Hystérésis : un tunnel n'est retiré qu'après DEUX sondes consécutives
+        // négatives (le SOCKS local peut être brièvement occupé par le trafic).
+        snapshot.forEach { tunnel ->
+          strikes[tunnel.socksPort] = if (tunnel.isHealthy()) 0 else (strikes[tunnel.socksPort] ?: 0) + 1
         }
-        // Pour les familles avec balancer, vérifie qu'au moins un port upstream répond
-        val balancerPorts = familyBalancer?.let { it } // accès indirect via réflexion du port
-        // On sonde le relais global via ZivpnTun2Socks : s'il est arrêté, on échoue
-        try {
-          // Simple sonde : si le relais TUN->SOCKS est arrêté, ZivpnTun2Socks.stop() aurait été appelé
-          // On vérifie que le descripteur TUN n'a pas été fermé par Android
-          if (tunFd < 0) throw IllegalStateException("TUN invalide")
-          consecutiveFailures = 0
-        } catch (e: Throwable) {
-          consecutiveFailures++
-          emitLog("warning", "WATCHDOG", "Surveillance : tentative $consecutiveFailures/3 — ${e.message}")
-          if (consecutiveFailures >= 3) {
-            fail(generation, "Surveillance : tunnel instable")
-            break
+        val healthy = snapshot.filter { (strikes[it.socksPort] ?: 0) == 0 }
+        val recovering = snapshot.any { it.isRecovering() }
+        val ports = healthy.map { it.socksPort }
+        if (ports != lastPorts) {
+          balancer?.updatePorts(ports)
+          emitLog("info", "BALANCER", "${ports.size} tunnel(s) sain(s) après contrôle de santé")
+          lastPorts = ports
+        }
+        if (ports.isEmpty()) {
+          emptyStreak += 1
+          if (recovering) {
+            if (!recoveryLogged) {
+              emitLog("warning", "TUNNEL", "Tunnel temporairement indisponible ; reconnexion locale en cours")
+              recoveryLogged = true
+            }
+          } else if (emptyStreak < 2) {
+            // Première observation vide : grâce supplémentaire avant décision.
+          } else if (runtimeSettings.alwaysReconnect) {
+            restartVpn(generation, "Tous les tunnels sont indisponibles")
+            return@thread
+          } else {
+            fail(generation, "Tous les tunnels sont indisponibles")
+            return@thread
+          }
+        } else {
+          emptyStreak = 0
+          recoveryLogged = false
+        }
+        val now = System.currentTimeMillis()
+        // Vérification HTTP active uniquement si l'utilisateur a activé pingEnabled ET httpPingEnabled
+        if (runtimeSettings.httpPingEnabled && runtimeSettings.pingEnabled && now >= nextPingAt && ports.isNotEmpty()) {
+          nextPingAt = now + runtimeSettings.httpPingIntervalMs
+          val result = httpPing()
+          if (result.success) {
+            if (pingFailures > 0) emitLog("connection", "PING", "Vérification HTTP rétablie via le balancier SOCKS")
+            pingFailures = 0
+            // Émet un log ping avec latence (UI affichera couleur vert/rouge selon seuil)
+            val ms = result.latencyMs
+            val level = when {
+              ms <= 0L -> "warning"
+              ms < 300L -> "connection"
+              ms < 800L -> "info"
+              else -> "warning"
+            }
+            emitLog(level, "PING", "Ping ${result.code} OK (${ms}ms)")
+          } else {
+            pingFailures += 1
+            emitLog("warning", "PING", "Échec HTTP $pingFailures/${runtimeSettings.reconnectAfterFailures.coerceAtLeast(1)}")
+            // Plancher anti-faux-positifs : au moins 6 échecs consécutifs (~30 s)
+            // avant de reconstruire le tunnel, même si le réglage utilisateur est plus bas.
+            val restartThreshold = maxOf(runtimeSettings.reconnectAfterFailures, 6)
+            if (runtimeSettings.reconnectAfterFailures > 0 && pingFailures >= restartThreshold) {
+              if (runtimeSettings.alwaysReconnect) {
+                restartVpn(generation, "Vérification HTTP en échec à $pingFailures reprises")
+              } else {
+                fail(generation, "Vérification HTTP en échec à $pingFailures reprises")
+              }
+              return@thread
+            }
           }
         }
       }
     }
   }
 
-  private fun buildUzConfig(host: String, port: String, password: String, obfs: String, uploadMbps: String = "10", downloadMbps: String = "50", socksPort: Int = 7778): String {
-    val safeUpload = uploadMbps.toIntOrNull()?.coerceAtLeast(1) ?: 10
-    val safeDownload = downloadMbps.toIntOrNull()?.coerceAtLeast(1) ?: 50
-    return """{"server":"${json(host + ":" + port)}","obfs":"${json(obfs)}","auth":"${json(password)}","socks5":{"listen":"127.0.0.1:$socksPort"},"insecure":true,"recvwindowconn":65536,"recvwindow":262144,"disable_mtu_discovery":true,"down_mbps":$safeDownload,"up_mbps":$safeUpload}"""
+  private data class PingResult(val success: Boolean, val code: Int, val latencyMs: Long)
+
+  private fun httpPing(): PingResult = try {
+    val socksPort = synchronized(lifecycleLock) { balancer?.port } ?: return PingResult(false, 0, 0L)
+    val startNs = System.nanoTime()
+    val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
+    val connection = URL(runtimeSettings.httpPingUrl).openConnection(proxy) as HttpURLConnection
+    connection.connectTimeout = runtimeSettings.httpPingTimeoutMs
+    connection.readTimeout = runtimeSettings.httpPingTimeoutMs
+    connection.instanceFollowRedirects = true
+    connection.setRequestProperty("Connection", "close")
+    val code = connection.responseCode
+    connection.disconnect()
+    val ms = (System.nanoTime() - startNs) / 1_000_000L
+    PingResult(code in 200..399, code, ms)
+  } catch (error: Throwable) {
+    emitLog("info", "PING", "Vérification HTTP indisponible : ${error.message ?: "erreur réseau"}")
+    PingResult(false, 0, 0L)
   }
 
-  private fun json(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
-
-  private fun waitForLocalPort(process: Process, port: Int, timeoutMs: Long): Boolean {
-    val deadline = System.nanoTime() + timeoutMs * 1_000_000L
-    while (System.nanoTime() < deadline && process.isAlive) {
-      try { Socket("127.0.0.1", port).use { return true } } catch (_: Throwable) { Thread.sleep(50) }
+  private fun restartVpn(generation: Long, reason: String) {
+    if (!isActive(generation)) return
+    val payload = activeProfilesJson
+    if (payload.isBlank()) {
+      fail(generation, reason)
+      return
     }
-    return false
+    restartAttempts += 1
+    // Backoff exponentiel : 1 s, 2 s, 4 s, 8 s, 16 s puis palier à 30 s.
+    val delay = minOf(30_000L, 1_000L shl (restartAttempts - 1).coerceAtMost(5))
+    emitLog("warning", "VPN", "$reason ; reconnexion automatique dans ${delay / 1000} s (essai $restartAttempts)")
+    val nextGeneration = softStopKeepForeground() ?: return
+    thread(isDaemon = true, name = "picko-vpn-restart") {
+      try { Thread.sleep(delay) } catch (_: InterruptedException) { return@thread }
+      try {
+        startTunnelsInternal(payload, nextGeneration)
+      } catch (error: Throwable) {
+        // Réseau physique absent (données mobiles coupées, mode avion, etc.) :
+        // on NE ferme PAS le VPN, on re-boucle avec backoff jusqu'au retour du
+        // réseau ou jusqu'à un arrêt manuel de l'utilisateur. Sinon l'app se
+        // fermait au premier essai de reconnexion sans réseau.
+        if (isActive(nextGeneration) && isNetworkUnavailable(error)) {
+          restartVpn(nextGeneration, "Réseau indisponible, en attente de sa remise en service")
+        } else {
+          fail(nextGeneration, error.message ?: "reconnexion impossible")
+        }
+      }
+    }
   }
 
-  private fun readNativeLogs(process: Process, component: String) {
-    try { process.inputStream.bufferedReader().useLines { lines -> lines.forEach { line -> if (line.isNotBlank()) emitLog("info", component, line.take(500)) } } }
-    catch (_: Throwable) { emitLog("warning", component, "Lecture du journal natif interrompue") }
+  /** Vrai si l'échec vient de l'absence de réseau physique (données coupées). */
+  private fun isNetworkUnavailable(error: Throwable): Boolean {
+    val msg = error.message?.lowercase().orEmpty()
+    if (msg.contains("aucun réseau physique") || msg.contains("aucun tunnel n'a pu établir") ||
+        msg.contains("network is unreachable") || msg.contains("unable to resolve host") ||
+        msg.contains("no address associated with hostname") || msg.contains("software caused connection abort")) return true
+    return try {
+      val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+      // Le VPN lui-même apparaît comme activeNetwork ; on cherche un réseau physique (non-VPN) avec INTERNET
+      val hasPhysicalInternet = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        cm.allNetworks.any { net ->
+          val caps = cm.getNetworkCapabilities(net) ?: return@any false
+          caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        }
+      } else {
+        @Suppress("DEPRECATION") cm.activeNetworkInfo?.isConnected == true
+      }
+      !hasPhysicalInternet
+    } catch (_: Throwable) { false }
+  }
+
+  /**
+   * Ferme UNIQUEMENT le plan de données (tun, tunnels, balancier, wake lock)
+   * en conservant le service au premier plan : la clé VPN reste affichée
+   * pendant la reconnexion et aucun démarrage foreground n'est demandé
+   * depuis l'arrière-plan (interdit sur Android 12+ — cause de l'arrêt
+   * définitif observé après quelques minutes).
+   */
+  private fun softStopKeepForeground(): Long? = synchronized(lifecycleLock) {
+    if (currentStatus != STATUS_CONNECTED && currentStatus != STATUS_CONNECTING) return@synchronized null
+    attemptGeneration += 1
+    val fd = tunFd
+    tunFd = -1
+    val runningTunnels = tunnels
+    tunnels = emptyList()
+    val runningBalancer = balancer
+    balancer = null
+    currentBalancerPort = -1
+    currentStatus = STATUS_CONNECTING
+    stateSink?.invoke(STATUS_CONNECTING)
+    try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
+    try { runningBalancer?.stop() } catch (_: Throwable) {}
+    runningTunnels.forEach { tunnel -> try { tunnel.stop() } catch (_: Throwable) {} }
+    if (fd >= 0) try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
+    try { vpnWakeLock?.takeIf { it.isHeld }?.release() } catch (_: Throwable) {}
+    vpnWakeLock = null
+    createNotificationChannel()
+    startForeground(NOTIFICATION_ID, notification("Reconnexion automatique du tunnel…"))
+    attemptGeneration
   }
 
   private fun fail(generation: Long, message: String) {
     if (!isActive(generation)) return
-    emitLog("error", activeMode.uppercase(), "Échec du tunnel : $message")
+    try { FileLogger.log(this, "VPN", "FAIL generation=$generation: $message") } catch (_: Throwable) {}
+    emitLog("error", "VPN", "Échec de connexion : $message")
     stopVpn(STATUS_ERROR)
   }
 
   private fun emitLog(level: String, component: String, message: String) {
-    PersistentDiagnosticLog.record(this, level, component, message)
+    try { FileLogger.log(this, component, "[$level] $message") } catch (_: Throwable) {}
+    if (!runtimeSettings.debugMode && level == "info") return
     logSink?.invoke(level, component, message)
   }
 
+  private fun acquireWakeLock() {
+    try {
+      val manager = getSystemService(POWER_SERVICE) as PowerManager
+      val lock = manager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:PickoVpn")
+      lock.setReferenceCounted(false)
+      lock.acquire()
+      vpnWakeLock = lock
+      emitLog("connection", "VPN", "WakeLock activé")
+    } catch (error: Throwable) {
+      emitLog("warning", "VPN", "WakeLock non disponible : ${error.message ?: "permission manquante"}")
+    }
+  }
+
   private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
-    watchdogRunning = false
-    lastStopMs = android.os.SystemClock.elapsedRealtime()
-    val zivpn: Process?
-    val slowDns: SlowDnsSshTunnel?
     val fd: Int
+    val runningTunnels: List<LocalTunnel>
+    val runningBalancer: LocalSocksBalancer?
     synchronized(lifecycleLock) {
       attemptGeneration += 1
-      zivpn = zivpnProcess; zivpnProcess = null
-      slowDns = slowDnsTunnel; slowDnsTunnel = null
-      fd = tunFd; tunFd = -1
+      fd = tunFd
+      tunFd = -1
+      runningTunnels = tunnels
+      tunnels = emptyList()
+      runningBalancer = balancer
+      balancer = null
+      currentBalancerPort = -1
       currentStatus = finalStatus
       stateSink?.invoke(finalStatus)
     }
+    try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
+    try { runningBalancer?.stop() } catch (_: Throwable) {}
+    runningTunnels.forEach { tunnel -> try { tunnel.stop() } catch (_: Throwable) {} }
     if (fd >= 0) try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
+    try { vpnWakeLock?.takeIf { it.isHeld }?.release() } catch (_: Throwable) {}
+    vpnWakeLock = null
     try { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).bindProcessToNetwork(null) } catch (_: Throwable) {}
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
-    thread(isDaemon = true, name = "vpn-stop") {
-      try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
-      try { releaseFamilyResources() } catch (_: Throwable) {}
-      try { slowDns?.stop() } catch (_: Throwable) {}
-      try { zivpn?.waitFor(700, TimeUnit.MILLISECONDS) } catch (_: Throwable) {}
-      try { if (zivpn?.isAlive == true) zivpn.destroyForcibly() } catch (_: Throwable) {}
-      File(cacheDir, "zivpn-client.json").delete()
-      emitLog("info", activeMode.uppercase(), "Arrêt complet du tunnel")
-    }
+    emitLog("info", "VPN", if (finalStatus == STATUS_ERROR) "VPN arrêté après erreur" else "VPN arrêté")
     stopSelf()
   }
 
   private fun createNotificationChannel() {
-    if (Build.VERSION.SDK_INT >= 26) getSystemService(NotificationManager::class.java).createNotificationChannel(
-      NotificationChannel(CHANNEL_ID, "KIGHMU VPN", NotificationManager.IMPORTANCE_LOW),
-    )
+    if (Build.VERSION.SDK_INT >= 26) {
+      getSystemService(NotificationManager::class.java).createNotificationChannel(
+        NotificationChannel(CHANNEL_ID, "KIGHMU VPN", NotificationManager.IMPORTANCE_LOW),
+      )
+    }
   }
 
   private fun notification(text: String): Notification {
@@ -485,9 +424,8 @@ class KighmuVpnService : VpnService() {
     val pending = launchIntent?.let { PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT) }
     val stopPending = PendingIntent.getService(this, NOTIFICATION_ID, Intent(this, KighmuVpnService::class.java).apply { action = ACTION_STOP }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     return NotificationCompat.Builder(this, CHANNEL_ID)
-      .setSmallIcon(R.drawable.ic_kighmu_vpn_notification)
-      .setColor(0xFF246BFD.toInt())
-      .setContentTitle("KIGHMU VPN")
+      .setSmallIcon(R.drawable.ic_kg_notification)
+      .setContentTitle(if (runtimeSettings.profileNameInNotification && primaryProfileName.isNotBlank()) "KIGHMU VPN — $primaryProfileName" else "KIGHMU VPN")
       .setContentText(text)
       .setOngoing(true)
       .setContentIntent(pending)
@@ -495,58 +433,25 @@ class KighmuVpnService : VpnService() {
       .build()
   }
 
-  override fun onRevoke() { emitLog("warning", "SERVICE", "Autorisation VPN révoquée par Android"); stopVpn(); super.onRevoke() }
-  override fun onDestroy() { emitLog("info", "SERVICE", "Service VPN détruit"); stopVpn(); super.onDestroy() }
-  override fun onBind(intent: Intent?) = super.onBind(intent)
+  override fun onRevoke() { stopVpn(); super.onRevoke() }
+  override fun onDestroy() { stopVpn(); super.onDestroy() }
 
   companion object {
     const val ACTION_START = "expo.modules.kighmuvpnnative.START"
     const val ACTION_STOP = "expo.modules.kighmuvpnnative.STOP"
-    const val EXTRA_CONFIG_JSON = "config_json"
+    const val EXTRA_PROFILES_JSON = "profilesJson"
     const val PREPARE_REQUEST_CODE = 4007
     const val STATUS_DISCONNECTED = "disconnected"
     const val STATUS_CONNECTING = "connecting"
     const val STATUS_CONNECTED = "connected"
     const val STATUS_ERROR = "error"
     const val CHANNEL_ID = "kighmu-vpn"
+    private const val KEY_LAST_PAYLOAD = "last_profiles_json"
     const val NOTIFICATION_ID = 4008
-    const val ZIVPN_FIXED_OBFS = "hu``hqb`c"
-    const val DEFAULT_TUN_MTU = 1400
-    const val ZIVPN_TUN_MTU = 1500
-
-    fun deviceSecurityInfo(context: Context): Map<String, Any> = mapOf(
-      "hardwareId" to deviceHardwareId(context),
-      "mobileOperator" to mobileOperator(context),
-      "rooted" to isDeviceRooted(),
-      "tamperRisk" to assessTamperRisk(context),
-    )
-
-    private fun assessTamperRisk(context: Context): Boolean {
-      val debugger = android.os.Debug.isDebuggerConnected()
-      val frida = try {
-        java.net.Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", 27042), 200); true }
-      } catch (_: Throwable) { false }
-      val packageContext = try { context.packageManager.getPackageInfo(context.packageName, 0) } catch (_: Throwable) { null }
-      val installerTrusted = packageContext?.let {
-        val installer = try { context.packageManager.getInstallerPackageName(it.packageName) } catch (_: Throwable) { null }
-        installer == null || installer == context.packageName || installer == "com.android.vending"
-      } ?: false
-      return debugger || frida || !installerTrusted
-    }
-
-    private fun deviceHardwareId(context: Context): String {
-      val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID).orEmpty().ifBlank { "${Build.FINGERPRINT}:${context.packageName}" }
-      val digest = MessageDigest.getInstance("MD5").digest(androidId.toByteArray(Charsets.UTF_8))
-      return digest.joinToString("") { "%02X".format(Locale.US, it) }
-    }
-
-    private fun mobileOperator(context: Context): String {
-      val manager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-      return try { manager?.simOperator.orEmpty().trim().uppercase(Locale.US) } catch (_: SecurityException) { "" }
-    }
-
-    private fun isDeviceRooted(): Boolean = Build.TAGS?.contains("test-keys") == true || listOf("/system/bin/su", "/system/xbin/su", "/sbin/su", "/system/app/Superuser.apk").any { File(it).exists() }
     @Volatile var currentStatus = STATUS_DISCONNECTED
+    // Port SOCKS local du balancier actif (-1 si VPN arrêté) : sert à la sonde
+    // d'IP de sortie du Hotspot Share (requête HTTP via le tunnel réel).
+    @Volatile var currentBalancerPort: Int = -1
     @Volatile var logSink: ((String, String, String) -> Unit)? = null
     @Volatile var stateSink: ((String) -> Unit)? = null
   }

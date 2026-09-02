@@ -61,7 +61,20 @@ class KighmuVpnNativeModule : Module() {
         "hardwareId" to hardwareId,
         "mobileOperator" to mobileOperator,
         "rooted" to rooted,
+        "tamperRisk" to assessTamperRisk(context),
       )
+    }
+
+    private fun assessTamperRisk(context: Context): Boolean {
+      val debugger = android.os.Debug.isDebuggerConnected()
+      val frida = try {
+        java.net.Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", 27042), 200); true }
+      } catch (_: Throwable) { false }
+      val installerTrusted = try {
+        val installer = context.packageManager.getInstallerPackageName(context.packageName)
+        installer == null || installer == context.packageName || installer == "com.android.vending"
+      } catch (_: Throwable) { true }
+      return debugger || frida || !installerTrusted
     }
 
     AsyncFunction("prepareVpn") {
