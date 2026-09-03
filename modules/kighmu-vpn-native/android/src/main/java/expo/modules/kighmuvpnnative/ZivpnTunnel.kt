@@ -141,7 +141,7 @@ class ZivpnTunnel(
           // Si keepalive échoue, le health watcher détectera et scheduleRecovery prendra le relais
         }
       }
-    }.apply { isDaemon = true; name = "zivpn-keepalive-$socksPort" }.start()
+    }.apply { isDaemon = true; name = "zivpn-keepalive-$socksPort" }.also { it.start() }
   }
 
   private fun scheduleRecovery() {
@@ -178,7 +178,7 @@ class ZivpnTunnel(
         }
         recovering = false
       } catch (_: InterruptedException) {} finally { if (Thread.currentThread() === recoveryThread) recoveryThread = null }
-    }.apply { isDaemon = true; name = "zivpn-recovery-$socksPort" }.start()
+    }.apply { isDaemon = true; name = "zivpn-recovery-$socksPort" }.also { it.start() }
   }
 
   private fun destroyProcess(p: Process?) {
