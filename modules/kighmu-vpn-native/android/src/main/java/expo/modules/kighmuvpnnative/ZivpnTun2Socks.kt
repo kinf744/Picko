@@ -28,7 +28,6 @@ object ZivpnTun2Socks {
       file.writeText(
         """
         tunnel:
-          mtu: $mtu
           ipv4: 198.18.0.1
         socks5:
           port: $socksPort
