@@ -162,7 +162,9 @@ class KighmuVpnService : VpnService() {
       val localBalancer = LocalSocksBalancer(::emitLog)
       localBalancer.start(started.map { it.socksPort })
       if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
-      ZivpnTun2Socks.start(this, fd, localBalancer.port, runtimeSettings.mtu)
+      val isZivpnOnly = started.size == 1 && started.firstOrNull()?.let { it is ZivpnTunnel } == true
+      if (isZivpnOnly) ZivpnTun2Socks.startForZivpn(this, fd, localBalancer.port)
+      else ZivpnTun2Socks.start(this, fd, localBalancer.port, runtimeSettings.mtu)
       synchronized(lifecycleLock) {
         if (!isActive(generation)) {
           localBalancer.stop()

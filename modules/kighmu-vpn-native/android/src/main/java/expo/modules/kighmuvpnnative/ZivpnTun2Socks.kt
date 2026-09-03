@@ -44,6 +44,34 @@ object ZivpnTun2Socks {
     }
   }
 
+  /** Pont moderne dédié ZIVPN UDP : DNS en TCP (évite NAT UDP), MTU auto. */
+  fun startForZivpn(context: Context, fd: Int, socksPort: Int) {
+    lock.withLock {
+      if (!init()) error("hev_jni indisponible pour le relais ZIVPN")
+      if (running) {
+        hev.htproxy.TProxyService.TProxyStopService()
+        running = false
+      }
+      val file = File(context.cacheDir, "zivpn-hev.yaml")
+      file.writeText(
+        """
+        tunnel:
+          ipv4: 198.18.0.1
+        socks5:
+          port: $socksPort
+          address: 127.0.0.1
+          udp: tcp
+        misc:
+          log-level: warn
+        """.trimIndent(),
+      )
+      configFile = file
+      hev.htproxy.TProxyService.TProxyStartService(file.absolutePath, fd)
+      running = true
+      Log.i(TAG, "ZIVPN TUN relay (moderne) started fd=$fd socks=$socksPort udp=tcp")
+    }
+  }
+
   fun stop() {
     lock.withLock {
       if (running && hev.htproxy.TProxyService.isAvailable) {
