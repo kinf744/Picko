@@ -35,27 +35,22 @@ object FileLogger {
     resolvedFile?.let { if (it.exists() || it.parentFile?.exists() == true) return it }
     synchronized(lock) {
       resolvedFile?.let { return it }
-      // 1) Dossier Download public (visible dans Files/Download)
+      // Fichier interne prive (MODE_PRIVATE) - non visible par autres apps ni MTP
       try {
-        @Suppress("DEPRECATION")
-        val publicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (publicDir != null) {
-          if (!publicDir.exists()) publicDir.mkdirs()
-          val candidate = File(publicDir, FILENAME)
-          try {
-            if (!candidate.exists()) candidate.createNewFile()
-            if (candidate.canWrite()) {
-              resolvedFile = candidate
-              return candidate
-            }
-          } catch (_: Throwable) {}
-        }
+        val privateDir = File(context.filesDir, "kighmu-logs")
+        if (!privateDir.exists()) privateDir.mkdirs()
+        val candidate = File(privateDir, FILENAME)
+        try {
+          if (!candidate.exists()) candidate.createNewFile()
+          if (candidate.canWrite()) {
+            resolvedFile = candidate
+            return candidate
+          }
+        } catch (_: Throwable) {}
       } catch (_: Throwable) {}
-      // 2) Fallback scoped (toujours writable, visible via Android/data)
+      // Fallback scoped externe prive
       try {
-        val scopedDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-          ?: context.getExternalFilesDir(null)
-          ?: context.filesDir
+        val scopedDir = context.getExternalFilesDir(null) ?: context.filesDir
         if (!scopedDir.exists()) scopedDir.mkdirs()
         val fallback = File(scopedDir, FILENAME)
         resolvedFile = fallback
@@ -160,11 +155,23 @@ object FileLogger {
     try {
       val file = resolveFile(context) ?: return
       synchronized(lock) {
+        try { file.writeBytes(ByteArray(file.length().toInt())) } catch (_: Throwable) {}
         file.writeText("")
+        try { file.delete() } catch (_: Throwable) {}
+        resolvedFile = null
         lastMsgByComponent.clear()
         timestampsByComponent.clear()
       }
     } catch (_: Throwable) {}
+  }
+
+  fun secureDelete(file: File?) {
+    if (file == null || !file.exists()) return
+    try {
+      val len = file.length().toInt().coerceAtMost(8 * 1024 * 1024)
+      if (len > 0) file.writeBytes(ByteArray(len))
+      file.delete()
+    } catch (_: Throwable) { try { file.delete() } catch (_: Throwable) {} }
   }
 
   /** Journalise JSON Xray en masquant secrets mais en gardant protocole/transport pour debug Trojan/VMess */
@@ -172,12 +179,8 @@ object FileLogger {
     try {
       val sanitized = sanitizeXrayJson(json)
       log(context, component, "CONFIG Xray (sanitized): $sanitized")
-      // Log brut tronqué pour analyse approfondie (secrets remplacés)
-      if (json.length > 4000) {
-        log(context, component, "CONFIG Xray brut tronqué: ${json.take(4000)} ... [${json.length} chars]")
-      }
     } catch (_: Throwable) {
-      log(context, component, "CONFIG Xray (raw): ${json.take(2000)}")
+      log(context, component, "CONFIG Xray (sanitized-fallback): ${json.replace(Regex("\"(id|password)\"\\s*:\\s*\"[^\"]+\""), "\"\$1\":\"***REDACTED***\"").take(2000)}")
     }
   }
 

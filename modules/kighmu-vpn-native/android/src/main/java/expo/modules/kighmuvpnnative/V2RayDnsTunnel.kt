@@ -57,7 +57,7 @@ class V2RayDnsTunnel(
 
   override fun stop() {
     stopRequested.set(true); recovering = false; recoveryThread?.interrupt(); recoveryThread = null
-    destroyComponents(); try { configFile?.delete() } catch (_: Throwable) {}; configFile = null
+    destroyComponents(); FileLogger.secureDelete(configFile); configFile = null
   }
 
   private fun launchComponents() {

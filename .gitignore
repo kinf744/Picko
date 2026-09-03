@@ -69,6 +69,12 @@ Thumbs.db
 *.tgz
 *.tar.gz
 .cache/
+*.map
+android/app/mapping.txt
+android/app/seeds.txt
+android/app/usage.txt
+android/app/build/outputs/mapping/
+assets/bin/kighmu-native-armeabi-v7a
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/

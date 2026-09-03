@@ -2,19 +2,20 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
-# JNI symbols registered via RegisterNatives
--keepclasseswithmembernames class * {
+# JNI symbols registered via RegisterNatives — restreint au package kighmu
+-keepclasseswithmembernames class expo.modules.kighmuvpnnative.** {
     native <methods>;
 }
 
-# Expo modules and React Native bridge (do not rename)
--keep class com.facebook.react.** { *; }
+# Expo modules: keep uniquement les entrypoints declares dans AndroidManifest (VpnService)
+# Le reste (KighmuVpnNativeModule, TunnelProfile, OpolNative, etc.) est obfusque
+-keep class com.facebook.react.turbomodule.core.** { *; }
 -keep class com.facebook.hermes.** { *; }
 -keep class com.facebook.jni.** { *; }
--keep class expo.modules.** { *; }
 
 # Application module: keep public VpnService entrypoint but obfuscate internals
 -keep class expo.modules.kighmuvpnnative.KighmuVpnService { *; }
+-keep class expo.modules.kighmuvpnnative.KighmuVpnNativeModule { *; }
 
 # Use aggressive obfuscation everywhere else (default behaviour since R8 7+)
 -repackageclasses ''
@@ -29,6 +30,6 @@
     public static int e(...);
 }
 
-# Strip source file names and line numbers from stack traces
+# Strip source file names and line numbers from stack traces (release)
 -renamesourcefileattribute SourceFile
--keepattributes SourceFile,LineNumberTable
+-keepattributes *Annotation*

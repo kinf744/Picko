@@ -72,7 +72,7 @@ class XrayTunnel(
     try { current?.destroy() } catch (_: Throwable) {}
     try { if (current?.isAlive == true) { Thread.sleep(150); if (current.isAlive) current.destroyForcibly() } } catch (_: Throwable) {}
     process = null
-    try { configFile?.delete() } catch (_: Throwable) {}
+    FileLogger.secureDelete(configFile)
     configFile = null
     socksPort = 0
   }

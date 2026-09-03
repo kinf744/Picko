@@ -58,7 +58,7 @@ class HysteriaTunnel(
     recoveryThread = null
     destroyProcess(process)
     process = null
-    try { configFile?.delete() } catch (_: Throwable) {}
+    FileLogger.secureDelete(configFile)
     configFile = null
     runtimePolicy = null
   }

@@ -134,8 +134,20 @@ export type V2RaySlowDnsProfile = ProfileBase & {
 export type TunnelProfile = ZivpnProfile | SlowDnsProfile | HysteriaProfile | HttpPayloadProfile | SshTlsProfile | XrayProfile | V2RaySlowDnsProfile;
 export type ProfileFieldErrors = Record<string, string>;
 
+function secureIdSuffix(): string {
+  try {
+    const g = globalThis as unknown as { crypto?: { getRandomValues?: (a: Uint32Array) => Uint32Array } };
+    if (g.crypto?.getRandomValues) {
+      const a = new Uint32Array(2);
+      g.crypto.getRandomValues(a);
+      return (a[0].toString(36) + a[1].toString(36)).slice(0, 6);
+    }
+  } catch {}
+  return Math.random().toString(36).slice(2, 8);
+}
+
 const makeBase = <K extends TunnelKind>(kind: K): ProfileBase & { kind: K } => ({
-  id: `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  id: `${kind}-${Date.now()}-${secureIdSuffix()}`,
   kind,
   name: translate(getActiveLang(), "tunnels.defaultName", { short: translate(getActiveLang(), `tunnels.${kind}.shortLabel` as const) }),
   selected: false,
@@ -159,7 +171,7 @@ export function createProfile(kind: TunnelKind): TunnelProfile {
 export function cloneTunnelProfile(profile: TunnelProfile, timestamp = Date.now()): TunnelProfile {
   return {
     ...profile,
-    id: `${profile.kind}-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `${profile.kind}-${timestamp}-${secureIdSuffix()}`,
     name: translate(getActiveLang(), "tunnels.copySuffix", { name: profile.name }),
     selected: false,
     createdAt: timestamp,

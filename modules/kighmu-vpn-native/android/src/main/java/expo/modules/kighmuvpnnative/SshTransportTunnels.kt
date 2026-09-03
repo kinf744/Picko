@@ -535,8 +535,24 @@ class SshSslTlsTunnel(
     raw.keepAlive = true
     raw.connect(InetSocketAddress(profile.sshHost, profile.sshPort.toInt()), runtime.connectTimeoutMs)
     try {
-      val sslContext = SSLContext.getInstance(version).apply { init(null, TRUST_ALL, SecureRandom()) }
-      val tls = sslContext.socketFactory.createSocket(raw, profile.sshHost, profile.sshPort.toInt(), true) as SSLSocket
+      val sslContext = try {
+        val tmf = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm())
+        tmf.init(null as java.security.KeyStore?)
+        val tm = tmf.trustManagers.filterIsInstance<X509TrustManager>().firstOrNull()
+        if (tm != null) {
+          SSLContext.getInstance(version).apply { init(null, arrayOf(tm), SecureRandom()) }
+        } else SSLContext.getInstance(version).apply { init(null, TRUST_ALL, SecureRandom()) }
+      } catch (_: Throwable) {
+        SSLContext.getInstance(version).apply { init(null, TRUST_ALL, SecureRandom()) }
+      }
+      val tls = try {
+        sslContext.socketFactory.createSocket(raw, profile.sshHost, profile.sshPort.toInt(), true) as SSLSocket
+      } catch (e: Throwable) {
+        // Fallback TRUST_ALL si le système refuse le cert auto-signé
+        val fallback = SSLContext.getInstance(version).apply { init(null, TRUST_ALL, SecureRandom()) }
+        logDiag("Fallback TRUST_ALL pour ${profile.sshHost} (cert auto-signé): ${e.message}")
+        fallback.socketFactory.createSocket(raw, profile.sshHost, profile.sshPort.toInt(), true) as SSLSocket
+      }
       if (version == "TLSv1.2" || version == "TLSv1.3") tls.enabledProtocols = arrayOf(version)
       if (runtime.sni.isNotBlank()) {
         tls.sslParameters = SSLParameters().apply { serverNames = listOf(SNIHostName(runtime.sni)) }

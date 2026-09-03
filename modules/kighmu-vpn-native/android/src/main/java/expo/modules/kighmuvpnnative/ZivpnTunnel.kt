@@ -75,7 +75,7 @@ class ZivpnTunnel(
     try { process?.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: Throwable) {}
     try { process?.destroyForcibly() } catch (_: Throwable) {}
     process = null
-    try { configFile?.delete() } catch (_: Throwable) {}
+    FileLogger.secureDelete(configFile)
     configFile = null
   }
 

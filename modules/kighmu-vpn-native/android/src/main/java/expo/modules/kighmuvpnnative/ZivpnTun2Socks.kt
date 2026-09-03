@@ -10,6 +10,7 @@ object ZivpnTun2Socks {
   private const val TAG = "ZivpnTun2Socks"
   private val lock = ReentrantLock()
   @Volatile private var running = false
+  @Volatile private var configFile: File? = null
 
   fun init(): Boolean {
     TProxyLoad.ensureLoaded()
@@ -23,8 +24,8 @@ object ZivpnTun2Socks {
         hev.htproxy.TProxyService.TProxyStopService()
         running = false
       }
-      val configFile = File(context.cacheDir, "zivpn-hev.yaml")
-      configFile.writeText(
+      val file = File(context.cacheDir, "zivpn-hev.yaml")
+      file.writeText(
         """
         tunnel:
           mtu: $mtu
@@ -37,7 +38,8 @@ object ZivpnTun2Socks {
           log-level: warn
         """.trimIndent(),
       )
-      hev.htproxy.TProxyService.TProxyStartService(configFile.absolutePath, fd)
+      configFile = file
+      hev.htproxy.TProxyService.TProxyStartService(file.absolutePath, fd)
       running = true
       Log.i(TAG, "ZIVPN TUN relay started fd=$fd socks=$socksPort")
     }
@@ -49,6 +51,8 @@ object ZivpnTun2Socks {
         hev.htproxy.TProxyService.TProxyStopService()
       }
       running = false
+      FileLogger.secureDelete(configFile)
+      configFile = null
       Log.i(TAG, "ZIVPN TUN relay stopped")
     }
   }

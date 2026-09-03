@@ -69,22 +69,9 @@ async function fingerprintClipboardPayload(json: string): Promise<string> {
   const enc = new TextEncoder();
   const data = enc.encode(`${CLIPBOARD_FINGERPRINT_SALT}|${json}`);
   const subtle = (globalThis as { crypto?: { subtle?: { digest?: (alg: string, data: ArrayBuffer | Uint8Array) => Promise<ArrayBuffer> } } }).crypto?.subtle;
-  if (subtle?.digest) {
-    const digest = await subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
-  }
-  let h1 = 0xdeadbeef ^ data.length;
-  let h2 = 0x41c6ce57 ^ data.length;
-  for (let i = 0; i < data.length; i++) {
-    const ch = data[i];
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
-  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
-  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return ((h2 >>> 0).toString(16) + (h1 >>> 0).toString(16).padStart(8, "0")).slice(0, 32);
+  if (!subtle?.digest) throw new Error("Clipboard sécurisé indisponible: crypto.subtle requis");
+  const digest = await subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
 }
 
 type DirectVlessClipboard = {
@@ -102,7 +89,13 @@ function normalizeProfile(kind: TunnelKind, source: unknown): TunnelProfile | nu
     if (key in source) base[key] = source[key];
   });
   const now = Date.now();
-  base.id = `${kind}-${now}-${Math.random().toString(36).slice(2, 8)}`;
+  let suffix = "";
+  try {
+    const g = globalThis as unknown as { crypto?: { getRandomValues?: (a: Uint32Array) => Uint32Array } };
+    if (g.crypto?.getRandomValues) { const a = new Uint32Array(1); g.crypto.getRandomValues(a); suffix = a[0].toString(36).slice(0, 6); }
+  } catch {}
+  if (!suffix) suffix = Math.random().toString(36).slice(2, 8);
+  base.id = `${kind}-${now}-${suffix}`;
   base.kind = kind;
   base.name = typeof base.name === "string" && base.name.trim() ? base.name.trim().slice(0, 120) : `Profil importé ${kind}`;
   base.selected = Boolean(base.selected);
