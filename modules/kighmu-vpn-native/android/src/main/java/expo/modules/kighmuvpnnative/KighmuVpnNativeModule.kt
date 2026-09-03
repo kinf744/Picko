@@ -196,13 +196,29 @@ class KighmuVpnNativeModule : Module() {
 
   private fun assessTamperRisk(context: Context): Boolean {
     val debugger = android.os.Debug.isDebuggerConnected()
-    val frida = try {
+    val tracerPid = try {
+      java.io.File("/proc/self/status").readText().let { txt ->
+        Regex("TracerPid:\\s*(\\d+)").find(txt)?.groupValues?.get(1)?.toIntOrNull()?.let { it != 0 } ?: false
+      }
+    } catch (_: Throwable) { false }
+    val fridaPort = try {
       java.net.Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", 27042), 200); true }
     } catch (_: Throwable) { false }
+    val fridaMaps = try {
+      java.io.File("/proc/self/maps").readText().contains("frida")
+    } catch (_: Throwable) { false }
+    val xposed = try {
+      Class.forName("de.robv.android.xposed.XposedBridge") != null
+    } catch (_: Throwable) { false } || java.io.File("/system/framework/XposedBridge.jar").exists()
+    val magisk = listOf("/sbin/.magisk", "/system/bin/magisk", "/system/xbin/magisk", "/data/adb/magisk", "/data/adb/ksu").any { java.io.File(it).exists() } ||
+      try { java.io.File("/proc/self/mountinfo").readText().contains("magisk") } catch (_: Throwable) { false }
     val installerTrusted = try {
       val installer = context.packageManager.getInstallerPackageName(context.packageName)
       installer == null || installer == context.packageName || installer == "com.android.vending"
     } catch (_: Throwable) { true }
-    return debugger || frida || !installerTrusted
+    val emulator = (android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.FINGERPRINT.contains("unknown") ||
+      android.os.Build.MODEL.contains("google_sdk") || android.os.Build.MODEL.contains("Emulator") ||
+      android.os.Build.MANUFACTURER.contains("Genymotion") || android.os.Build.BRAND.startsWith("generic"))
+    return debugger || tracerPid || fridaPort || fridaMaps || xposed || magisk || emulator || !installerTrusted
   }
 }

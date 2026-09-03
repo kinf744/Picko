@@ -57,10 +57,42 @@ class KighmuVpnService : VpnService() {
     return START_STICKY
   }
 
-  private fun statePrefs() = getSharedPreferences("kighmu_vpn_state", Context.MODE_PRIVATE)
-  private fun readSavedPayload(): String = try { statePrefs().getString(KEY_LAST_PAYLOAD, null).orEmpty() } catch (_: Throwable) { "" }
+  private fun statePrefs(): android.content.SharedPreferences {
+    return try {
+      val masterKey = androidx.security.crypto.MasterKey.Builder(this)
+        .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
+        .build()
+      androidx.security.crypto.EncryptedSharedPreferences.create(
+        this, "kighmu_vpn_state_enc", masterKey,
+        androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+      )
+    } catch (_: Throwable) {
+      // Fallback : ancien fichier clair (migration) puis plain prefs
+      try {
+        val legacy = getSharedPreferences("kighmu_vpn_state", Context.MODE_PRIVATE)
+        val v = legacy.getString(KEY_LAST_PAYLOAD, null)
+        if (!v.isNullOrBlank()) {
+          // migre vers chiffré à la prochaine sauvegarde
+        }
+      } catch (_: Throwable) {}
+      getSharedPreferences("kighmu_vpn_state", Context.MODE_PRIVATE)
+    }
+  }
+  private fun readSavedPayload(): String = try {
+    var v = statePrefs().getString(KEY_LAST_PAYLOAD, null)
+    if (v.isNullOrBlank()) {
+      // Compat: ancien fichier non chiffré
+      v = try { getSharedPreferences("kighmu_vpn_state", Context.MODE_PRIVATE).getString(KEY_LAST_PAYLOAD, null) } catch (_: Throwable) { null }
+    }
+    v.orEmpty()
+  } catch (_: Throwable) { "" }
   private fun savePayload(payload: String) { if (payload.isNotBlank()) try { statePrefs().edit().putString(KEY_LAST_PAYLOAD, payload).apply() } catch (_: Throwable) {} }
-  private fun clearSavedPayload() { try { statePrefs().edit().remove(KEY_LAST_PAYLOAD).apply() } catch (_: Throwable) {} }
+  private fun clearSavedPayload() {
+    try { statePrefs().edit().remove(KEY_LAST_PAYLOAD).apply() } catch (_: Throwable) {}
+    try { getSharedPreferences("kighmu_vpn_state", Context.MODE_PRIVATE).edit().remove(KEY_LAST_PAYLOAD).apply() } catch (_: Throwable) {}
+    try { getSharedPreferences("kighmu_vpn_state_enc", Context.MODE_PRIVATE).edit().clear().apply() } catch (_: Throwable) {}
+  }
 
   private fun beginStart(): Long? = synchronized(lifecycleLock) {
     if (currentStatus == STATUS_CONNECTED || currentStatus == STATUS_CONNECTING) return@synchronized null
