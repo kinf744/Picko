@@ -161,10 +161,17 @@ class KighmuVpnService : VpnService() {
 
       val localBalancer = LocalSocksBalancer(::emitLog)
       localBalancer.start(started.map { it.socksPort })
-      if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
       val isZivpnOnly = started.size == 1 && started.firstOrNull()?.let { it is ZivpnTunnel } == true
-      if (isZivpnOnly) ZivpnTun2Socks.startForZivpn(this, fd, localBalancer.port)
-      else ZivpnTun2Socks.start(this, fd, localBalancer.port, runtimeSettings.mtu)
+      if (isZivpnOnly) {
+        // Pont moderne sans hev pour ZIVPN UDP (adapté à ton contexte)
+        if (!ZivpnDirectForwarder.start(this, fd, localBalancer.port)) {
+          if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
+          ZivpnTun2Socks.startForZivpn(this, fd, localBalancer.port)
+        }
+      } else {
+        if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
+        ZivpnTun2Socks.start(this, fd, localBalancer.port, runtimeSettings.mtu)
+      }
       synchronized(lifecycleLock) {
         if (!isActive(generation)) {
           localBalancer.stop()
@@ -364,6 +371,7 @@ class KighmuVpnService : VpnService() {
     currentStatus = STATUS_CONNECTING
     stateSink?.invoke(STATUS_CONNECTING)
     try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
+    try { ZivpnDirectForwarder.stop() } catch (_: Throwable) {}
     try { runningBalancer?.stop() } catch (_: Throwable) {}
     runningTunnels.forEach { tunnel -> try { tunnel.stop() } catch (_: Throwable) {} }
     if (fd >= 0) try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
@@ -417,6 +425,7 @@ class KighmuVpnService : VpnService() {
       stateSink?.invoke(finalStatus)
     }
     try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
+    try { ZivpnDirectForwarder.stop() } catch (_: Throwable) {}
     try { runningBalancer?.stop() } catch (_: Throwable) {}
     runningTunnels.forEach { tunnel -> try { tunnel.stop() } catch (_: Throwable) {} }
     if (fd >= 0) try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
