@@ -71,7 +71,5 @@ android {
     // (contourne "Fatal error during MAC startup" sur les périphériques où le
     // provider par défaut refuse AES-256). Présent dans Zamois-tun (app qui marche).
     implementation 'org.bouncycastle:bcprov-jdk15to18:1.77'
-    // Chiffrement au repos pour le payload VPN persistant (kighmu_vpn_state)
-    // et les fichiers de config natifs — évite l'extraction via `run-as` / backup
-    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+    // Chiffrement au repos prevu via Android Keystore manuel (evite conflit tink de sshlib)
   }
