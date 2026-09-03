@@ -4,7 +4,7 @@ import { AppState, Platform } from "react-native";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getNativeVpn, subscribeNativeVpn } from "./native";
 import { sanitizeDiagnosticMessage, shouldSkipJournalEntry } from "./diagnostic-format";
-import { buildConfigExport, parseConfigImport, type ConfigExport, type ImportResult } from "./config-transfer";
+import { buildConfigExport, isEncryptedEnvelope, parseConfigImport, parseConfigImportAsync, type ConfigExport, type ImportResult } from "./config-transfer";
 import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, type ExportRestrictions } from "./export-restrictions";
 import {
   TUNNEL_KINDS,
@@ -106,7 +106,7 @@ type VpnContextValue = {
   clearLogs: () => void;
   resetAllProfiles: () => Promise<void>;
   buildConfigExport: (kinds: TunnelKind[], includeSecrets?: boolean, restrictions?: ExportRestrictions) => ConfigExport;
-  importConfig: (raw: string, mode: "append" | "replace-imported") => Promise<ImportResult>;
+  importConfig: (raw: string, mode: "append" | "replace-imported", password?: string) => Promise<ImportResult>;
 };
 const VpnContext = createContext<VpnContextValue | null>(null);
 
@@ -370,8 +370,27 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
 
   const exportConfiguration = useCallback((kinds: TunnelKind[], includeSecrets = false, restrictions?: ExportRestrictions) => buildConfigExport(profilesByKind, balancersByKind, kinds, includeSecrets, restrictions), [balancersByKind, profilesByKind]);
 
-  const importConfig = useCallback(async (raw: string, mode: "append" | "replace-imported") => {
-    const parsed = parseConfigImport(raw);
+  const importConfig = useCallback(async (raw: string, mode: "append" | "replace-imported", password?: string) => {
+    let parsed: ImportResult;
+    // Détection enveloppe chiffrée
+    const trimmed = raw.trim();
+    const isEnc = (() => {
+      try {
+        if (trimmed.startsWith("kighmu://")) {
+          const c = trimmed.slice("kighmu://".length).trim();
+          let inner = c;
+          try { inner = globalThis.atob(c.replace(/-/g, "+").replace(/_/g, "/")); } catch {}
+          return isEncryptedEnvelope(inner) || isEncryptedEnvelope(c);
+        }
+        return isEncryptedEnvelope(trimmed);
+      } catch { return false; }
+    })();
+    if (isEnc) {
+      if (!password) throw new Error("Mot de passe requis pour cette configuration chiffrée.");
+      parsed = await parseConfigImportAsync(raw, password);
+    } else {
+      parsed = parseConfigImport(raw);
+    }
     const nextProfiles = { ...profilesByKind };
     const nextBalancers = { ...balancersByKind };
     parsed.tunnels.forEach((tunnel) => {

@@ -79,7 +79,7 @@ describe("transfert de configurations KIGHMU VPN", () => {
     const exported = buildConfigExport(profiles, emptyBalancers(), ["zivpn"], false, restrictions);
     const imported = parseConfigImport(JSON.stringify(exported));
 
-    expect(exported.schemaVersion).toBe(2);
+    expect(exported.schemaVersion).toBe(3);
     expect(imported.restrictions).toMatchObject({ lockConfiguration: true, mobileDataOnly: true, blockRootedDevice: true, expiresAt: "2027-12-31", userNote: "Configuration réservée aux utilisateurs autorisés." });
   });
 

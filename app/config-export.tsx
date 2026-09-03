@@ -9,7 +9,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { ScreenContainer } from "@/components/screen-container";
 import { Panel, PrimaryAction, SectionLabel } from "@/components/kighmu-ui";
 import { useColors } from "@/hooks/use-colors";
-import { buildClipboardPayloadAsync } from "@/lib/vpn/config-transfer";
+import { buildClipboardPayloadAsync, buildEncryptedFilePayload } from "@/lib/vpn/config-transfer";
 import { DEFAULT_EXPORT_RESTRICTIONS, normalizeExportRestrictions, restrictionCount, type ExportRestrictions } from "@/lib/vpn/export-restrictions";
 import { TUNNEL_KINDS, type TunnelKind, type TunnelProfile } from "@/lib/vpn/tunnel-profiles";
 import { useVpn } from "@/lib/vpn/vpn-context";
@@ -70,7 +70,8 @@ export default function ConfigExportScreen() {
     else router.replace("/");
   }, []);
   const [selected, setSelected] = useState<TunnelKind[]>([]);
-  const [includeSecrets, setIncludeSecrets] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [fileName, setFileName] = useState("kighmu-vpn-config");
   const [restrictions, setRestrictions] = useState<ExportRestrictions>(DEFAULT_EXPORT_RESTRICTIONS);
   const [hardwareIds, setHardwareIds] = useState("");
@@ -110,36 +111,38 @@ export default function ConfigExportScreen() {
     if (readyRestrictions.expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(readyRestrictions.expiresAt)) { Alert.alert(t("export.dateInvalidTitle"), t("export.dateInvalidBody")); return null; }
     return readyRestrictions;
   };
+  const validatePassword = (): string | null => {
+    if (!password || password.length < 8) { Alert.alert(t("export.pwdRequiredTitle") ?? "Mot de passe requis", t("export.pwdRequiredBody") ?? "Saisissez un mot de passe d'au moins 8 caractères pour chiffrer la configuration."); return null; }
+    if (password !== confirmPassword) { Alert.alert(t("export.pwdMismatchTitle") ?? "Mots de passe différents", t("export.pwdMismatchBody") ?? "La confirmation ne correspond pas."); return null; }
+    return password;
+  };
   const createFile = async () => {
     const readyRestrictions = validateExport();
     if (!readyRestrictions) return;
-    const execute = async () => {
-      try {
-        setWorking(true);
-        const directory = FileSystem.cacheDirectory;
-        if (!directory) throw new Error(t("export.cacheMissing"));
-        const safeName = fileName.trim().replace(/[^A-Za-z0-9_-]+/g, "-").slice(0, 48) || "kighmu-vpn-config";
-        const uri = `${directory}${safeName}.json`;
-        await FileSystem.writeAsStringAsync(uri, JSON.stringify(buildConfigExport(selected, includeSecrets, readyRestrictions), null, 2), { encoding: FileSystem.EncodingType.UTF8 });
-        if (!await Sharing.isAvailableAsync()) { Alert.alert(t("export.fileCreatedTitle"), t("export.fileCreatedBody")); return; }
-        await Sharing.shareAsync(uri, { dialogTitle: t("export.shareDialog"), mimeType: "application/json" });
-      } catch (error) { Alert.alert(t("export.exportFailTitle"), error instanceof Error ? error.message : t("export.exportFailBody")); } finally { setWorking(false); }
-    };
-    if (includeSecrets) Alert.alert(t("export.secretsAskTitle"), t("export.secretsAskFile"), [{ text: t("common.cancel"), style: "cancel" }, { text: t("export.continue"), style: "destructive", onPress: () => { void execute(); } }]);
-    else void execute();
+    const pwd = validatePassword();
+    if (!pwd) return;
+    try {
+      setWorking(true);
+      const directory = FileSystem.cacheDirectory;
+      if (!directory) throw new Error(t("export.cacheMissing"));
+      const safeName = fileName.trim().replace(/[^A-Za-z0-9_-]+/g, "-").slice(0, 48) || "kighmu-vpn-config";
+      const uri = `${directory}${safeName}.json`;
+      const payload = await buildEncryptedFilePayload(buildConfigExport(selected, true, readyRestrictions), pwd);
+      await FileSystem.writeAsStringAsync(uri, payload, { encoding: FileSystem.EncodingType.UTF8 });
+      if (!await Sharing.isAvailableAsync()) { Alert.alert(t("export.fileCreatedTitle"), t("export.fileCreatedBody")); return; }
+      await Sharing.shareAsync(uri, { dialogTitle: t("export.shareDialog"), mimeType: "application/json" });
+    } catch (error) { Alert.alert(t("export.exportFailTitle"), error instanceof Error ? error.message : t("export.exportFailBody")); } finally { setWorking(false); }
   };
   const createClipboard = async () => {
     const readyRestrictions = validateExport();
     if (!readyRestrictions) return;
-    const execute = async () => {
-      try {
-        setWorking(true);
-        await Clipboard.setStringAsync(await buildClipboardPayloadAsync(buildConfigExport(selected, includeSecrets, readyRestrictions)));
-        Alert.alert(t("export.copiedTitle"), t("export.copiedBody"));
-      } catch (error) { Alert.alert(t("export.copyFailTitle"), error instanceof Error ? error.message : t("export.copyFailBody")); } finally { setWorking(false); }
-    };
-    if (includeSecrets) Alert.alert(t("export.secretsAskTitle"), t("export.secretsAskClipboard"), [{ text: t("common.cancel"), style: "cancel" }, { text: t("export.copyAction"), style: "destructive", onPress: () => { void execute(); } }]);
-    else void execute();
+    const pwd = validatePassword();
+    if (!pwd) return;
+    try {
+      setWorking(true);
+      await Clipboard.setStringAsync(await buildClipboardPayloadAsync(buildConfigExport(selected, true, readyRestrictions), pwd));
+      Alert.alert(t("export.copiedTitle"), t("export.copiedBody"));
+    } catch (error) { Alert.alert(t("export.copyFailTitle"), error instanceof Error ? error.message : t("export.copyFailBody")); } finally { setWorking(false); }
   };
 
   const totalTicked = useMemo(() => TUNNEL_KINDS.reduce((sum, kind) => sum + statsByKind[kind].ticked, 0), [statsByKind]);
@@ -181,7 +184,12 @@ export default function ConfigExportScreen() {
       </Panel>
       <Panel style={styles.panel}>
         <SectionLabel>{t("export.secSection")}</SectionLabel>
-        <CheckRow checked={includeSecrets} onPress={() => setIncludeSecrets((value) => !value)} title={t("export.includeSecrets.title")} description={t("export.includeSecrets.desc")} icon="vpn-key" />
+        <View style={[styles.inlineField, { borderTopColor: "transparent" }]}>
+          <Text style={[styles.inlineLabel, { color: colors.foreground }]}>{t("export.pwd.label") ?? "Mot de passe chiffrement"}</Text>
+        </View>
+        <TextInput value={password} onChangeText={setPassword} placeholder="••••••••" placeholderTextColor={colors.muted} secureTextEntry autoCapitalize="none" style={[styles.input, { backgroundColor: colors.surfaceRaised, borderColor: colors.border, color: colors.foreground, marginTop: 6 }]} />
+        <Text style={[styles.helper, { color: colors.muted }]}>{t("export.pwd.helper") ?? "8 caractères min. Conservé uniquement pour chiffrer (AES-GCM PBKDF2). Partagez-le séparément."}</Text>
+        <TextInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder={t("export.pwd.confirmPh") ?? "Confirmer le mot de passe"} placeholderTextColor={colors.muted} secureTextEntry autoCapitalize="none" style={[styles.input, { backgroundColor: colors.surfaceRaised, borderColor: colors.border, color: colors.foreground, marginTop: 10 }]} />
         <CheckRow checked={restrictions.lockConfiguration} onPress={() => toggleRestriction("lockConfiguration")} title={t("export.lockConfig.title")} description={t("export.lockConfig.desc")} icon="lock" />
         <CheckRow checked={restrictions.lockPolicyControls} onPress={() => toggleRestriction("lockPolicyControls")} title={t("export.lockPolicy.title")} description={t("export.lockPolicy.desc")} icon="policy" />
       </Panel>
