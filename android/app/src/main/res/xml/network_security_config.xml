@@ -7,6 +7,10 @@
   </base-config>
   <domain-config cleartextTrafficPermitted="false">
     <domain includeSubdomains="true">api.ipify.org</domain>
+    <pin-set expiration="2027-12-01">
+      <pin digest="SHA-256">rCU6246is+IZBOGHVgFyxjL5ht5+CtcqkgQPsw9Ifkg=</pin>
+      <pin digest="SHA-256">YLh1dUR9y6Kja30RrAn7JKnbQG/uEtLMkBgFF2Fuihg=</pin>
+    </pin-set>
     <trust-anchors>
       <certificates src="system" />
     </trust-anchors>

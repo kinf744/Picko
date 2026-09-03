@@ -58,11 +58,20 @@ class KighmuVpnService : VpnService() {
   }
 
   private fun statePrefs() = getSharedPreferences("kighmu_vpn_state", Context.MODE_PRIVATE)
-  private fun readSavedPayload(): String = try { statePrefs().getString(KEY_LAST_PAYLOAD, null).orEmpty() } catch (_: Throwable) { "" }
-  private fun savePayload(payload: String) { if (payload.isNotBlank()) try { statePrefs().edit().putString(KEY_LAST_PAYLOAD, payload).apply() } catch (_: Throwable) {} }
+  private fun readSavedPayload(): String = try {
+    val enc = statePrefs().getString(KEY_LAST_PAYLOAD, null).orEmpty()
+    if (enc.isBlank()) return ""
+    try { CryptoPrefs.decrypt(enc) } catch (_: Throwable) { enc } // compat clair
+  } catch (_: Throwable) { "" }
+  private fun savePayload(payload: String) {
+    if (payload.isBlank()) return
+    try {
+      val enc = try { CryptoPrefs.encrypt(payload) } catch (_: Throwable) { payload }
+      statePrefs().edit().putString(KEY_LAST_PAYLOAD, enc).apply()
+    } catch (_: Throwable) {}
+  }
   private fun clearSavedPayload() {
     try { statePrefs().edit().remove(KEY_LAST_PAYLOAD).apply() } catch (_: Throwable) {}
-    // Nettoyage du fichier chiffre si migration précédente
     try { getSharedPreferences("kighmu_vpn_state_enc", Context.MODE_PRIVATE).edit().clear().apply() } catch (_: Throwable) {}
   }
 
