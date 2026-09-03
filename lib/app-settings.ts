@@ -51,8 +51,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   wakeLockEnabled: false,
   profileNameInNotification: true,
   customDnsEnabled: false,
-  dnsPrimary: "1.1.1.1", // natif : trim + ≤255 caractères
-  dnsSecondary: "1.0.0.1",
+  dnsPrimary: "8.8.8.8", // natif : trim + ≤255 caractères
+  dnsSecondary: "8.8.4.4",
   pingEnabled: false, // désactivé par défaut : l'utilisateur active l'affichage du ping s'il le souhaite
   httpPingEnabled: false,
   httpPingUrl: "https://www.google.com/generate_204", // natif : schéma http(s) exigé

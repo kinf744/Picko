@@ -6,8 +6,8 @@ import java.net.URI
 
 data class VpnRuntimeSettings(
   val customDnsEnabled: Boolean = false,
-  val dnsPrimary: String = "1.1.1.1",
-  val dnsSecondary: String = "1.0.0.1",
+  val dnsPrimary: String = "8.8.8.8",
+  val dnsSecondary: String = "8.8.4.4",
   val mtu: Int = 1400,
   val wakeLockEnabled: Boolean = false,
   val profileNameInNotification: Boolean = true,
@@ -21,10 +21,10 @@ data class VpnRuntimeSettings(
   val alwaysReconnect: Boolean = true,
 ) {
   fun dnsServers(): List<String> {
-    if (!customDnsEnabled) return listOf("8.8.8.8", "1.1.1.1")
+    if (!customDnsEnabled) return listOf("8.8.8.8", "8.8.4.4")
     return listOf(dnsPrimary, dnsSecondary).mapNotNull { value ->
       runCatching { InetAddress.getByName(value.trim()).hostAddress }.getOrNull()
-    }.distinct().ifEmpty { listOf("8.8.8.8", "1.1.1.1") }
+    }.distinct().ifEmpty { listOf("8.8.8.8", "8.8.4.4") }
   }
 
   companion object {

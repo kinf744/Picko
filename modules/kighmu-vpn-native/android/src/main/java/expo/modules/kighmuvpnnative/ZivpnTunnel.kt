@@ -106,7 +106,6 @@ class ZivpnTunnel(
             if (AUTH_FAILURE_REGEX.containsMatchIn(line)) { notifyAuthFailure(); return@forEach }
             val lower = line.lowercase()
             if (lower.contains("timeout") || lower.contains("disconnected") || lower.contains("reconnect") || lower.contains("error") && lower.contains("udp")) {
-              compactLog("warning", "ZiVPN: $line")
               if (!recovering) scheduleRecovery()
             }
           }
@@ -124,7 +123,7 @@ class ZivpnTunnel(
       while (!stopRequested.get() && !recovering) {
         try { Thread.sleep(25_000) } catch (_: InterruptedException) { return@Thread }
         if (stopRequested.get() || recovering) return@Thread
-        // Keepalive UDP NAT: petit handshake SOCKS vers 1.1.1.1:53 via le SOCKS local ZiVPN
+        // Keepalive UDP NAT: petit handshake SOCKS vers 8.8.8.8:53 via le SOCKS local ZiVPN
         try {
           val s = Socket()
           s.connect(InetSocketAddress("127.0.0.1", socksPort), 3000)
@@ -133,8 +132,8 @@ class ZivpnTunnel(
           val inp = s.getInputStream()
           out.write(byteArrayOf(5, 1, 0)); out.flush()
           if (inp.read() != 5 || inp.read() != 0) { s.close(); continue }
-          val host = "1.1.1.1".toByteArray(Charsets.US_ASCII)
-          // CONNECT 1.1.1.1:53 via SOCKS5 (TCP) suffit à faire transiter un paquet UDP via uz_core
+          val host = "8.8.8.8".toByteArray(Charsets.US_ASCII)
+          // CONNECT 8.8.8.8:53 via SOCKS5 (TCP) suffit à faire transiter un paquet UDP via uz_core
           out.write(byteArrayOf(5, 1, 0, 3, host.size.toByte())); out.write(host); out.write(byteArrayOf(0, 53)); out.flush()
           inp.read(); inp.read(); inp.read(); inp.read() // VER REP RSV ATYP
           s.close()
@@ -149,12 +148,10 @@ class ZivpnTunnel(
     if (stopRequested.get() || recovering || authFailed) return
     recovering = true
     keepaliveThread?.interrupt()
-    compactLog("warning", "ZiVPN UDP silencieux détecté — réparation à chaud sans couper le TUN")
     recoveryThread = Thread {
       try {
         repeat(3) { idx ->
           if (stopRequested.get()) return@Thread
-          compactLog("info", "ZiVPN tentative ${idx + 1}/3")
           try {
             destroyProcess(process)
             process = null
@@ -174,14 +171,12 @@ class ZivpnTunnel(
             observeOutput(started)
             if (waitForPort(socksPort, runtime.startupTimeoutMs)) {
               recovering = false
-              compactLog("success", "ZiVPN réparé à chaud, trafic rétabli")
               startKeepalive()
               return@Thread
             }
           } catch (_: Throwable) { Thread.sleep(2000) }
         }
         recovering = false
-        compactLog("error", "ZiVPN réparation à chaud échouée après 3 tentatives")
       } catch (_: InterruptedException) {} finally { if (Thread.currentThread() === recoveryThread) recoveryThread = null }
     }.apply { isDaemon = true; name = "zivpn-recovery-$socksPort" }.start()
   }

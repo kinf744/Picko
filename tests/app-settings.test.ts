@@ -50,8 +50,8 @@ describe("app-settings", () => {
     // AVANT qu'un utilisateur ne reçoive un moteur au comportement changé sans rien toucher.
     const expected = {
       customDnsEnabled: false,
-      dnsPrimary: "1.1.1.1",
-      dnsSecondary: "1.0.0.1",
+      dnsPrimary: "8.8.8.8",
+      dnsSecondary: "8.8.4.4",
       mtu: 1400,
       wakeLockEnabled: false,
       profileNameInNotification: true,

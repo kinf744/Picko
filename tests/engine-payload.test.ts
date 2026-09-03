@@ -149,8 +149,8 @@ describe("adaptateur de charge utile moteur natif", () => {
 // référence figée pour le garde-fou anti-dérive des défauts JS.
 const NATIVE_ENGINE_DEFAULTS = {
   customDnsEnabled: false,
-  dnsPrimary: "1.1.1.1",
-  dnsSecondary: "1.0.0.1",
+  dnsPrimary: "8.8.8.8",
+  dnsSecondary: "8.8.4.4",
   mtu: 1400,
   wakeLockEnabled: false,
   profileNameInNotification: true,
@@ -193,8 +193,8 @@ describe("réglages moteurs émis sous la clé `settings`", () => {
 
   it("repli DNS vides et URL invalide sur les défauts natifs (même comportement que parse())", () => {
     const payload = JSON.parse(buildEnginePayload([configured("zivpn")], { ...DEFAULT_APP_SETTINGS, dnsPrimary: "   ", dnsSecondary: "", httpPingUrl: "ftp://invalide.example" }));
-    expect(payload.settings.dnsPrimary).toBe("1.1.1.1");
-    expect(payload.settings.dnsSecondary).toBe("1.0.0.1");
+    expect(payload.settings.dnsPrimary).toBe("8.8.8.8");
+    expect(payload.settings.dnsSecondary).toBe("8.8.4.4");
     expect(payload.settings.httpPingUrl).toBe("https://www.google.com/generate_204");
   });
 });

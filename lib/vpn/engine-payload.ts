@@ -139,8 +139,8 @@ const clampInt = (value: number, min: number, max: number): number => Math.min(m
 /** Repli identiques aux défauts de la data class native (VpnRuntimeSettings.kt:9-16),
  * utilisés quand la valeur saisie est vide/invalide — même comportement que le natif. */
 const NATIVE_FALLBACK = {
-  dnsPrimary: "1.1.1.1",
-  dnsSecondary: "1.0.0.1",
+  dnsPrimary: "8.8.8.8",
+  dnsSecondary: "8.8.4.4",
   httpPingUrl: "https://www.google.com/generate_204",
 } as const;
 
