@@ -357,12 +357,9 @@ class KighmuVpnService : VpnService() {
     }
   }
 
-  /** Vrai si l'échec vient de l'absence de réseau physique (données coupées). */
+  /** Vrai si l'échec vient de l'absence de réseau physique (données coupées) — vérifie le réseau, pas seulement le message. */
   private fun isNetworkUnavailable(error: Throwable): Boolean {
-    val msg = error.message?.lowercase().orEmpty()
-    if (msg.contains("aucun réseau physique") || msg.contains("aucun tunnel n'a pu établir") ||
-        msg.contains("network is unreachable") || msg.contains("unable to resolve host") ||
-        msg.contains("no address associated with hostname") || msg.contains("software caused connection abort")) return true
+    // Ne pas se baser uniquement sur le message (faux-positif "aucun tunnel n'a pu établir" même avec réseau OK)
     return try {
       val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
       // Le VPN lui-même apparaît comme activeNetwork ; on cherche un réseau physique (non-VPN) avec INTERNET
@@ -408,7 +405,13 @@ class KighmuVpnService : VpnService() {
     try { vpnWakeLock?.takeIf { it.isHeld }?.release() } catch (_: Throwable) {}
     vpnWakeLock = null
     createNotificationChannel()
-    startForeground(NOTIFICATION_ID, notification("Reconnexion automatique du tunnel…"))
+    // Android 12+ interdit startForeground depuis l'arrière-plan : on met à jour la notif existante
+    try {
+      val nm = getSystemService(NotificationManager::class.java)
+      nm.notify(NOTIFICATION_ID, notification("Reconnexion automatique du tunnel…"))
+    } catch (_: Throwable) {
+      try { startForeground(NOTIFICATION_ID, notification("Reconnexion automatique du tunnel…")) } catch (_: Throwable) {}
+    }
     attemptGeneration
   }
 
@@ -491,6 +494,11 @@ class KighmuVpnService : VpnService() {
       .setContentIntent(pending)
       .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Arrêter", stopPending)
       .build()
+  }
+
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    // Swipe des récents ne doit pas couper le VPN : on garde le service en foreground (START_STICKY)
+    super.onTaskRemoved(rootIntent)
   }
 
   override fun onRevoke() { stopVpn(); super.onRevoke() }

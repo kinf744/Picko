@@ -9,7 +9,7 @@ data class VpnRuntimeSettings(
   val dnsPrimary: String = "8.8.8.8",
   val dnsSecondary: String = "8.8.4.4",
   val mtu: Int = 1400,
-  val wakeLockEnabled: Boolean = false,
+  val wakeLockEnabled: Boolean = true,
   val profileNameInNotification: Boolean = true,
   val debugMode: Boolean = false,
   val pingEnabled: Boolean = false,

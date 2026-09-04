@@ -17,7 +17,8 @@
       android:name=".KighmuVpnService"
       android:exported="false"
       android:permission="android.permission.BIND_VPN_SERVICE"
-      android:foregroundServiceType="specialUse">
+      android:stopWithTask="false"
+      android:foregroundServiceType="vpn|specialUse">
       <intent-filter>
         <action android:name="android.net.VpnService" />
       </intent-filter>
