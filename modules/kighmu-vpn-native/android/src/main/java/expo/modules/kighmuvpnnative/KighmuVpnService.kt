@@ -25,6 +25,7 @@ class KighmuVpnService : VpnService() {
   private var tunFd = -1
   private var tunnels: List<LocalTunnel> = emptyList()
   private var balancer: LocalSocksBalancer? = null
+  private var zivpnModernBalancer: ZivpnModernBalancer? = null
   private var attemptGeneration = 0L
   @Volatile private var runtimeSettings = VpnRuntimeSettings()
   @Volatile private var activeProfilesJson = ""
@@ -159,31 +160,56 @@ class KighmuVpnService : VpnService() {
         return
       }
 
-      val localBalancer = LocalSocksBalancer(::emitLog)
-      localBalancer.start(started.map { it.socksPort })
-      val isZivpnOnly = started.size == 1 && started.firstOrNull()?.let { it is ZivpnTunnel } == true
-      if (isZivpnOnly) {
-        // Pont moderne sans hev pour ZIVPN UDP (adapté à ton contexte)
-        if (!ZivpnDirectForwarder.start(this, fd, localBalancer.port)) {
+      val isZivpnAll = started.all { it is ZivpnTunnel }
+      val isZivpnOnly = isZivpnAll && started.size == 1
+      val activeBalancerPort: Int
+      if (isZivpnAll) {
+        // Balancier moderne dédié ZIVPN : sonde SOCKS5 CONNECT réelle (1.1.1.1:80), exclusion des tunnels UDP morts
+        val modern = ZivpnModernBalancer(started.map { it.socksPort }, ::emitLog)
+        modern.start()
+        zivpnModernBalancer = modern
+        activeBalancerPort = modern.port
+        synchronized(lifecycleLock) {
+          if (!isActive(generation)) {
+            modern.close()
+            zivpnModernBalancer = null
+            started.forEach { it.stop() }
+            return
+          }
+          tunnels = started.toList()
+          currentBalancerPort = activeBalancerPort
+          restartAttempts = 0
+          currentStatus = STATUS_CONNECTED
+          stateSink?.invoke(STATUS_CONNECTED)
+        }
+        if (isZivpnOnly) {
+          if (!ZivpnDirectForwarder.start(this, fd, activeBalancerPort)) {
+            if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
+            ZivpnTun2Socks.startForZivpn(this, fd, activeBalancerPort)
+          }
+        } else {
           if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
-          ZivpnTun2Socks.startForZivpn(this, fd, localBalancer.port)
+          ZivpnTun2Socks.startForZivpn(this, fd, activeBalancerPort)
         }
       } else {
-        if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
-        ZivpnTun2Socks.start(this, fd, localBalancer.port, runtimeSettings.mtu)
-      }
-      synchronized(lifecycleLock) {
-        if (!isActive(generation)) {
-          localBalancer.stop()
-          started.forEach { it.stop() }
-          return
+        val localBalancer = LocalSocksBalancer(::emitLog)
+        localBalancer.start(started.map { it.socksPort })
+        activeBalancerPort = localBalancer.port
+        synchronized(lifecycleLock) {
+          if (!isActive(generation)) {
+            localBalancer.stop()
+            started.forEach { it.stop() }
+            return
+          }
+          tunnels = started.toList()
+          balancer = localBalancer
+          currentBalancerPort = activeBalancerPort
+          restartAttempts = 0
+          currentStatus = STATUS_CONNECTED
+          stateSink?.invoke(STATUS_CONNECTED)
         }
-        tunnels = started.toList()
-        balancer = localBalancer
-        currentBalancerPort = localBalancer.port
-        restartAttempts = 0
-        currentStatus = STATUS_CONNECTED
-        stateSink?.invoke(STATUS_CONNECTED)
+        if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
+        ZivpnTun2Socks.start(this, fd, activeBalancerPort, runtimeSettings.mtu)
       }
       if (runtimeSettings.wakeLockEnabled) acquireWakeLock()
       emitLog("connection", "BALANCER", "VPN connecté avec ${started.size} tunnel(s) disponibles ; MTU ${runtimeSettings.mtu}")
@@ -220,6 +246,7 @@ class KighmuVpnService : VpnService() {
         val ports = healthy.map { it.socksPort }
         if (ports != lastPorts) {
           balancer?.updatePorts(ports)
+          // ZIVPN moderne gère sa propre santé en interne (sonde CONNECT), pas besoin d'update externe
           emitLog("info", "BALANCER", "${ports.size} tunnel(s) sain(s) après contrôle de santé")
           lastPorts = ports
         }
@@ -283,7 +310,7 @@ class KighmuVpnService : VpnService() {
   private data class PingResult(val success: Boolean, val code: Int, val latencyMs: Long)
 
   private fun httpPing(): PingResult = try {
-    val socksPort = synchronized(lifecycleLock) { balancer?.port } ?: return PingResult(false, 0, 0L)
+    val socksPort = synchronized(lifecycleLock) { zivpnModernBalancer?.port ?: balancer?.port } ?: return PingResult(false, 0, 0L)
     val startNs = System.nanoTime()
     val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
     val connection = URL(runtimeSettings.httpPingUrl).openConnection(proxy) as HttpURLConnection
@@ -367,12 +394,15 @@ class KighmuVpnService : VpnService() {
     tunnels = emptyList()
     val runningBalancer = balancer
     balancer = null
+    val runningZivpnBalancer = zivpnModernBalancer
+    zivpnModernBalancer = null
     currentBalancerPort = -1
     currentStatus = STATUS_CONNECTING
     stateSink?.invoke(STATUS_CONNECTING)
     try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
     try { ZivpnDirectForwarder.stop() } catch (_: Throwable) {}
     try { runningBalancer?.stop() } catch (_: Throwable) {}
+    try { runningZivpnBalancer?.close() } catch (_: Throwable) {}
     runningTunnels.forEach { tunnel -> try { tunnel.stop() } catch (_: Throwable) {} }
     if (fd >= 0) try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
     try { vpnWakeLock?.takeIf { it.isHeld }?.release() } catch (_: Throwable) {}
@@ -412,6 +442,7 @@ class KighmuVpnService : VpnService() {
     val fd: Int
     val runningTunnels: List<LocalTunnel>
     val runningBalancer: LocalSocksBalancer?
+    val runningZivpnBalancer: ZivpnModernBalancer?
     synchronized(lifecycleLock) {
       attemptGeneration += 1
       fd = tunFd
@@ -420,6 +451,8 @@ class KighmuVpnService : VpnService() {
       tunnels = emptyList()
       runningBalancer = balancer
       balancer = null
+      runningZivpnBalancer = zivpnModernBalancer
+      zivpnModernBalancer = null
       currentBalancerPort = -1
       currentStatus = finalStatus
       stateSink?.invoke(finalStatus)
@@ -427,6 +460,7 @@ class KighmuVpnService : VpnService() {
     try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
     try { ZivpnDirectForwarder.stop() } catch (_: Throwable) {}
     try { runningBalancer?.stop() } catch (_: Throwable) {}
+    try { runningZivpnBalancer?.close() } catch (_: Throwable) {}
     runningTunnels.forEach { tunnel -> try { tunnel.stop() } catch (_: Throwable) {} }
     if (fd >= 0) try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
     try { vpnWakeLock?.takeIf { it.isHeld }?.release() } catch (_: Throwable) {}
