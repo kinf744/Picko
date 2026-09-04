@@ -31,6 +31,7 @@ class KighmuVpnService : VpnService() {
   private var zivpnProcess: Process? = null
   private var slowDnsTunnel: SlowDnsSshTunnel? = null
   private var familyBalancer: SocksProfileBalancer? = null
+  private var zivpnBalancer: ZivpnModernBalancer? = null
   private val familyStopActions = mutableListOf<() -> Unit>()
   private var activeMode = "zivpn"
   private var attemptGeneration = 0L
@@ -179,26 +180,31 @@ class KighmuVpnService : VpnService() {
         else emitLog("info", kind.uppercase(), "Vérification séquentielle profil ${idx+1}/${ports.size} sur $p OK — prêt pour round-robin")
         Thread.sleep(120)
       }
-      // Le round robin est une propriété du nombre de profils prêts : il ne dépend pas
-      // d’un interrupteur UI persistant qui pourrait rester désactivé après un import.
       val shouldBalance = profiles.length() >= 2 && ports.size > 1
       val useZivpnLocalRelay = kind == "zivpn"
       // Calcul débit agrégé attendu
       val expectedDown = try { (0 until profiles.length()).sumOf { profiles.optJSONObject(it)?.optString("downloadMbps", "50")?.toIntOrNull() ?: 50 } } catch (_: Throwable) { 50 }
-      if (shouldBalance) emitLog("info", "BALANCER", "Débit agrégé attendu ~${expectedDown} Mbps via ${ports.size} profils (round-robin séquentiel)")
-      val targetPort = if (shouldBalance || useZivpnLocalRelay) {
-        SocksProfileBalancer(ports) { level, component, message -> emitLog(level, component, message) }.also { balancer ->
-          familyBalancer = balancer
-        }.start()
-      } else ports.first()
+      if (shouldBalance) emitLog("info", "BALANCER", "Débit agrégé attendu ~${expectedDown} Mbps via ${ports.size} profils")
+      val targetPort: Int
+      val relayMode: String
+      if (kind == "zivpn") {
+        // Balancier moderne dédié ZIVPN : sonde SOCKS5 réelle, exclusion des tunnels UDP morts, sticky
+        val balancer = ZivpnModernBalancer(ports) { level, component, message -> emitLog(level, component, message) }
+        zivpnBalancer = balancer
+        targetPort = balancer.start()
+        relayMode = if (ports.size == 1) "ZIVPN moderne direct (1 profil, sonde SOCKS5)" else "ZIVPN moderne multi-profils (${ports.size} profils, sonde SOCKS5 + failover)"
+      } else if (shouldBalance) {
+        val balancer = SocksProfileBalancer(ports) { level, component, message -> emitLog(level, component, message) }
+        familyBalancer = balancer
+        targetPort = balancer.start()
+        relayMode = "balancier multi-profils actif"
+      } else {
+        targetPort = ports.first()
+        relayMode = "relais direct actif"
+      }
       if (!ZivpnTun2Socks.init()) error("hev_jni indisponible pour le relais ${familyLabel(kind)}")
       val relayMtu = if (useZivpnLocalRelay) ZIVPN_TUN_MTU else DEFAULT_TUN_MTU
       ZivpnTun2Socks.start(this, fd, targetPort, relayMtu)
-      val relayMode = when {
-        shouldBalance -> "balancier multi-profils actif"
-        useZivpnLocalRelay -> "relais local direct ZIVPN actif"
-        else -> "relais direct actif"
-      }
       emitLog("info", "CATALOG", "TUN→SOCKS5 actif sur $targetPort ; $relayMode ; MTU=$relayMtu")
       markConnected(generation, "${familyLabel(kind)} connecté")
     } catch (error: Throwable) {
@@ -322,6 +328,8 @@ class KighmuVpnService : VpnService() {
   private fun releaseFamilyResources() {
     try { familyBalancer?.close() } catch (_: Throwable) {}
     familyBalancer = null
+    try { zivpnBalancer?.close() } catch (_: Throwable) {}
+    zivpnBalancer = null
     val actions = familyStopActions.toList()
     familyStopActions.clear()
     actions.asReversed().forEach { action -> try { action() } catch (_: Throwable) {} }
