@@ -166,11 +166,18 @@ data class TunnelProfile(
   private fun isValidSinglePort(value: String): Boolean = value.toIntOrNull()?.let { it in 1..65535 } == true
 
   private fun isValidPortOrRange(value: String): Boolean {
-    if (isValidSinglePort(value)) return true
-    val match = Regex("^(\\d+)\\s*-\\s*(\\d+)$").matchEntire(value.trim()) ?: return false
-    val start = match.groupValues[1].toIntOrNull() ?: return false
-    val end = match.groupValues[2].toIntOrNull() ?: return false
-    return start in 1..65535 && end in 1..65535 && start <= end
+    // Supporte multi-range à la Zamois : "6000-7750,7751-9500,..."
+    val ranges = value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    if (ranges.isEmpty()) return false
+    return ranges.all { range ->
+      if (isValidSinglePort(range)) true
+      else {
+        val match = Regex("^(\\d+)\\s*-\\s*(\\d+)$").matchEntire(range) ?: return@all false
+        val start = match.groupValues[1].toIntOrNull() ?: return@all false
+        val end = match.groupValues[2].toIntOrNull() ?: return@all false
+        start in 1..65535 && end in 1..65535 && start <= end
+      }
+    }
   }
 
   private fun isValidMbps(value: String): Boolean = value.toDoubleOrNull()?.let { it > 0.0 && it <= 100000.0 } == true
