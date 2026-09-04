@@ -19,16 +19,19 @@ export type VpnValidationConfig = {
 };
 
 export function isValidPort(port: string) {
-  const value = port.trim();
-  if (/^\d+$/.test(value)) {
-    const number = Number(value);
-    return number >= 1 && number <= 65535;
-  }
-  const range = value.match(/^(\d+)\s*-\s*(\d+)$/);
-  if (!range) return false;
-  const start = Number(range[1]);
-  const end = Number(range[2]);
-  return start >= 1 && end <= 65535 && start <= end;
+  const ranges = port.split(",").map((part) => part.trim()).filter(Boolean);
+  if (ranges.length === 0) return false;
+  return ranges.every((value) => {
+    if (/^\d+$/.test(value)) {
+      const number = Number(value);
+      return number >= 1 && number <= 65535;
+    }
+    const range = value.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (!range) return false;
+    const start = Number(range[1]);
+    const end = Number(range[2]);
+    return start >= 1 && end <= 65535 && start <= end;
+  });
 }
 
 export function validateVpnConfig(config: VpnValidationConfig) {
