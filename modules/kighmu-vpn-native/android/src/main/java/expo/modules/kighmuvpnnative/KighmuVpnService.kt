@@ -33,6 +33,22 @@ class KighmuVpnService : VpnService() {
   private var vpnWakeLock: PowerManager.WakeLock? = null
   @Volatile private var restartAttempts = 0
 
+  override fun onCreate() {
+    super.onCreate()
+    // Foreground immédiat pour survivre Doze même avec optimisation activée (comme autres VPN)
+    try {
+      createNotificationChannel()
+      startForeground(NOTIFICATION_ID, notification("Préparation du tunnel…"))
+    } catch (_: Throwable) {}
+    try {
+      val pm = getSystemService(POWER_SERVICE) as PowerManager
+      vpnWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:VPN").apply {
+        setReferenceCounted(false)
+        acquire()
+      }
+    } catch (_: Throwable) {}
+  }
+
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     when (intent?.action) {
       ACTION_STOP -> {
@@ -41,21 +57,24 @@ class KighmuVpnService : VpnService() {
       }
       ACTION_START -> {
         val payload = intent.getStringExtra(EXTRA_PROFILES_JSON).orEmpty().ifBlank { readSavedPayload() }
-        val generation = beginStart() ?: return START_STICKY
+        val generation = beginStart() ?: return START_REDELIVER_INTENT
         restartAttempts = 0
         savePayload(payload)
         thread(isDaemon = true, name = "picko-vpn-start") { startTunnelsInternal(payload, generation) }
       }
-      // Redémarrage par le système après arrêt du processus (START_STICKY) :
-      // relance immédiate avec le dernier payload connu.
       else -> {
         val payload = readSavedPayload()
         if (payload.isBlank()) return START_NOT_STICKY
-        val generation = beginStart() ?: return START_STICKY
+        val generation = beginStart() ?: return START_REDELIVER_INTENT
         thread(isDaemon = true, name = "picko-vpn-start") { startTunnelsInternal(payload, generation) }
       }
     }
-    return START_STICKY
+    return START_REDELIVER_INTENT
+  }
+
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    super.onTaskRemoved(rootIntent)
+    // Swipe récents ne doit pas tuer le VPN (comme autres VPN avec optimisation activée)
   }
 
   private fun statePrefs() = getSharedPreferences("kighmu_vpn_state", Context.MODE_PRIVATE)
@@ -494,11 +513,6 @@ class KighmuVpnService : VpnService() {
       .setContentIntent(pending)
       .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Arrêter", stopPending)
       .build()
-  }
-
-  override fun onTaskRemoved(rootIntent: Intent?) {
-    // Swipe des récents ne doit pas couper le VPN : on garde le service en foreground (START_STICKY)
-    super.onTaskRemoved(rootIntent)
   }
 
   override fun onRevoke() { stopVpn(); super.onRevoke() }
