@@ -253,14 +253,19 @@ class KighmuVpnService : VpnService() {
       val strikes = HashMap<Int, Int>()
       var nextPingAt = System.currentTimeMillis() + runtimeSettings.httpPingIntervalMs
       while (isActive(generation)) {
-        Thread.sleep(2_500)
+        Thread.sleep(15_000)
+        // En Doze, ne pas redémarrer — Forot tient des heures sans monitor agressif
+        try {
+          val pm = getSystemService(POWER_SERVICE) as PowerManager
+          if (pm.isDeviceIdleMode) continue
+        } catch (_: Throwable) {}
         val snapshot = synchronized(lifecycleLock) { tunnels.toList() }
         // Hystérésis : un tunnel n'est retiré qu'après DEUX sondes consécutives
         // négatives (le SOCKS local peut être brièvement occupé par le trafic).
         snapshot.forEach { tunnel ->
           strikes[tunnel.socksPort] = if (tunnel.isHealthy()) 0 else (strikes[tunnel.socksPort] ?: 0) + 1
         }
-        val healthy = snapshot.filter { (strikes[it.socksPort] ?: 0) == 0 }
+        val healthy = snapshot.filter { (strikes[it.socksPort] ?: 0) < 3 }
         val recovering = snapshot.any { it.isRecovering() }
         val ports = healthy.map { it.socksPort }
         if (ports != lastPorts) {
@@ -276,8 +281,8 @@ class KighmuVpnService : VpnService() {
               emitLog("warning", "TUNNEL", "Tunnel temporairement indisponible ; reconnexion locale en cours")
               recoveryLogged = true
             }
-          } else if (emptyStreak < 2) {
-            // Première observation vide : grâce supplémentaire avant décision.
+          } else if (emptyStreak < 4) {
+            // Grâce de 60s (4×15s) avant de décider — comme Forot qui ne monitor pas
           } else if (runtimeSettings.alwaysReconnect) {
             restartVpn(generation, "Tous les tunnels sont indisponibles")
             return@thread
