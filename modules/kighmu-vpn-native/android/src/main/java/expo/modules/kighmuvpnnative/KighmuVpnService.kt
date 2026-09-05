@@ -409,8 +409,7 @@ class KighmuVpnService : VpnService() {
   private fun softStopKeepForeground(): Long? = synchronized(lifecycleLock) {
     if (currentStatus != STATUS_CONNECTED && currentStatus != STATUS_CONNECTING) return@synchronized null
     attemptGeneration += 1
-    val fd = tunFd
-    tunFd = -1
+    // Garde TUN ouvert pour que la clé reste affichée (Forot) — ne ferme pas fd ici, il sera remplacé par le nouveau Builder
     val runningTunnels = tunnels
     tunnels = emptyList()
     val runningBalancer = balancer
@@ -425,9 +424,8 @@ class KighmuVpnService : VpnService() {
     try { runningBalancer?.stop() } catch (_: Throwable) {}
     try { runningZivpnBalancer?.close() } catch (_: Throwable) {}
     runningTunnels.forEach { tunnel -> try { tunnel.stop() } catch (_: Throwable) {} }
-    if (fd >= 0) try { ParcelFileDescriptor.adoptFd(fd).close() } catch (_: Throwable) {}
-    try { vpnWakeLock?.takeIf { it.isHeld }?.release() } catch (_: Throwable) {}
-    vpnWakeLock = null
+    // Ne pas fermer tunFd ici — Forot garde ParcelFileDescriptor ouvert, Picko le remplace à la prochaine establish()
+    // Ne pas relâcher wakeLock ici — garde CPU pour reconnexion rapide
     createNotificationChannel()
     // Android 12+ interdit startForeground depuis l'arrière-plan : on met à jour la notif existante
     try {
