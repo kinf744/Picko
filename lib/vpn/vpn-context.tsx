@@ -335,14 +335,9 @@ export function VpnProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      if (!await native.prepareVpn()) {
-        setStatus("disconnected");
-        setLastError(tLog("logs.android.pending"));
-        addLog("warning", "ANDROID", tLog("logs.android.waiting"));
-        return;
-      }
-      // Source unique de vérité = le blob app-settings : lu au moment de la
-      // connexion, jamais dupliqué dans l'état du provider (pas de dérive).
+      // `startVpn` demande l'autorisation VPN si besoin et démarre le tunnel dès
+      // qu'elle est accordée (géré nativement via OnActivityResult). La 1re
+      // connexion ne s'arrête donc plus sur l'attente d'autorisation.
       const appSettings = await loadAppSettings();
       await native.startVpn(buildEnginePayload(selected, appSettings));
       addLog("connection", "NATIVE", tLog("logs.native.started", { label: tunnelCatalog(activeKind).label }));

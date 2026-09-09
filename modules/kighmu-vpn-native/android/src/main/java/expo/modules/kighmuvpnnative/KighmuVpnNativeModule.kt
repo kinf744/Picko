@@ -1,5 +1,6 @@
 package expo.modules.kighmuvpnnative
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
@@ -7,14 +8,18 @@ import android.os.Build
 import android.provider.Settings
 import android.telephony.TelephonyManager
 import expo.modules.kotlin.Promise
+import expo.modules.kotlin.events.OnActivityResultPayload
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 import kotlin.concurrent.thread
 import java.util.Locale
 
 class KighmuVpnNativeModule : Module() {
+  @Volatile private var pendingProfilesJson: String? = null
+
   override fun definition() = ModuleDefinition {
     Name("KighmuVpnNative")
     Events("onStateChanged", "onLog")
@@ -36,6 +41,20 @@ class KighmuVpnNativeModule : Module() {
     OnDestroy {
       KighmuVpnService.logSink = null
       KighmuVpnService.stateSink = null
+      pendingProfilesJson = null
+    }
+
+    // Relance automatiquement la configuration en attente dès que l'utilisateur
+    // accorde l'autorisation VPN : la 1re connexion n'échoue plus.
+    OnActivityResult { _, payload ->
+      if (payload.requestCode != KighmuVpnService.PREPARE_REQUEST_CODE) return@OnActivityResult
+      val pending = pendingProfilesJson
+      pendingProfilesJson = null
+      if (payload.resultCode != Activity.RESULT_OK) {
+        sendEvent("onStateChanged", mapOf("status" to KighmuVpnService.STATUS_DISCONNECTED))
+        return@OnActivityResult
+      }
+      if (pending != null) startServiceWithConfig(pending)
     }
 
     Function("getStatus") { KighmuVpnService.currentStatus }
@@ -70,23 +89,31 @@ class KighmuVpnNativeModule : Module() {
       val intent = VpnService.prepare(activity)
       if (intent == null) true else {
         activity.startActivityForResult(intent, KighmuVpnService.PREPARE_REQUEST_CODE)
-        false
+        true
       }
     }
 
     AsyncFunction("startVpn") { profilesJson: String ->
       val context = appContext.reactContext ?: throw IllegalStateException("Contexte Android indisponible")
-      val intent = Intent(context, KighmuVpnService::class.java).apply {
-        action = KighmuVpnService.ACTION_START
-        putExtra(KighmuVpnService.EXTRA_PROFILES_JSON, profilesJson)
+      validateProfilesPayload(profilesJson)
+      val intent = VpnService.prepare(context)
+      if (intent == null) {
+        startServiceWithConfig(profilesJson)
+      } else {
+        // Autorisation non encore accordée : on mémorise la config et on demande
+        // l'autorisation. Le tunnel démarre automatiquement via OnActivityResult.
+        pendingProfilesJson = profilesJson
+        val activity = appContext.currentActivity
+        if (activity == null) throw IllegalStateException("Contexte Activity indisponible pour l'autorisation VPN")
+        activity.startActivityForResult(intent, KighmuVpnService.PREPARE_REQUEST_CODE)
+        sendEvent("onStateChanged", mapOf("status" to KighmuVpnService.STATUS_CONNECTING))
       }
-      context.startForegroundService(intent)
-      sendEvent("onStateChanged", mapOf("status" to KighmuVpnService.STATUS_CONNECTING))
       true
     }
 
     AsyncFunction("stopVpn") {
       val context = appContext.reactContext ?: return@AsyncFunction false
+      pendingProfilesJson = null
       context.startService(Intent(context, KighmuVpnService::class.java).apply { action = KighmuVpnService.ACTION_STOP })
       true
     }
@@ -192,6 +219,26 @@ class KighmuVpnNativeModule : Module() {
         .filter { it.isNotBlank() }
       mapOf("ips" to ips)
     }
+  }
+
+  private fun validateProfilesPayload(profilesJson: String) {
+    val payload = try { JSONObject(profilesJson) } catch (_: Throwable) { throw IllegalArgumentException("Payload VPN invalide (JSON illisible)") }
+    val profiles = payload.optJSONArray("profiles")
+    if (profiles == null || profiles.length() == 0) throw IllegalArgumentException("Aucun profil de tunnel valide dans le payload")
+  }
+
+  private fun startServiceWithConfig(profilesJson: String) {
+    val context = appContext.reactContext ?: return
+    val intent = Intent(context, KighmuVpnService::class.java).apply {
+      action = KighmuVpnService.ACTION_START
+      putExtra(KighmuVpnService.EXTRA_PROFILES_JSON, profilesJson)
+    }
+    try {
+      context.startForegroundService(intent)
+    } catch (error: Throwable) {
+      throw error
+    }
+    sendEvent("onStateChanged", mapOf("status" to KighmuVpnService.STATUS_CONNECTING))
   }
 
   private fun assessTamperRisk(context: Context): Boolean {
