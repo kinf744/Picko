@@ -45,6 +45,14 @@ class KighmuVpnNativeModule : Module() {
       KighmuVpnService.stateSink = { status ->
         sendEvent("onStateChanged", mapOf("status" to status))
       }
+      // Radical: garantit Download/kighmu.txt dès le démarrage de l'app (même sans tunnel)
+      try {
+        appContext.reactContext?.let { ctx ->
+          FileLogger.init(ctx)
+          FileLogger.ensureDownloadFile(ctx)
+          FileLogger.logDetail(ctx, "SYSTEM", "KighmuVpnNative OnCreate init Download=${FileLogger.getDownloadPath(ctx)} private=${FileLogger.getPrivatePath(ctx)}")
+        }
+      } catch (_: Throwable) {}
     }
 
     OnDestroy {
@@ -240,6 +248,42 @@ class KighmuVpnNativeModule : Module() {
         .map { it.hostAddress.orEmpty() }
         .filter { it.isNotBlank() }
       mapOf("ips" to ips)
+    }
+
+    // --- Logs ZIVPN radicaux (Download/kighmu.txt) ---
+    Function("getLogPath") {
+      val ctx = appContext.reactContext ?: return@Function ""
+      FileLogger.getPath(ctx) ?: ""
+    }
+    Function("getDownloadLogPath") {
+      val ctx = appContext.reactContext ?: return@Function ""
+      FileLogger.getDownloadPath(ctx) ?: ""
+    }
+    Function("getPrivateLogPath") {
+      val ctx = appContext.reactContext ?: return@Function ""
+      FileLogger.getPrivatePath(ctx) ?: ""
+    }
+    AsyncFunction("ensureLogFile") {
+      val ctx = appContext.reactContext ?: return@AsyncFunction false
+      FileLogger.init(ctx)
+      FileLogger.ensureDownloadFile(ctx)
+      FileLogger.logDetail(ctx, "SYSTEM", "ensureLogFile called Download=${FileLogger.getDownloadPath(ctx)}")
+      true
+    }
+    Function("getLogFileInfo") {
+      val ctx = appContext.reactContext ?: return@Function mapOf("exists" to false)
+      val dl = FileLogger.getDownloadPath(ctx)
+      val priv = FileLogger.getPrivatePath(ctx)
+      val dlFile = dl?.let { java.io.File(it) }
+      val privFile = priv?.let { java.io.File(it) }
+      mapOf(
+        "downloadPath" to (dl ?: ""),
+        "privatePath" to (priv ?: ""),
+        "downloadExists" to (dlFile?.exists() == true),
+        "privateExists" to (privFile?.exists() == true),
+        "downloadSize" to (dlFile?.length() ?: 0L),
+        "privateSize" to (privFile?.length() ?: 0L)
+      )
     }
   }
 

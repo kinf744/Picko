@@ -32,6 +32,8 @@ class KighmuVpnService : VpnService() {
   @Volatile private var primaryProfileName = ""
   private var vpnWakeLock: PowerManager.WakeLock? = null
   @Volatile private var restartAttempts = 0
+  @Volatile private var zivpnHeartbeatRunning = false
+  private var zivpnHeartbeatThread: Thread? = null
 
   override fun onCreate() {
     super.onCreate()
@@ -73,6 +75,7 @@ class KighmuVpnService : VpnService() {
   }
 
   override fun onTaskRemoved(rootIntent: Intent?) {
+    try { FileLogger.logDetail(this, "ZIVPN-DETAIL", "ON_TASK_REMOVED status=$currentStatus gen=$attemptGeneration") } catch (_: Throwable) {}
     super.onTaskRemoved(rootIntent)
     // Swipe récents ne doit pas tuer le VPN (comme autres VPN avec optimisation activée)
   }
@@ -254,6 +257,8 @@ class KighmuVpnService : VpnService() {
       // Trace détaillée ZIVPN dans Download/kighmu.txt pour diagnostiquer blocage trafic
       FileLogger.logDetail(this, "ZIVPN-DETAIL", "VPN_CONNECTED gen=$generation tunnels=${started.map { "${it.label}:${it.socksPort}:${it::class.simpleName}" }.joinToString("|")} balancerPort=$activeBalancerPort mtu=${runtimeSettings.mtu} dns=${runtimeSettings.dnsServers()} zivpnOnly=$isZivpnOnly zivpnAll=$isZivpnAll")
       FileLogger.logDetail(this, "ZIVPN-DETAIL", "BALANCER_ACTIVE type=${if (isZivpnAll) "ZivpnModernBalancer" else "LocalSocksBalancer"} port=$activeBalancerPort")
+      // Heartbeat radical ZIVPN toutes les 5s pour bug silencieux (clé disparaît sans log)
+      if (isZivpnAll) startZivpnHeartbeat(generation, started.filterIsInstance<ZivpnTunnel>())
       startForeground(NOTIFICATION_ID, notification("Connecté : ${started.size} tunnel(s) équilibrés"))
       monitorTunnels(generation)
     } catch (error: Throwable) {
@@ -384,6 +389,55 @@ class KighmuVpnService : VpnService() {
     }
   }
 
+  // Heartbeat radical ZIVPN toutes les 5s pour capturer bug silencieux (clé disparaît)
+  private fun startZivpnHeartbeat(generation: Long, zivpnTunnels: List<ZivpnTunnel>) {
+    if (zivpnHeartbeatRunning) return
+    zivpnHeartbeatRunning = true
+    zivpnHeartbeatThread = thread(isDaemon = true, name = "zivpn-heartbeat") {
+      var hb = 0L
+      FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-DETAIL", "HEARTBEAT_START gen=$generation n=${zivpnTunnels.size}")
+      while (zivpnHeartbeatRunning && isActive(generation)) {
+        try { Thread.sleep(5000) } catch (_: InterruptedException) { break }
+        if (!zivpnHeartbeatRunning || !isActive(generation)) break
+        hb++
+        try {
+          val tun = synchronized(lifecycleLock) { tunFd }
+          val balPort = synchronized(lifecycleLock) { currentBalancerPort }
+          val pm = getSystemService(POWER_SERVICE) as PowerManager
+          val runtime = Runtime.getRuntime()
+          val memFree = runtime.freeMemory() / 1024
+          val memTotal = runtime.totalMemory() / 1024
+          val uptime = android.os.SystemClock.elapsedRealtime()
+          // Détail chaque tunnel ZIVPN
+          val tunnelDetails = zivpnTunnels.joinToString(" | ") { t ->
+            "port=${t.socksPort} healthy=${try { t.isHealthy() } catch (_: Throwable) { "err" }} recovering=${try { t.isRecovering() } catch (_: Throwable) { "err" }}"
+          }
+          FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb gen=$generation tunFd=$tun tunAlive=${tun>=0} balPort=$balPort tunnels=[$tunnelDetails] memFree=${memFree}k total=${memTotal}k uptime=${uptime}ms idle=${pm.isDeviceIdleMode} interactive=${pm.isInteractive} status=$currentStatus")
+          // Ping silencieux pour détecter blocage trafic avant déconnexion
+          try {
+            val ping = httpPing()
+            FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb ping success=${ping.success} code=${ping.code} ms=${ping.latencyMs}")
+          } catch (e: Throwable) {
+            FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb pingError ${e.message}")
+          }
+          // Force flush Download file existence
+          if (hb % 6 == 0L) { // toutes les 30s, revérifie fichier
+            try { FileLogger.ensureDownloadFile(this@KighmuVpnService) } catch (_: Throwable) {}
+          }
+        } catch (e: Throwable) {
+          try { FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb ERROR ${e.message} ${e::class.simpleName}") } catch (_: Throwable) {}
+        }
+      }
+      FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-DETAIL", "HEARTBEAT_STOP gen=$generation hb=$hb")
+    }
+  }
+
+  private fun stopZivpnHeartbeat() {
+    zivpnHeartbeatRunning = false
+    try { zivpnHeartbeatThread?.interrupt() } catch (_: Throwable) {}
+    zivpnHeartbeatThread = null
+  }
+
   private data class PingResult(val success: Boolean, val code: Int, val latencyMs: Long)
 
   private fun httpPing(): PingResult = try {
@@ -464,7 +518,10 @@ class KighmuVpnService : VpnService() {
    * depuis l'arrière-plan (interdit sur Android 12+ — cause de l'arrêt
    * définitif observé après quelques minutes).
    */
-  private fun softStopKeepForeground(): Long? = synchronized(lifecycleLock) {
+  private fun softStopKeepForeground(): Long? {
+    // Stop heartbeat avant softStop pour éviter logs fantômes
+    try { stopZivpnHeartbeat() } catch (_: Throwable) {}
+    return synchronized(lifecycleLock) {
     if (currentStatus != STATUS_CONNECTED && currentStatus != STATUS_CONNECTING) return@synchronized null
     attemptGeneration += 1
     // Ferme l'ancien TUN pour éviter une fuite de fd et une désynchronisation
@@ -497,6 +554,7 @@ class KighmuVpnService : VpnService() {
       try { startForeground(NOTIFICATION_ID, notification("Reconnexion automatique du tunnel…")) } catch (_: Throwable) {}
     }
     attemptGeneration
+    }
   }
 
   private fun fail(generation: Long, message: String) {
@@ -526,6 +584,8 @@ class KighmuVpnService : VpnService() {
   }
 
   private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
+    try { stopZivpnHeartbeat() } catch (_: Throwable) {}
+    try { FileLogger.logDetail(this, "ZIVPN-DETAIL", "STOPVPN called finalStatus=$finalStatus gen=$attemptGeneration tunFd=$tunFd") } catch (_: Throwable) {}
     val fd: Int
     val runningTunnels: List<LocalTunnel>
     val runningBalancer: LocalSocksBalancer?
@@ -580,8 +640,15 @@ class KighmuVpnService : VpnService() {
       .build()
   }
 
-  override fun onRevoke() { stopVpn(); super.onRevoke() }
-  override fun onDestroy() { stopVpn(); super.onDestroy() }
+  override fun onRevoke() {
+    try { FileLogger.logDetail(this, "ZIVPN-DETAIL", "ON_REVOKE called status=$currentStatus gen=$attemptGeneration") } catch (_: Throwable) {}
+    stopVpn(); super.onRevoke()
+  }
+  override fun onDestroy() {
+    try { FileLogger.logDetail(this, "ZIVPN-DETAIL", "ON_DESTROY called status=$currentStatus gen=$attemptGeneration") } catch (_: Throwable) {}
+    try { stopZivpnHeartbeat() } catch (_: Throwable) {}
+    stopVpn(); super.onDestroy()
+  }
 
   companion object {
     const val ACTION_START = "expo.modules.kighmuvpnnative.START"

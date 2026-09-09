@@ -136,7 +136,7 @@ object FileLogger {
     try {
       val ts = tsFormat.format(Date())
       val line = "[$ts] [$component] $message\n"
-      // Fichier privé (toujours)
+      // 1) Fichier privé interne (toujours) - garanti sans permission
       try {
         val file = resolveFile(context)
         if (file != null) {
@@ -156,10 +156,21 @@ object FileLogger {
           }
         }
       } catch (_: Throwable) {}
-      // Fichier Download public (max détail ZIVPN)
+      // 2) Fichier Download scoped (Android/data/.../Download) - toujours accessible sans permission
+      try {
+        val scoped = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        if (scoped != null) {
+          if (!scoped.exists()) scoped.mkdirs()
+          val f = File(scoped, FILENAME)
+          synchronized(lock) {
+            f.appendText(line, Charsets.UTF_8)
+          }
+        }
+      } catch (_: Throwable) {}
+      // 3) Fichier Download public via File API (legacy, API <29 ou si permission accordée)
       try {
         val pub = resolvePublicFile(context)
-        if (pub != null && pub.absolutePath != resolveFile(context)?.absolutePath) {
+        if (pub != null) {
           synchronized(lock) {
             if (pub.exists() && pub.length() > MAX_SIZE_BYTES) {
               try {
@@ -169,28 +180,35 @@ object FileLogger {
                 pub.appendText("[$ts] [SYSTEM] Nettoyage Download: limite atteinte, garde ${keep.size} lignes\n", Charsets.UTF_8)
               } catch (_: Throwable) { try { pub.writeText("") } catch (_: Throwable) {} }
             }
-            pub.appendText(line, Charsets.UTF_8)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && pub.absolutePath.contains(Environment.DIRECTORY_DOWNLOADS)) {
-              try { pub.setLastModified(System.currentTimeMillis()) } catch (_: Throwable) {}
+            // Évite double écriture si pub == private (déjà fait)
+            if (pub.absolutePath != resolveFile(context)?.absolutePath) {
+              pub.appendText(line, Charsets.UTF_8)
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && pub.absolutePath.contains(Environment.DIRECTORY_DOWNLOADS)) {
+                try { pub.setLastModified(System.currentTimeMillis()) } catch (_: Throwable) {}
+              }
             }
           }
         }
       } catch (_: Throwable) {}
-      // Sur Android Q+, tente aussi MediaStore si Download public direct échoué (fallback)
+      // 4) TOUJOURS écrire dans Download public via MediaStore (Android Q+) - GARANTIT visibilité dans /Download
       try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          writeViaMediaStore(context, line)
+        } else {
+          // API <29 : tente aussi MediaStore si pub échoue
           val dl = resolvePublicFile(context)
           if (dl == null || !dl.exists()) writeViaMediaStore(context, line)
         }
       } catch (_: Throwable) {}
+      // 5) Logcat pour adb (radical debug)
+      try { android.util.Log.d("KIGHMU-$component", message) } catch (_: Throwable) {}
     } catch (_: Throwable) {}
   }
 
   private fun writeViaMediaStore(context: Context, line: String) {
     try {
       val resolver = context.contentResolver
-      val collection = android.provider.MediaStore.Downloads.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
-      // Cherche fichier existant
+      val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) android.provider.MediaStore.Downloads.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY) else android.provider.MediaStore.Files.getContentUri("external")
       var uri: android.net.Uri? = null
       try {
         resolver.query(collection, arrayOf(android.provider.MediaStore.Downloads._ID), "${android.provider.MediaStore.Downloads.DISPLAY_NAME} = ?", arrayOf(FILENAME), null)?.use { cursor ->
@@ -204,14 +222,42 @@ object FileLogger {
         val values = android.content.ContentValues().apply {
           put(android.provider.MediaStore.Downloads.DISPLAY_NAME, FILENAME)
           put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain")
-          put(android.provider.MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(android.provider.MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+          else put(android.provider.MediaStore.Downloads.DATA, Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath + "/" + FILENAME)
         }
         uri = resolver.insert(collection, values)
       }
       if (uri != null) {
-        resolver.openOutputStream(uri!!, "wa")?.use { it.write(line.toByteArray(Charsets.UTF_8)) }
+        // Tente append ("wa"), sinon écrase puis ajoute (certains OEM ne supportent pas "wa")
+        var written = false
+        try {
+          resolver.openOutputStream(uri!!, "wa")?.use { it.write(line.toByteArray(Charsets.UTF_8)); written = true }
+        } catch (_: Throwable) {}
+        if (!written) {
+          try {
+            // Lecture existant + réécriture
+            val existing = try { resolver.openInputStream(uri!!)?.bufferedReader(Charsets.UTF_8)?.readText() ?: "" } catch (_: Throwable) { "" }
+            val truncated = if (existing.length > 5 * 1024 * 1024) existing.takeLast(1500 * 120) else existing
+            resolver.openOutputStream(uri!!, "w")?.use { it.write((truncated + line).toByteArray(Charsets.UTF_8)) }
+          } catch (_: Throwable) {
+            try { resolver.openOutputStream(uri!!, "w")?.use { it.write(line.toByteArray(Charsets.UTF_8)) } } catch (_: Throwable) {}
+          }
+        }
+      } else {
+        // Fallback ultime : fichier direct dans Download legacy
+        try {
+          val legacy = File(Environment.getExternalStorageDirectory(), "Download/$FILENAME")
+          legacy.parentFile?.mkdirs()
+          legacy.appendText(line, Charsets.UTF_8)
+        } catch (_: Throwable) {}
       }
-    } catch (_: Throwable) {}
+    } catch (_: Throwable) {
+      try {
+        val legacy = File(Environment.getExternalStorageDirectory(), "Download/$FILENAME")
+        legacy.parentFile?.mkdirs()
+        legacy.appendText(line, Charsets.UTF_8)
+      } catch (_: Throwable) {}
+    }
   }
 
   /** Log forcé sans filtre (header, erreurs critiques) */
@@ -227,28 +273,33 @@ object FileLogger {
 
   fun header(context: Context, profile: TunnelProfile) {
     try {
-      val file = resolveFile(context) ?: return
-      synchronized(lock) {
-        // Vérifie limite avant header
-        if (file.exists() && file.length() > MAX_SIZE_BYTES) {
-          try {
-            val lines = file.readLines()
-            val keep = lines.takeLast(KEEP_LINES_ON_CLEAN)
-            file.writeText(keep.joinToString("\n") + "\n")
-          } catch (_: Throwable) { try { file.writeText("") } catch (_: Throwable) {} }
-        }
-        val ts = tsFormat.format(Date())
-        val header = buildString {
-          appendLine("========================================")
-          appendLine("[$ts] KIGHMU VPN — V2Ray DNS DIAGNOSTIC")
-          appendLine("Profil: ${profile.name} (${profile.id}) method=${profile.method} xrayMode=${profile.xrayMode}")
-          appendLine("Download: ${file.absolutePath}")
-          appendLine("Android SDK: ${Build.VERSION.SDK_INT} Model: ${Build.MODEL}")
-          appendLine("Heure: $ts")
-          appendLine("========================================")
-        }
-        file.appendText(header, Charsets.UTF_8)
+      val ts = tsFormat.format(Date())
+      val header = buildString {
+        appendLine("========================================")
+        appendLine("[$ts] KIGHMU VPN — V2Ray DNS DIAGNOSTIC")
+        appendLine("Profil: ${profile.name} (${profile.id}) method=${profile.method} xrayMode=${profile.xrayMode}")
+        appendLine("Android SDK: ${Build.VERSION.SDK_INT} Model: ${Build.MODEL} MANU=${Build.MANUFACTURER} BRAND=${Build.BRAND}")
+        appendLine("Heure: $ts")
+        appendLine("Download public: ${getDownloadPath(context)}")
+        appendLine("Private: ${getPrivatePath(context)}")
+        appendLine("========================================")
       }
+      // Écrit header dans TOUS les emplacements (radical)
+      try { logDetail(context, "SYSTEM", header) } catch (_: Throwable) {}
+      // Force aussi header direct MediaStore
+      try { writeViaMediaStore(context, header) } catch (_: Throwable) {}
+    } catch (_: Throwable) {}
+  }
+
+  /** Garantit que Download/kighmu.txt existe avec header, même sans tunnel actif */
+  fun ensureDownloadFile(context: Context) {
+    try {
+      val ts = tsFormat.format(Date())
+      val dl = getDownloadPath(context) ?: "MediaStore/Download/kighmu.txt"
+      val msg = "[$ts] [SYSTEM] ensureDownloadFile Download=$dl Private=${getPrivatePath(context)} SDK=${Build.VERSION.SDK_INT}"
+      logDetail(context, "SYSTEM", msg)
+      // Force création via MediaStore si absent
+      writeViaMediaStore(context, "[$ts] [SYSTEM] KIGHMU log init - test ecriture Download/kighmu.txt\n")
     } catch (_: Throwable) {}
   }
 
