@@ -47,7 +47,7 @@ class HysteriaTunnel(
   }
 
   override fun isHealthy(): Boolean =
-    !recovering && process?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort)
+    !recovering && process?.isAlive == true && LocalSocksBalancer.hasRealConnect(socksPort)
 
   override fun isRecovering(): Boolean = recovering
 
