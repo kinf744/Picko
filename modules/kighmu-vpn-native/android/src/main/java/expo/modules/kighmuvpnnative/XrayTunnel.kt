@@ -213,6 +213,8 @@ class XrayTunnel(
       root.optJSONObject("log")?.put("loglevel", runtime.logLevel)
         ?: root.put("log", JSONObject().put("loglevel", runtime.logLevel))
     }
+    // Résolution DNS du serveur : libxray (Go) ne résout pas les noms sur Android.
+    resolveOutboundServers(root)
     // Log résumé outbounds pour Trojan/VMess debug
     try {
       val outs = root.optJSONArray("outbounds")
@@ -226,6 +228,32 @@ class XrayTunnel(
       }
     } catch (_: Throwable) {}
     return root.toString()
+  }
+
+  /**
+   * Remplace l'adresse du serveur de sortie (vnext/servers) par son IPv4 résolue
+   * côté JVM. Les paramètres TLS/SNI (serverName, verifyPeerCertByName) restent sur
+   * le nom de domaine d'origine : seule l'adresse de dial est remplacée.
+   */
+  private fun resolveOutboundServers(root: JSONObject) {
+    val outbounds = root.optJSONArray("outbounds") ?: return
+    for (i in 0 until outbounds.length()) {
+      val outbound = outbounds.optJSONObject(i) ?: continue
+      if (outbound.optString("protocol") in setOf("freedom", "blackhole", "dns")) continue
+      val settings = outbound.optJSONObject("settings") ?: continue
+      settings.optJSONArray("vnext")?.optJSONObject(0)?.let { vnext -> resolveAddress(vnext) }
+      settings.optJSONArray("servers")?.optJSONObject(0)?.let { server -> resolveAddress(server) }
+    }
+  }
+
+  private fun resolveAddress(node: JSONObject) {
+    val address = node.optString("address")
+    if (address.isBlank()) return
+    val resolved = NetResolver.resolveHost(address)
+    if (resolved != address) {
+      node.put("address", resolved)
+      FileLogger.log(service, "XRAY", "Serveur résolu $address -> $resolved")
+    }
   }
 
   private fun normalizeInbounds(root: JSONObject, runtime: OpolNative.XrayRuntimePolicy) {
