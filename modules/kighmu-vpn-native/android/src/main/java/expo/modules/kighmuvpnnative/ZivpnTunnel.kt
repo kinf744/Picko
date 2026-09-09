@@ -163,13 +163,11 @@ class ZivpnTunnel(
 
   override fun isHealthy(): Boolean {
     if (recovering) return false
-    // Sonde SOCKS5 CONNECT réelle (pas seulement greeting) : un tunnel UDP ZiVPN dont le
-    // NAT serveur a expiré accepte le greeting local mais échoue au CONNECT -> détecté mort,
-    // même en mode mixte avec LocalSocksBalancer.
+    // Multi-range : sain si au moins 1 uz vivant et balancer répond
     return if (uzPorts.size > 1) {
-      LocalSocksBalancer.hasSocksGreeting(socksPort) && processes.any { it.isAlive } && LocalSocksBalancer.hasRealConnect(socksPort)
+      LocalSocksBalancer.hasSocksGreeting(socksPort) && processes.any { it.isAlive }
     } else {
-      !recovering && processes.firstOrNull()?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort) && LocalSocksBalancer.hasRealConnect(socksPort)
+      !recovering && processes.firstOrNull()?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort)
     }
   }
   override fun isRecovering(): Boolean = recovering
@@ -270,11 +268,6 @@ class ZivpnTunnel(
             } else {
               uzPorts = portRanges.map { findFreePort() }
               portRanges.forEachIndexed { i, r -> launchSingleRange(r, uzPorts[i]) }
-              // Attendre chaque uz prêt avant de router le balancer dessus (évite une
-              // rafale d'erreurs sur des ports pas encore ouverts pendant la reconnexion).
-              portRanges.forEachIndexed { i, _ ->
-                if (!waitForPort(uzPorts[i], 3500)) throw IllegalStateException("range ${portRanges[i]} non prêt")
-              }
               // balancer déjà en place sur socksPort, pas besoin de recréer
             }
             if (waitForPort(socksPort, 3500)) {
