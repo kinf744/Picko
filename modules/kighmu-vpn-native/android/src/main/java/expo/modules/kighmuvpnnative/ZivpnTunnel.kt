@@ -226,26 +226,10 @@ class ZivpnTunnel(
   }
 
   private fun startKeepalive() {
-    keepaliveThread?.interrupt()
-    keepaliveThread = Thread {
-      while (!stopRequested.get() && !recovering) {
-        try { Thread.sleep(25_000) } catch (_: InterruptedException) { return@Thread }
-        if (stopRequested.get() || recovering) return@Thread
-        try {
-          val s = Socket()
-          s.connect(InetSocketAddress("127.0.0.1", socksPort), 3000)
-          s.soTimeout = 3000
-          val out = s.getOutputStream()
-          val inp = s.getInputStream()
-          out.write(byteArrayOf(5, 1, 0)); out.flush()
-          if (inp.read() != 5 || inp.read() != 0) { s.close(); continue }
-          val host = "8.8.8.8".toByteArray(Charsets.US_ASCII)
-          out.write(byteArrayOf(5, 1, 0, 3, host.size.toByte())); out.write(host); out.write(byteArrayOf(0, 53)); out.flush()
-          inp.read(); inp.read(); inp.read(); inp.read()
-          s.close()
-        } catch (_: Throwable) {}
-      }
-    }.apply { isDaemon = true; name = "zivpn-keepalive-$socksPort" }.also { it.start() }
+    // Keepalive retiré : inefficace en non-root (testé et supprimé).
+    // Le maintien du NAT UDP est assuré côté service (httpPing via le VPN
+    // + sonde hasRealConnect du balancer) sans ouvrir de socket supplémentaire
+    // depuis le tunnel. On garde le thread inactif pour compatibilité.
   }
 
   private fun scheduleRecovery() {
