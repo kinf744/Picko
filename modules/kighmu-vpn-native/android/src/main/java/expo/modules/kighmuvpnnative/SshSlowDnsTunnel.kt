@@ -19,7 +19,8 @@ class SshSlowDnsTunnel(
   log: (String, String, String) -> Unit,
 ) : SshTransportTunnel(context, profile, COMPONENT, log, emptyList()) {
   private val dnsttPort: Int = freePort()
-  private val runtime by lazy { OpolNative.slowDnsRuntimePolicy(profile, dnsttPort, socksPort) }
+  // Le serveur dnstt est résolu en IPv4 côté JVM : libdnstt (Go) ne résout pas le DNS sur Android.
+  private val runtime by lazy { OpolNative.slowDnsRuntimePolicy(profile.copy(dnsServer = NetResolver.resolveHost(profile.dnsServer)), dnsttPort, socksPort) }
   private var dnsttProcess: Process? = null
 
   override fun start() {

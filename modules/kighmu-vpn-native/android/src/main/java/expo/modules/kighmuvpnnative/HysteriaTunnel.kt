@@ -169,7 +169,8 @@ class HysteriaTunnel(
     val safeId = profile.id.replace(Regex("[^A-Za-z0-9._-]"), "_")
     return File(context.cacheDir, "hysteria-$safeId.json").also { file ->
       // The complete Hysteria JSON is generated and validated in libopol.
-      file.writeText(OpolNative.buildHysteriaConfig(profile, socksPort))
+      // Le serveur est résolu en IPv4 côté JVM : libhysteria (Go) ne résout pas le DNS sur Android.
+      file.writeText(OpolNative.buildHysteriaConfig(profile.copy(hysteriaHost = NetResolver.resolveHost(profile.hysteriaHost)), socksPort))
       configFile = file
     }
   }

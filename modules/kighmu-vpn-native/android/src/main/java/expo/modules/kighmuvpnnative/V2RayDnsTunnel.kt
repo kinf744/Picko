@@ -37,7 +37,8 @@ class V2RayDnsTunnel(
     profile.validate()?.let { FileLogger.log(context, "V2RAY DNS", "VALIDATE ERROR: $it"); error(it) }
     stopRequested.set(false); recovering = false
     try {
-      runtime = OpolNative.v2RayDnsRuntimePolicy(profile, dnsttPort, socksPort)
+      // Le serveur dnstt est résolu en IPv4 côté JVM : libdnstt (Go) ne résout pas le DNS sur Android.
+      runtime = OpolNative.v2RayDnsRuntimePolicy(profile.copy(dnsServer = NetResolver.resolveHost(profile.dnsServer)), dnsttPort, socksPort)
       FileLogger.log(context, "V2RAY DNS", "Runtime libopol: dnsttReady=${runtime.dnsttReadyTimeoutMs}ms xrayReady=${runtime.xrayReadyTimeoutMs}ms probe=${runtime.probeIntervalMs}ms maxRetry=${runtime.maxRecoveryAttempts}")
     } catch (e: Throwable) {
       FileLogger.log(context, "V2RAY DNS", "RUNTIME ERROR: ${e.message}"); throw e
@@ -136,7 +137,7 @@ class V2RayDnsTunnel(
             "ready" -> if (!dnstt) compactLog("info", "Xray DNS démarré")
             "retry" -> { FileLogger.logForce(context, "V2RAY DNS", "$tag RETRY: $line"); compactLog("warning", if (dnstt) "DNSTT a signalé une erreur; reconnexion V2Ray DNS" else "Xray DNS a signalé une erreur; reconnexion"); scheduleRecovery() }
             else -> {
-              if (!dnstt && lower.contains("error") || lower.contains("failed") || lower.contains("timeout") || lower.contains("rejected")) {
+              if ((!dnstt && (lower.contains("error") || lower.contains("failed") || lower.contains("timeout") || lower.contains("rejected")))) {
                 FileLogger.log(context, "V2RAY DNS:XRAY-ERR", line)
                 if (lower.contains("failed to start") || lower.contains("unknown transport") || lower.contains("trojan") || lower.contains("vmess")) compactLog("error", line.take(180))
               }
