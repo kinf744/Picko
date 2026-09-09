@@ -1,12 +1,17 @@
 package expo.modules.kighmuvpnnative
 
 import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.provider.Settings
 import android.telephony.TelephonyManager
+import androidx.core.app.NotificationCompat
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.events.OnActivityResultPayload
 import expo.modules.kotlin.modules.Module
@@ -19,6 +24,10 @@ import java.util.Locale
 
 class KighmuVpnNativeModule : Module() {
   @Volatile private var pendingProfilesJson: String? = null
+
+  // Notification Hotspot Share (id distinct du VPN 4008)
+  private val HOTSPOT_CHANNEL_ID = "kighmu-hotspot"
+  private val HOTSPOT_NOTIFICATION_ID = 4009
 
   override fun definition() = ModuleDefinition {
     Name("KighmuVpnNative")
@@ -42,6 +51,10 @@ class KighmuVpnNativeModule : Module() {
       KighmuVpnService.logSink = null
       KighmuVpnService.stateSink = null
       pendingProfilesJson = null
+      // Nettoie la notification hotspot si l'app est détruite
+      try {
+        appContext.reactContext?.let { cancelHotspotNotification(it) }
+      } catch (_: Throwable) {}
     }
 
     // Relance automatiquement la configuration en attente dès que l'utilisateur
@@ -139,11 +152,20 @@ class KighmuVpnNativeModule : Module() {
 
     AsyncFunction("startLanShare") { preferredPort: Int ->
       val actualPort = LanShareGateway.start(preferredPort)
-      mapOf("port" to actualPort, "running" to LanShareGateway.isRunning())
+      val running = LanShareGateway.isRunning()
+      if (running) {
+        try {
+          appContext.reactContext?.let { ctx -> showHotspotNotification(ctx, actualPort) }
+        } catch (_: Throwable) {}
+      }
+      mapOf("port" to actualPort, "running" to running)
     }
 
     AsyncFunction("stopLanShare") {
       LanShareGateway.stop()
+      try {
+        appContext.reactContext?.let { ctx -> cancelHotspotNotification(ctx) }
+      } catch (_: Throwable) {}
       true
     }
 
@@ -239,6 +261,58 @@ class KighmuVpnNativeModule : Module() {
       throw error
     }
     sendEvent("onStateChanged", mapOf("status" to KighmuVpnService.STATUS_CONNECTING))
+  }
+
+  private fun createHotspotChannel(context: Context) {
+    if (Build.VERSION.SDK_INT >= 26) {
+      try {
+        val mgr = context.getSystemService(NotificationManager::class.java)
+        if (mgr.getNotificationChannel(HOTSPOT_CHANNEL_ID) == null) {
+          mgr.createNotificationChannel(
+            NotificationChannel(HOTSPOT_CHANNEL_ID, "KIGHMU Hotspot Share", NotificationManager.IMPORTANCE_LOW).apply {
+              description = "Partage VPN via Hotspot"
+              setShowBadge(false)
+            }
+          )
+        }
+      } catch (_: Throwable) {}
+    }
+  }
+
+  private fun hotspotNotification(context: Context, port: Int): Notification {
+    createHotspotChannel(context)
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+    val pending = launchIntent?.let {
+      PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
+    val stopIntent = Intent(context, KighmuVpnService::class.java).apply { action = KighmuVpnService.ACTION_STOP }
+    // L'arrêt via le service VPN stoppera aussi le partage si le VPN tombe; pour le hotspot seul on propose d'ouvrir l'app
+    val stopPending = PendingIntent.getService(context, HOTSPOT_NOTIFICATION_ID, stopIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    return NotificationCompat.Builder(context, HOTSPOT_CHANNEL_ID)
+      .setSmallIcon(R.drawable.ic_kg_notification)
+      .setContentTitle("Hotspot Share actif")
+      .setContentText("Proxy VPN partagé sur le réseau local · Port $port")
+      .setStyle(NotificationCompat.BigTextStyle().bigText("Proxy HTTP/SOCKS5 actif sur le hotspot. Clients : configurez le proxy $port ou le PAC."))
+      .setOngoing(true)
+      .setContentIntent(pending)
+      .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Ouvrir", pending ?: stopPending)
+      .setPriority(NotificationCompat.PRIORITY_LOW)
+      .build()
+  }
+
+  private fun showHotspotNotification(context: Context, port: Int) {
+    try {
+      createHotspotChannel(context)
+      val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      nm.notify(HOTSPOT_NOTIFICATION_ID, hotspotNotification(context, port))
+    } catch (_: Throwable) {}
+  }
+
+  private fun cancelHotspotNotification(context: Context) {
+    try {
+      val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      nm.cancel(HOTSPOT_NOTIFICATION_ID)
+    } catch (_: Throwable) {}
   }
 
   private fun assessTamperRisk(context: Context): Boolean {

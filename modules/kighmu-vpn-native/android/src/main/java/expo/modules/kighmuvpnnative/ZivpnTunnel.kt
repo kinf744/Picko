@@ -36,44 +36,60 @@ class ZivpnTunnel(
     profile.validate()?.let { throw IllegalArgumentException(it) }
     stopRequested.set(false)
     recovering = false
-    log("connection", "ZIVPN", "ZiVPN ${profile.name} port=${profile.port}")
+    log("connection", "ZIVPN", "ZiVPN ${profile.name}")
+    // Trace détaillée dans Download/kighmu.txt (max infos debogage)
+    FileLogger.logDetail(context, "ZIVPN", "START profil=${profile.name} id=${profile.id} method=${profile.method} port=${profile.port} host=${profile.host.take(32)} obfs=${profile.obfs} socksPort=$socksPort mtu=${context.resources?.configuration}")
+    FileLogger.init(context)
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "ENV SDK=${android.os.Build.VERSION.SDK_INT} model=${android.os.Build.MODEL} abi=${android.os.Build.SUPPORTED_ABIS?.joinToString()} apkNativeDir=${context.applicationInfo.nativeLibraryDir}")
     val binary = File(context.applicationInfo.nativeLibraryDir, "libuz_core.so")
     require(binary.exists() && binary.length() > 0L) { "libuz_core.so absent de l’APK" }
 
     val portRanges = profile.port.trim().ifEmpty { "6000-19999" }.split(",").map { it.trim() }.filter { it.isNotEmpty() }
     // Validation déjà faite via TunnelProfile, mais on garde garde-fou
     require(portRanges.isNotEmpty()) { "port ZiVPN invalide" }
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "PORT_RANGES n=${portRanges.size} ranges=${portRanges.joinToString("|")} hostResolv=${try { java.net.InetAddress.getByName(profile.host).hostAddress } catch (_: Throwable) { "unresolved" }}")
 
     if (portRanges.size == 1) {
       // Mono-range : 1 uz_core direct sur socksPort (comportement legacy)
       launchSingleRange(portRanges[0], socksPort)
       uzPorts = listOf(socksPort)
+      FileLogger.logDetail(context, "ZIVPN-DETAIL", "MONO_RANGE port=${portRanges[0]} -> socksPort=$socksPort")
     } else {
       // Multi-range à la Zamois : N uz_core sur ports ephémères + balancer sur socksPort
       uzPorts = portRanges.map { findFreePort() }
+      FileLogger.logDetail(context, "ZIVPN-DETAIL", "MULTI_RANGE uzPorts=${uzPorts.joinToString(",")} -> balancerPort=$socksPort")
       portRanges.forEachIndexed { index, range ->
         val uzPort = uzPorts[index]
+        FileLogger.logDetail(context, "ZIVPN-DETAIL", "LAUNCH_RANGE idx=$index range=$range uzPort=$uzPort")
         launchSingleRange(range, uzPort)
       }
       // Attente que tous les uz soient prêts avant balancer
       portRanges.forEachIndexed { index, _ ->
         val uzPort = uzPorts[index]
+        FileLogger.logDetail(context, "ZIVPN-DETAIL", "WAIT_RANGE idx=$index uzPort=$uzPort range=${portRanges[index]}")
         if (!waitForPort(uzPort, 3500)) {
+          FileLogger.logDetail(context, "ZIVPN-DETAIL", "FAIL_RANGE idx=$index uzPort=$uzPort timeout 3500ms")
           stop()
-          error("ZiVPN range ${portRanges[index]} n’a pas ouvert SOCKS $uzPort")
+          error("ZiVPN n’a pas ouvert le proxy local")
+        } else {
+          FileLogger.logDetail(context, "ZIVPN-DETAIL", "OK_RANGE idx=$index uzPort=$uzPort ready")
         }
       }
       startRangeBalancer()
+      FileLogger.logDetail(context, "ZIVPN-DETAIL", "BALANCER_STARTED socksPort=$socksPort targets=${uzPorts.joinToString(",")}")
     }
 
     if (!waitForPort(socksPort, 3500)) {
+      FileLogger.logDetail(context, "ZIVPN-DETAIL", "FAIL_SOCKS socksPort=$socksPort timeout 3500ms authFailed=$authFailed procAlive=${processes.any { it.isAlive }}")
       stop()
       if (authFailed) error("Échec de l’authentification, mot de passe incorrect")
       error("ZiVPN n’a pas ouvert le proxy SOCKS local")
     }
-    log("success", "ZIVPN", "Auth complete ${portRanges.size} range(s)")
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "AUTH_OK socksPort=$socksPort uzPorts=${uzPorts.joinToString(",")} dns=${dnsServers.joinToString(",")}")
+    log("success", "ZIVPN", "Auth complete")
     dnsServers.forEach { log("connection", "ZIVPN", "DNS $it") }
-    log("success", "ZIVPN", "Connected ${if (portRanges.size > 1) "multi-range ${portRanges.joinToString(",")}" else portRanges[0]}")
+    log("success", "ZIVPN", "Connected")
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "CONNECTED profil=${profile.name} socksPort=$socksPort balancer=${uzPorts.size}ranges")
     startKeepalive()
   }
 
@@ -81,12 +97,16 @@ class ZivpnTunnel(
     val runtime = OpolNative.ziVpnRuntimePolicy(profile.obfs)
     // Copie du profil avec port = ce range unique (libuz_core ne supporte qu'un range par process).
     // Le serveur est résolu en IPv4 côté JVM : libuz_core (Go) ne résout pas le DNS sur Android.
-    val rangeProfile = profile.copy(port = portRange, host = NetResolver.resolveHost(profile.host))
+    val resolvedHost = NetResolver.resolveHost(profile.host)
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "LAUNCH portRange=$portRange uzPort=$uzPort resolvedHost=$resolvedHost obfs=${profile.obfs} nativeDir=${context.applicationInfo.nativeLibraryDir}")
+    val rangeProfile = profile.copy(port = portRange, host = resolvedHost)
     val config = File(context.cacheDir, "zivpn-${safeToken(profile.id)}-${uzPort}.json")
-    config.writeText(OpolNative.buildZiVpnConfig(rangeProfile, uzPort))
+    val cfgText = OpolNative.buildZiVpnConfig(rangeProfile, uzPort)
+    config.writeText(cfgText)
     configFiles.add(config)
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "CONFIG uzPort=$uzPort bytes=${cfgText.length} file=${config.absolutePath}")
     val nativeDir = context.applicationInfo.nativeLibraryDir
-    val started = ProcessBuilder(listOf(File(nativeDir, "libuz_core.so").absolutePath) + runtime.argumentPrefix + config.readText())
+    val started = ProcessBuilder(listOf(File(nativeDir, "libuz_core.so").absolutePath) + runtime.argumentPrefix + cfgText)
       .directory(context.filesDir)
       .apply {
         environment()["LD_LIBRARY_PATH"] = nativeDir
@@ -95,17 +115,20 @@ class ZivpnTunnel(
         redirectErrorStream(true)
       }
       .start()
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "PROCESS_STARTED uzPort=$uzPort alive=${started.isAlive} cmd=libuz_core.so")
     processes.add(started)
     observeOutput(started)
   }
 
   private fun startRangeBalancer() {
     try {
+      FileLogger.logDetail(context, "ZIVPN-DETAIL", "BALANCER_INIT socksPort=$socksPort uzPorts=${uzPorts.joinToString(",")}")
       val server = ServerSocket(socksPort, 128, java.net.InetAddress.getByName("127.0.0.1"))
       server.reuseAddress = true
       balancerServer = server
       balancerThread = Thread {
-        log("connection", "ZIVPN", "Balancer multi-range ZIVPN sur $socksPort -> ${uzPorts.joinToString(",")}")
+        log("connection", "ZIVPN", "Balancer multi-range ZIVPN actif")
+        FileLogger.logDetail(context, "ZIVPN-DETAIL", "BALANCER_THREAD_STARTED socksPort=$socksPort")
         while (!Thread.currentThread().isInterrupted && !server.isClosed) {
           try {
             val client = server.accept()
@@ -162,19 +185,26 @@ class ZivpnTunnel(
   }
 
   override fun isHealthy(): Boolean {
-    if (recovering) return false
-    // Sonde SOCKS5 CONNECT réelle (pas seulement greeting) : un tunnel UDP ZiVPN dont le
-    // NAT serveur a expiré accepte le greeting local mais échoue au CONNECT -> détecté mort,
-    // même en mode mixte avec LocalSocksBalancer.
-    return if (uzPorts.size > 1) {
-      LocalSocksBalancer.hasSocksGreeting(socksPort) && processes.any { it.isAlive } && LocalSocksBalancer.hasRealConnect(socksPort)
-    } else {
-      !recovering && processes.firstOrNull()?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort) && LocalSocksBalancer.hasRealConnect(socksPort)
+    if (recovering) {
+      FileLogger.logDetail(context, "ZIVPN-DETAIL", "HEALTH socksPort=$socksPort recovering=true -> false")
+      return false
     }
+    val greeting = LocalSocksBalancer.hasSocksGreeting(socksPort)
+    val realConnect = LocalSocksBalancer.hasRealConnect(socksPort)
+    val alive = if (uzPorts.size > 1) processes.any { it.isAlive } else processes.firstOrNull()?.isAlive == true
+    val result = if (uzPorts.size > 1) {
+      greeting && alive && realConnect
+    } else {
+      alive && greeting && realConnect
+    }
+    // Trace détaillée santé (fichier Download) - utile pour diagnostiquer blocage trafic
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "HEALTH socksPort=$socksPort uzPorts=${uzPorts.joinToString(",")} greeting=$greeting realConnect=$realConnect alive=$alive -> $result")
+    return result
   }
   override fun isRecovering(): Boolean = recovering
 
   override fun stop() {
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "STOP socksPort=$socksPort uzPorts=${uzPorts.joinToString(",")} procs=${processes.size} recovering=$recovering")
     stopRequested.set(true)
     recovering = false
     keepaliveThread?.interrupt()
@@ -183,7 +213,7 @@ class ZivpnTunnel(
     recoveryThread = null
     try { balancerServer?.close(); balancerServer = null } catch (_: Throwable) {}
     try { balancerThread?.interrupt(); balancerThread = null } catch (_: Throwable) {}
-    balancerExecutor.shutdownNow()
+    try { balancerExecutor.shutdownNow() } catch (_: Throwable) {}
     processes.forEach { try { it.destroy() } catch (_: Throwable) {} }
     processes.forEach { try { it.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: Throwable) {} }
     processes.forEach { try { if (it.isAlive) it.destroyForcibly() } catch (_: Throwable) {} }
@@ -191,6 +221,7 @@ class ZivpnTunnel(
     configFiles.forEach { FileLogger.secureDelete(it) }
     configFiles.clear()
     uzPorts = emptyList()
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "STOP_DONE socksPort=$socksPort")
   }
 
   private fun waitForPort(port: Int, timeoutMs: Long): Boolean {
@@ -211,15 +242,21 @@ class ZivpnTunnel(
             if (stopRequested.get() || !processes.contains(running)) return@forEach
             val line = raw.trim()
             if (line.isBlank()) return@forEach
+            // Trace détaillée dans Download/kighmu.txt (max infos)
+            FileLogger.logDetail(context, "ZIVPN-NATIVE", "procPort=$socksPort line=$line")
             if (AUTH_FAILURE_REGEX.containsMatchIn(line)) { notifyAuthFailure(); return@forEach }
             val lower = line.lowercase()
             if (lower.contains("timeout") || lower.contains("disconnected") || lower.contains("reconnect") || lower.contains("error") && lower.contains("udp")) {
+              FileLogger.logDetail(context, "ZIVPN-DETAIL", "TRIGGER_RECOVERY line=$line recovering=$recovering")
               if (!recovering) scheduleRecovery()
             }
           }
         }
-      } catch (_: Throwable) {}
+      } catch (e: Throwable) {
+        FileLogger.logDetail(context, "ZIVPN-DETAIL", "OBSERVE_ERROR socksPort=$socksPort err=${e.message}")
+      }
       finally {
+        FileLogger.logDetail(context, "ZIVPN-DETAIL", "OBSERVE_END socksPort=$socksPort authFailed=$authFailed stopRequested=${stopRequested.get()} alive=${running.isAlive} exit=${try { running.exitValue() } catch (_: Throwable) { -1 }}")
         if (!stopRequested.get() && processes.contains(running) && !authFailed) scheduleRecovery()
       }
     }.apply { isDaemon = true; name = "zivpn-log-$socksPort" }.start()
@@ -257,7 +294,7 @@ class ZivpnTunnel(
               // Attendre chaque uz prêt avant de router le balancer dessus (évite une
               // rafale d'erreurs sur des ports pas encore ouverts pendant la reconnexion).
               portRanges.forEachIndexed { i, _ ->
-                if (!waitForPort(uzPorts[i], 3500)) throw IllegalStateException("range ${portRanges[i]} non prêt")
+                if (!waitForPort(uzPorts[i], 3500)) throw IllegalStateException("Tunnel non prêt")
               }
               // balancer déjà en place sur socksPort, pas besoin de recréer
             }

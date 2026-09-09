@@ -18,18 +18,52 @@ import java.util.Locale
  */
 object FileLogger {
   private const val FILENAME = "kighmu.txt"
-  private const val MAX_SIZE_BYTES = 2L * 1024L * 1024L // 2 Mio max (réduit pour éviter verbeux)
-  private const val KEEP_LINES_ON_CLEAN = 800
+  private const val MAX_SIZE_BYTES = 5L * 1024L * 1024L // 5 Mio pour trace ZIVPN détaillée
+  private const val KEEP_LINES_ON_CLEAN = 1500
   private const val DEDUP_MS = 2000L
-  private const val RATE_LIMIT_PER_SEC = 5
+  private const val RATE_LIMIT_PER_SEC = 8
   @Volatile private var resolvedFile: File? = null
+  @Volatile private var publicFile: File? = null
   private val lock = Any()
   private val tsFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.FRANCE)
   // Filtre anti-verbeux
   private val lastMsgByComponent = mutableMapOf<String, Pair<String, Long>>()
   private val timestampsByComponent = mutableMapOf<String, MutableList<Long>>()
 
-  fun init(context: Context) { resolveFile(context) }
+  fun init(context: Context) { resolveFile(context); resolvePublicFile(context) }
+
+  private fun resolvePublicFile(context: Context): File? {
+    publicFile?.let { if (it.exists() || it.parentFile?.exists() == true) return it }
+    synchronized(lock) {
+      publicFile?.let { return it }
+      // 1) Tente Download public direct (API <29 ou avec WRITE_EXTERNAL_STORAGE)
+      try {
+        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (downloadDir != null) {
+          if (!downloadDir.exists()) downloadDir.mkdirs()
+          val candidate = File(downloadDir, FILENAME)
+          try {
+            if (!candidate.exists()) candidate.createNewFile()
+            if (candidate.exists() && candidate.canWrite()) {
+              publicFile = candidate
+              return candidate
+            }
+          } catch (_: Throwable) {}
+        }
+      } catch (_: Throwable) {}
+      // 2) Tente fichier scoped dans Download externe (visible via file manager sur certains appareils)
+      try {
+        val scopedDownload = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        if (scopedDownload != null) {
+          if (!scopedDownload.exists()) scopedDownload.mkdirs()
+          val candidate = File(scopedDownload, FILENAME)
+          publicFile = candidate
+          return candidate
+        }
+      } catch (_: Throwable) {}
+      return null
+    }
+  }
 
   private fun resolveFile(context: Context): File? {
     resolvedFile?.let { if (it.exists() || it.parentFile?.exists() == true) return it }
@@ -60,7 +94,9 @@ object FileLogger {
     }
   }
 
-  fun getPath(context: Context): String? = resolveFile(context)?.absolutePath
+  fun getPath(context: Context): String? = resolvePublicFile(context)?.absolutePath ?: resolveFile(context)?.absolutePath
+  fun getDownloadPath(context: Context): String? = resolvePublicFile(context)?.absolutePath
+  fun getPrivatePath(context: Context): String? = resolveFile(context)?.absolutePath
 
   fun shouldLog(component: String, message: String): Boolean {
     val now = System.currentTimeMillis()
@@ -88,27 +124,92 @@ object FileLogger {
 
   fun log(context: Context, component: String, message: String) {
     if (!shouldLog(component, message)) return
+    writeToAll(context, component, message, filtered = true)
+  }
+
+  /** Écriture détaillée ZIVPN sans filtre anti-verbeux (pour kighmu.txt Download) */
+  fun logDetail(context: Context, component: String, message: String) {
+    writeToAll(context, component, message, filtered = false)
+  }
+
+  private fun writeToAll(context: Context, component: String, message: String, filtered: Boolean) {
     try {
-      val file = resolveFile(context) ?: return
-      synchronized(lock) {
-        // Nettoyage fiable: si dépasse LIMITE, garde seulement 800 dernières lignes (évite verbeux infini)
-        if (file.exists() && file.length() > MAX_SIZE_BYTES) {
-          try {
-            val lines = file.readLines()
-            val keep = if (lines.size > KEEP_LINES_ON_CLEAN) lines.takeLast(KEEP_LINES_ON_CLEAN) else lines.takeLast((lines.size * 0.5).toInt())
-            val ts = tsFormat.format(Date())
-            file.writeText(keep.joinToString("\n") + "\n")
-            file.appendText("[$ts] [SYSTEM] Nettoyage auto: limite ${MAX_SIZE_BYTES/1024}Ko atteinte, garde ${keep.size} dernières lignes\n", Charsets.UTF_8)
-          } catch (_: Throwable) {
-            try { file.writeText("") } catch (_: Throwable) {}
+      val ts = tsFormat.format(Date())
+      val line = "[$ts] [$component] $message\n"
+      // Fichier privé (toujours)
+      try {
+        val file = resolveFile(context)
+        if (file != null) {
+          synchronized(lock) {
+            if (filtered && file.exists() && file.length() > MAX_SIZE_BYTES) {
+              try {
+                val lines = file.readLines()
+                val keep = if (lines.size > KEEP_LINES_ON_CLEAN) lines.takeLast(KEEP_LINES_ON_CLEAN) else lines.takeLast((lines.size * 0.5).toInt())
+                val t2 = tsFormat.format(Date())
+                file.writeText(keep.joinToString("\n") + "\n")
+                file.appendText("[$t2] [SYSTEM] Nettoyage auto: limite ${MAX_SIZE_BYTES/1024}Ko atteinte, garde ${keep.size} dernières lignes\n", Charsets.UTF_8)
+              } catch (_: Throwable) {
+                try { file.writeText("") } catch (_: Throwable) {}
+              }
+            }
+            file.appendText(line, Charsets.UTF_8)
           }
         }
-        val ts = tsFormat.format(Date())
-        val line = "[$ts] [$component] $message\n"
-        file.appendText(line, Charsets.UTF_8)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && file.absolutePath.contains(Environment.DIRECTORY_DOWNLOADS)) {
-          try { file.setLastModified(System.currentTimeMillis()) } catch (_: Throwable) {}
+      } catch (_: Throwable) {}
+      // Fichier Download public (max détail ZIVPN)
+      try {
+        val pub = resolvePublicFile(context)
+        if (pub != null && pub.absolutePath != resolveFile(context)?.absolutePath) {
+          synchronized(lock) {
+            if (pub.exists() && pub.length() > MAX_SIZE_BYTES) {
+              try {
+                val lines = pub.readLines()
+                val keep = lines.takeLast(KEEP_LINES_ON_CLEAN)
+                pub.writeText(keep.joinToString("\n") + "\n")
+                pub.appendText("[$ts] [SYSTEM] Nettoyage Download: limite atteinte, garde ${keep.size} lignes\n", Charsets.UTF_8)
+              } catch (_: Throwable) { try { pub.writeText("") } catch (_: Throwable) {} }
+            }
+            pub.appendText(line, Charsets.UTF_8)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && pub.absolutePath.contains(Environment.DIRECTORY_DOWNLOADS)) {
+              try { pub.setLastModified(System.currentTimeMillis()) } catch (_: Throwable) {}
+            }
+          }
         }
+      } catch (_: Throwable) {}
+      // Sur Android Q+, tente aussi MediaStore si Download public direct échoué (fallback)
+      try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          val dl = resolvePublicFile(context)
+          if (dl == null || !dl.exists()) writeViaMediaStore(context, line)
+        }
+      } catch (_: Throwable) {}
+    } catch (_: Throwable) {}
+  }
+
+  private fun writeViaMediaStore(context: Context, line: String) {
+    try {
+      val resolver = context.contentResolver
+      val collection = android.provider.MediaStore.Downloads.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
+      // Cherche fichier existant
+      var uri: android.net.Uri? = null
+      try {
+        resolver.query(collection, arrayOf(android.provider.MediaStore.Downloads._ID), "${android.provider.MediaStore.Downloads.DISPLAY_NAME} = ?", arrayOf(FILENAME), null)?.use { cursor ->
+          if (cursor.moveToFirst()) {
+            val id = cursor.getLong(0)
+            uri = android.content.ContentUris.withAppendedId(collection, id)
+          }
+        }
+      } catch (_: Throwable) {}
+      if (uri == null) {
+        val values = android.content.ContentValues().apply {
+          put(android.provider.MediaStore.Downloads.DISPLAY_NAME, FILENAME)
+          put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain")
+          put(android.provider.MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+        }
+        uri = resolver.insert(collection, values)
+      }
+      if (uri != null) {
+        resolver.openOutputStream(uri!!, "wa")?.use { it.write(line.toByteArray(Charsets.UTF_8)) }
       }
     } catch (_: Throwable) {}
   }

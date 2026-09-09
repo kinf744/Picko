@@ -112,8 +112,27 @@ class KighmuVpnService : VpnService() {
   private fun startTunnelsInternal(payloadJson: String, generation: Long) {
     try {
       FileLogger.init(this)
+      // Header détaillé pour Download/kighmu.txt - bug ZIVPN trafic bloqué après quelques minutes
+      try {
+        val dlPath = FileLogger.getDownloadPath(this)
+        val privPath = FileLogger.getPrivatePath(this)
+        FileLogger.logDetail(this, "ZIVPN-DETAIL", "=== KIGHMU ZIVPN TRACE START gen=$generation ===")
+        FileLogger.logDetail(this, "ZIVPN-DETAIL", "PAYLOAD len=${payloadJson.length} take=${payloadJson.take(1200)}")
+        FileLogger.logDetail(this, "ZIVPN-DETAIL", "DOWNLOAD_PATH=$dlPath PRIV_PATH=$privPath SDK=${Build.VERSION.SDK_INT} MODEL=${Build.MODEL} MANU=${Build.MANUFACTURER} BRAND=${Build.BRAND}")
+        FileLogger.logDetail(this, "ZIVPN-DETAIL", "POWER idleMode=${(getSystemService(POWER_SERVICE) as PowerManager).isDeviceIdleMode} interactive=${(getSystemService(POWER_SERVICE) as PowerManager).isInteractive} batteryOpt=${try { (getSystemService(Context.POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName) } catch (_: Throwable) { "unknown" }}")
+        // Réseau détaillé
+        try {
+          val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+          val nets = cm.allNetworks.joinToString("|") { net ->
+            val caps = cm.getNetworkCapabilities(net)
+            "net=${net} caps=${caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)} vpn=${caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN)} wifi=${caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)} cell=${caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)}"
+          }
+          FileLogger.logDetail(this, "ZIVPN-DETAIL", "NETWORKS $nets activeNet=${cm.activeNetwork}")
+        } catch (e: Throwable) { FileLogger.logDetail(this, "ZIVPN-DETAIL", "NETWORKS_ERROR ${e.message}") }
+      } catch (_: Throwable) {}
       FileLogger.log(this, "SERVICE", "=== startTunnelsInternal generation=$generation payloadLen=${payloadJson.length} payload=${payloadJson.take(800)} ===")
       FileLogger.log(this, "SERVICE", "Download log: ${FileLogger.getPath(this)}")
+      FileLogger.logDetail(this, "ZIVPN-DETAIL", "GENERATION_START gen=$generation payloadLen=${payloadJson.length}")
       val payload = JSONObject(payloadJson)
       runtimeSettings = VpnRuntimeSettings.parse(payload)
       activeProfilesJson = payloadJson
@@ -232,6 +251,9 @@ class KighmuVpnService : VpnService() {
       }
       if (runtimeSettings.wakeLockEnabled) acquireWakeLock()
       emitLog("connection", "BALANCER", "VPN connecté avec ${started.size} tunnel(s) disponibles ; MTU ${runtimeSettings.mtu}")
+      // Trace détaillée ZIVPN dans Download/kighmu.txt pour diagnostiquer blocage trafic
+      FileLogger.logDetail(this, "ZIVPN-DETAIL", "VPN_CONNECTED gen=$generation tunnels=${started.map { "${it.label}:${it.socksPort}:${it::class.simpleName}" }.joinToString("|")} balancerPort=$activeBalancerPort mtu=${runtimeSettings.mtu} dns=${runtimeSettings.dnsServers()} zivpnOnly=$isZivpnOnly zivpnAll=$isZivpnAll")
+      FileLogger.logDetail(this, "ZIVPN-DETAIL", "BALANCER_ACTIVE type=${if (isZivpnAll) "ZivpnModernBalancer" else "LocalSocksBalancer"} port=$activeBalancerPort")
       startForeground(NOTIFICATION_ID, notification("Connecté : ${started.size} tunnel(s) équilibrés"))
       monitorTunnels(generation)
     } catch (error: Throwable) {
@@ -252,8 +274,22 @@ class KighmuVpnService : VpnService() {
       var emptyStreak = 0
       val strikes = HashMap<Int, Int>()
       var nextPingAt = System.currentTimeMillis() + runtimeSettings.httpPingIntervalMs
+      var iteration = 0L
       while (isActive(generation)) {
         Thread.sleep(15_000)
+        iteration++
+        // Trace watchdog détaillée pour debug ZIVPN (Download/kighmu.txt) - bloque trafic après minutes
+        try {
+          val pm = getSystemService(POWER_SERVICE) as PowerManager
+          val tunAlive = synchronized(lifecycleLock) { tunFd >= 0 }
+          val balancerPort = synchronized(lifecycleLock) { currentBalancerPort }
+          val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+          val netInfo = try {
+            val nets = cm.allNetworks.take(4).joinToString(";") { n -> "${n}:${cm.getNetworkCapabilities(n)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)}" }
+            "nets=$nets active=${cm.activeNetwork}"
+          } catch (_: Throwable) { "netError" }
+          FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-DETAIL", "WATCHDOG iter=$iteration gen=$generation tunFd=$tunFd tunAlive=$tunAlive balancerPort=$balancerPort idleMode=${pm.isDeviceIdleMode} interactive=${pm.isInteractive} $netInfo status=$currentStatus")
+        } catch (_: Throwable) {}
         // En Doze, contrôle allégé : on vérifie seulement que le TUN est toujours valide,
         // sinon on relance. On évite de redémarrer sur un simple timeout réseau dû à Doze.
         try {
@@ -261,10 +297,12 @@ class KighmuVpnService : VpnService() {
           if (pm.isDeviceIdleMode) {
             val fdAlive = synchronized(lifecycleLock) { tunFd >= 0 }
             if (!fdAlive) {
+              FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-DETAIL", "WATCHDOG_DOZE_TUN_CLOSED gen=$generation")
               emitLog("warning", "MONITOR", "TUN fermé pendant Doze — reconnexion")
               restartVpn(generation, "TUN fermé en Doze")
               return@thread
             }
+            FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-DETAIL", "WATCHDOG_DOZE_ALIVE gen=$generation tunFd=$tunFd")
             Thread.sleep(30_000)
             continue
           }
@@ -273,15 +311,20 @@ class KighmuVpnService : VpnService() {
         // Hystérésis : un tunnel n'est retiré qu'après DEUX sondes consécutives
         // négatives (le SOCKS local peut être brièvement occupé par le trafic).
         snapshot.forEach { tunnel ->
-          strikes[tunnel.socksPort] = if (tunnel.isHealthy()) 0 else (strikes[tunnel.socksPort] ?: 0) + 1
+          val healthyBefore = strikes[tunnel.socksPort] ?: 0
+          val isHealthy = tunnel.isHealthy()
+          strikes[tunnel.socksPort] = if (isHealthy) 0 else healthyBefore + 1
+          FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-DETAIL", "HEALTH_CHECK tunnel=${tunnel.label} port=${tunnel.socksPort} healthy=$isHealthy strikesBefore=$healthyBefore strikesAfter=${strikes[tunnel.socksPort]} recovering=${tunnel.isRecovering()}")
         }
         val healthy = snapshot.filter { (strikes[it.socksPort] ?: 0) < 3 }
         val recovering = snapshot.any { it.isRecovering() }
         val ports = healthy.map { it.socksPort }
+        FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-DETAIL", "HEALTH_SUMMARY gen=$generation total=${snapshot.size} healthy=${healthy.size} recovering=$recovering ports=${ports.joinToString(",")} strikes=$strikes")
         if (ports != lastPorts) {
           balancer?.updatePorts(ports)
           // ZIVPN moderne gère sa propre santé en interne (sonde CONNECT), pas besoin d'update externe
           emitLog("info", "BALANCER", "${ports.size} tunnel(s) sain(s) après contrôle de santé")
+          FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-DETAIL", "BALANCER_UPDATE old=${lastPorts.joinToString(",")} new=${ports.joinToString(",")}")
           lastPorts = ports
         }
         if (ports.isEmpty()) {
@@ -344,7 +387,10 @@ class KighmuVpnService : VpnService() {
   private data class PingResult(val success: Boolean, val code: Int, val latencyMs: Long)
 
   private fun httpPing(): PingResult = try {
-    val socksPort = synchronized(lifecycleLock) { zivpnModernBalancer?.port ?: balancer?.port } ?: return PingResult(false, 0, 0L)
+    val socksPort = synchronized(lifecycleLock) { zivpnModernBalancer?.port ?: balancer?.port } ?: run {
+      FileLogger.logDetail(this, "ZIVPN-DETAIL", "PING_NO_BALANCER")
+      return PingResult(false, 0, 0L)
+    }
     val startNs = System.nanoTime()
     val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
     val connection = URL(runtimeSettings.httpPingUrl).openConnection(proxy) as HttpURLConnection
@@ -355,8 +401,10 @@ class KighmuVpnService : VpnService() {
     val code = connection.responseCode
     connection.disconnect()
     val ms = (System.nanoTime() - startNs) / 1_000_000L
+    FileLogger.logDetail(this, "ZIVPN-DETAIL", "PING_OK code=$code ms=$ms port=$socksPort url=${runtimeSettings.httpPingUrl}")
     PingResult(code in 200..399, code, ms)
   } catch (error: Throwable) {
+    FileLogger.logDetail(this, "ZIVPN-DETAIL", "PING_FAIL err=${error.message} cause=${error::class.simpleName}")
     emitLog("info", "PING", "Vérification HTTP indisponible : ${error.message ?: "erreur réseau"}")
     PingResult(false, 0, 0L)
   }
