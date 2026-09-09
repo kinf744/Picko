@@ -204,11 +204,11 @@ class KighmuVpnService : VpnService() {
         if (isZivpnOnly) {
           if (!ZivpnDirectForwarder.start(this, fd, activeBalancerPort)) {
             if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
-            ZivpnTun2Socks.startForZivpn(this, fd, activeBalancerPort)
+            ZivpnTun2Socks.startForZivpn(this, fd, activeBalancerPort, runtimeSettings.mtu)
           }
         } else {
           if (!ZivpnTun2Socks.init()) error("Le relais natif TUN→SOCKS est indisponible")
-          ZivpnTun2Socks.startForZivpn(this, fd, activeBalancerPort)
+          ZivpnTun2Socks.startForZivpn(this, fd, activeBalancerPort, runtimeSettings.mtu)
         }
       } else {
         val localBalancer = LocalSocksBalancer(::emitLog)

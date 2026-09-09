@@ -5,6 +5,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.ServerSocket
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Exécution Android du tunnel Xray ; parsing et génération des liens sont natifs. */
 class XrayTunnel(
@@ -21,12 +23,16 @@ class XrayTunnel(
   private var configFile: File? = null
   @Volatile private var lastReportedIssue = ""
   @Volatile private var lastReportedIssueAt = 0L
+  private val stopRequested = AtomicBoolean(false)
+  @Volatile private var recovering = false
+  @Volatile private var recoveryThread: Thread? = null
 
   override fun start() {
     FileLogger.init(service); FileLogger.header(service, profile)
     FileLogger.log(service, "XRAY", "=== START Xray profil=${profile.name} id=${profile.id} mode=${profile.xrayMode} link=${profile.xrayLink.take(120)} socksPort TBD ===")
     profile.validate()?.let { FileLogger.log(service, "XRAY", "VALIDATE ERROR: $it"); error(it) }
     check(process == null) { "Xray est déjà démarré pour ce profil" }
+    stopRequested.set(false); recovering = false
     socksPort = freePort()
     val binary = File(service.applicationInfo.nativeLibraryDir, "libxray.so")
     FileLogger.log(service, "XRAY", "Binary: ${binary.absolutePath} exists=${binary.isFile} size=${binary.length()} nativeDir=${service.applicationInfo.nativeLibraryDir} socksPort=$socksPort Download=${FileLogger.getPath(service)}")
@@ -39,16 +45,8 @@ class XrayTunnel(
     FileLogger.log(service, "XRAY", "Config écrite: ${configFile!!.absolutePath} len=${cfg.length}")
     FileLogger.logXrayJson(service, "XRAY", cfg)
     log("connection", "XRAY", "Xray")
-    val started = ProcessBuilder(binary.absolutePath, "run", "-c", configFile!!.absolutePath)
-      .redirectErrorStream(true)
-      .apply {
-        environment()["HOME"] = service.filesDir.absolutePath
-        environment()["TMPDIR"] = service.cacheDir.absolutePath
-        environment()["LD_LIBRARY_PATH"] = service.applicationInfo.nativeLibraryDir
-      }.start()
-    process = started
+    val started = launchProcess(binary)
     FileLogger.log(service, "XRAY", "Process Xray démarré: ${binary.absolutePath} run -c ${configFile!!.absolutePath} HOME=${service.filesDir.absolutePath}")
-    consumeProcessLog(started)
     var ready = false
     repeat(30) {
       if (!ready) { Thread.sleep(200); ready = LocalSocksBalancer.hasSocksGreeting(socksPort) }
@@ -62,11 +60,32 @@ class XrayTunnel(
     FileLogger.log(service, "XRAY", "SOCKS OK 127.0.0.1:$socksPort prêt pour ${profile.name}")
     dnsServers.forEach { log("connection", "XRAY", "DNS $it") }
     log("success", "XRAY", "Connected")
+    startHealthWatcher()
   }
 
-  override fun isHealthy(): Boolean = process?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort)
+  private fun launchProcess(binary: File): Process {
+    destroyProcess(process)
+    val started = ProcessBuilder(binary.absolutePath, "run", "-c", configFile!!.absolutePath)
+      .redirectErrorStream(true)
+      .apply {
+        environment()["HOME"] = service.filesDir.absolutePath
+        environment()["TMPDIR"] = service.cacheDir.absolutePath
+        environment()["LD_LIBRARY_PATH"] = service.applicationInfo.nativeLibraryDir
+      }.start()
+    process = started
+    consumeProcessLog(started)
+    return started
+  }
+
+  override fun isHealthy(): Boolean = !recovering && process?.isAlive == true && LocalSocksBalancer.hasSocksGreeting(socksPort)
+
+  override fun isRecovering(): Boolean = recovering
 
   override fun stop() {
+    stopRequested.set(true)
+    recovering = false
+    recoveryThread?.interrupt()
+    recoveryThread = null
     val current = process
     try { current?.inputStream?.close() } catch (_: Throwable) {}
     try { current?.destroy() } catch (_: Throwable) {}
@@ -75,6 +94,56 @@ class XrayTunnel(
     FileLogger.secureDelete(configFile)
     configFile = null
     socksPort = 0
+  }
+
+  private fun startHealthWatcher() {
+    Thread {
+      while (!stopRequested.get()) {
+        try { Thread.sleep(3_000) } catch (_: InterruptedException) { return@Thread }
+        if (!stopRequested.get() && !recovering && !isHealthy()) scheduleRecovery()
+      }
+    }.apply { isDaemon = true; name = "xray-health-${profile.id.takeLast(8)}"; start() }
+  }
+
+  private fun scheduleRecovery() {
+    if (stopRequested.get() || recovering) return
+    recovering = true
+    compactLog("warning", "Xray temporairement indisponible ; reconnexion automatique")
+    recoveryThread = Thread {
+      try {
+        repeat(MAX_RECOVERY_ATTEMPTS) { index ->
+          if (stopRequested.get()) return@Thread
+          compactLog("info", "Reconnexion Xray ${index + 1}/$MAX_RECOVERY_ATTEMPTS")
+          try {
+            val binary = File(service.applicationInfo.nativeLibraryDir, "libxray.so")
+            val started = launchProcess(binary)
+            var ready = false
+            repeat(30) { if (!ready) { Thread.sleep(200); ready = LocalSocksBalancer.hasSocksGreeting(socksPort) } }
+            if (!ready) { destroyProcess(started); throw IllegalStateException("SOCKS Xray non prêt") }
+            recovering = false
+            compactLog("connection", "Xray reconnecté ; trafic rétabli")
+            return@Thread
+          } catch (_: Throwable) {
+            destroyProcess(process); process = null
+            if (!stopRequested.get()) Thread.sleep(RECOVERY_DELAY_MS)
+          }
+        }
+        recovering = false
+        compactLog("error", "Xray ne peut pas se reconnecter après $MAX_RECOVERY_ATTEMPTS tentatives")
+      } catch (_: InterruptedException) {
+      } finally { if (Thread.currentThread() === recoveryThread) recoveryThread = null }
+    }.apply { isDaemon = true; name = "xray-recovery-${profile.id.takeLast(8)}"; start() }
+  }
+
+  private fun destroyProcess(target: Process?) {
+    if (target == null) return
+    try { target.inputStream.close() } catch (_: Throwable) {}
+    try { target.destroy() } catch (_: Throwable) {}
+    try { if (!target.waitFor(600, TimeUnit.MILLISECONDS)) target.destroyForcibly() } catch (_: Throwable) {}
+  }
+
+  private fun compactLog(level: String, message: String) {
+    log(level, "XRAY", message.take(180))
   }
 
   private fun consumeProcessLog(started: Process) {
@@ -102,6 +171,10 @@ class XrayTunnel(
           }
         }
       } catch (e: Throwable) { FileLogger.log(service, "XRAY", "consumeProcessLog exception: ${e.message}") }
+      finally {
+        // Le process s'est terminé inopinément (crash) : relance locale si encore actif.
+        if (!stopRequested.get() && process === started) scheduleRecovery()
+      }
     }.apply { isDaemon = true; name = "xray-log-${profile.id}"; start() }
   }
 
@@ -114,6 +187,11 @@ class XrayTunnel(
   }
 
   private fun freePort(): Int = try { ServerSocket(0).use { it.localPort } } catch (_: Throwable) { 10808 }
+
+  companion object {
+    private const val MAX_RECOVERY_ATTEMPTS = 12
+    private const val RECOVERY_DELAY_MS = 2_000L
+  }
 
   private fun buildConfig(): String {
     val runtime = OpolNative.xrayRuntimePolicy(socksPort)

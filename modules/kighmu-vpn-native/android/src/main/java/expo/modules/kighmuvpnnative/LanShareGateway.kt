@@ -216,10 +216,13 @@ object LanShareGateway {
       val port: Int
       var path = "/"
       if (method == "CONNECT") {
-        val idx = target.lastIndexOf(":")
-        if (idx <= 0) { respond(output, "400 Bad Request"); return null }
-        host = target.substring(0, idx)
-        port = target.substring(idx + 1).toIntOrNull() ?: 443
+        // Supporte IPv6 littéral [::1]:443 (retire les crochets du host).
+        val colon = target.lastIndexOf(":")
+        if (colon <= 0) { respond(output, "400 Bad Request"); return null }
+        var h = target.substring(0, colon)
+        if (h.startsWith("[") && h.endsWith("]")) h = h.substring(1, h.length - 1)
+        host = h
+        port = target.substring(colon + 1).toIntOrNull() ?: 443
       } else {
         val schemeIdx = target.indexOf("://")
         if (schemeIdx <= 0 || !target.startsWith("http", ignoreCase = true)) { respond(output, "400 Only proxied http:// is supported"); return null }

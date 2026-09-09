@@ -330,7 +330,7 @@ abstract class SshTransportTunnel(
 
   private fun readSshBanner(input: InputStream): String {
     val banner = StringBuilder()
-    val raw = ByteArray(256)
+    val raw = ByteArray(MAX_BANNER_BYTES)
     var rawCount = 0
     while (banner.length < MAX_BANNER_BYTES) {
       val next = input.read()
@@ -339,7 +339,7 @@ abstract class SshTransportTunnel(
       banner.append(next.toChar())
       if (next == '\n'.code) {
         val text = banner.toString()
-        logDiag("SSH flux brut (hex des ${rawCount} premiers octets après le 101): ${raw.copyOf(rawCount).toHex()}")
+        logDiag("SSH flux brut (hex des $rawCount octets): ${raw.copyOf(rawCount).toHex()}")
         // On ne rejette PAS ici : la bannière peut être un message serveur
         // (ex. EDOZTUNNEL « Exceeded MaxStartups » ou « server Is Dined… »).
         // L'appelant décide de l'affichage (SSH_BANNER vs SSH_SERVER_MESSAGE)

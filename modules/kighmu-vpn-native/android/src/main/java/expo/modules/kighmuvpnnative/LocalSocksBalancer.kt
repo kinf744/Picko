@@ -135,5 +135,37 @@ class LocalSocksBalancer(private val log: (String, String, String) -> Unit) {
         received == 2 && reply[0] == 0x05.toByte() && reply[1] == 0x00.toByte()
       }
     } catch (_: Throwable) { false }
+
+    /**
+     * Sonde réelle SOCKS5 CONNECT vers 1.1.1.1:80 (pas seulement un greeting TCP).
+     * Un tunnel UDP ZiVPN dont le NAT serveur a expiré accepte encore le greeting local
+     * mais renvoie une erreur de CONNECT : cette sonde le détecte. C'est le cœur du fix
+     * anti « tunnel mort » utilisé aussi en mode mixte (LocalSocksBalancer).
+     */
+    fun hasRealConnect(port: Int): Boolean = try {
+      Socket().use { socket ->
+        socket.connect(InetSocketAddress("127.0.0.1", port), 2500)
+        socket.soTimeout = 3000
+        val input = socket.getInputStream()
+        val output = socket.getOutputStream()
+        output.write(byteArrayOf(0x05, 0x01, 0x00)); output.flush()
+        val h = ByteArray(2)
+        if (readFully(input, h) != 2 || h[0] != 0x05.toByte() || h[1] != 0x00.toByte()) return false
+        output.write(byteArrayOf(0x05, 0x01, 0x00, 0x01, 1, 1, 1, 1, 0x00, 0x50)); output.flush()
+        val r = ByteArray(4)
+        if (readFully(input, r) < 4) return false
+        r[1] == 0x00.toByte()
+      }
+    } catch (_: Throwable) { false }
+
+    private fun readFully(input: java.io.InputStream, buf: ByteArray): Int {
+      var off = 0
+      while (off < buf.size) {
+        val n = input.read(buf, off, buf.size - off)
+        if (n < 0) break
+        off += n
+      }
+      return off
+    }
   }
 }

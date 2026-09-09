@@ -32,7 +32,7 @@ object ZivpnTun2Socks {
         socks5:
           port: $socksPort
           address: 127.0.0.1
-          udp: udp
+          udp: tcp
         misc:
           log-level: warn
         """.trimIndent(),
@@ -44,8 +44,9 @@ object ZivpnTun2Socks {
     }
   }
 
-  /** Max perf : hev mtu 9000 multi-queue + buffers comme gVisor bench 104 Gbits */
-  fun startForZivpn(context: Context, fd: Int, socksPort: Int) {
+  /** Max perf : hev multi-queue + buffers comme gVisor bench 104 Gbits. MTU aligné
+   *  sur celui de l'interface TUN (runtimeSettings.mtu) pour éviter la fragmentation. */
+  fun startForZivpn(context: Context, fd: Int, socksPort: Int, mtu: Int = 1400) {
     lock.withLock {
       if (!init()) error("hev_jni indisponible pour le relais ZIVPN")
       if (running) {
@@ -56,13 +57,13 @@ object ZivpnTun2Socks {
       file.writeText(
         """
         tunnel:
-          mtu: 9000
+          mtu: $mtu
           multi-queue: true
           ipv4: 198.18.0.1
         socks5:
           port: $socksPort
           address: 127.0.0.1
-          udp: udp
+          udp: tcp
         misc:
           tcp-buffer-size: 65536
           udp-recv-buffer-size: 1048576
@@ -72,7 +73,7 @@ object ZivpnTun2Socks {
       configFile = file
       hev.htproxy.TProxyService.TProxyStartService(file.absolutePath, fd)
       running = true
-      Log.i(TAG, "ZIVPN TUN relay max perf started fd=$fd socks=$socksPort mtu=9000 mq=true udp=udp")
+      Log.i(TAG, "ZIVPN TUN relay max perf started fd=$fd socks=$socksPort mtu=$mtu mq=true udp=tcp")
     }
   }
 
