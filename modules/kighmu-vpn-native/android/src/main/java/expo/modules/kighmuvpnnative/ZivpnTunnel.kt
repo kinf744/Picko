@@ -246,7 +246,7 @@ class ZivpnTunnel(
             FileLogger.logDetail(context, "ZIVPN-NATIVE", "procPort=$socksPort line=$line")
             if (AUTH_FAILURE_REGEX.containsMatchIn(line)) { notifyAuthFailure(); return@forEach }
             val lower = line.lowercase()
-            if (lower.contains("timeout") || lower.contains("disconnected") || lower.contains("reconnect") || lower.contains("error") && lower.contains("udp")) {
+            if (lower.contains("timeout") || lower.contains("disconnected") || lower.contains("reconnect") || (lower.contains("error") && lower.contains("udp")) || lower.contains("reset by peer") || lower.contains("connection reset") || lower.contains("socks5 tcp error")) {
               FileLogger.logDetail(context, "ZIVPN-DETAIL", "TRIGGER_RECOVERY line=$line recovering=$recovering")
               if (!recovering) scheduleRecovery()
             }

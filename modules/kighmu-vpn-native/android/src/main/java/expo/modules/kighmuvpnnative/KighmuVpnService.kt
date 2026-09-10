@@ -407,18 +407,27 @@ class KighmuVpnService : VpnService() {
           val runtime = Runtime.getRuntime()
           val memFree = runtime.freeMemory() / 1024
           val memTotal = runtime.totalMemory() / 1024
+          val memMax = runtime.maxMemory() / 1024
           val uptime = android.os.SystemClock.elapsedRealtime()
+          // GC préventif si mémoire critique (<1M free) pour éviter OOM sur itel P662L 18M heap
+          if (memFree < 1024) {
+            try { System.gc(); FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb GC triggered memFree=${memFree}k") } catch (_: Throwable) {}
+          }
           // Détail chaque tunnel ZIVPN
           val tunnelDetails = zivpnTunnels.joinToString(" | ") { t ->
             "port=${t.socksPort} healthy=${try { t.isHealthy() } catch (_: Throwable) { "err" }} recovering=${try { t.isRecovering() } catch (_: Throwable) { "err" }}"
           }
-          FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb gen=$generation tunFd=$tun tunAlive=${tun>=0} balPort=$balPort tunnels=[$tunnelDetails] memFree=${memFree}k total=${memTotal}k uptime=${uptime}ms idle=${pm.isDeviceIdleMode} interactive=${pm.isInteractive} status=$currentStatus")
-          // Ping silencieux pour détecter blocage trafic avant déconnexion
-          try {
-            val ping = httpPing()
-            FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb ping success=${ping.success} code=${ping.code} ms=${ping.latencyMs}")
-          } catch (e: Throwable) {
-            FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb pingError ${e.message}")
+          FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb gen=$generation tunFd=$tun tunAlive=${tun>=0} balPort=$balPort tunnels=[$tunnelDetails] memFree=${memFree}k total=${memTotal}k max=${memMax}k uptime=${uptime}ms idle=${pm.isDeviceIdleMode} interactive=${pm.isInteractive} status=$currentStatus")
+          // Ping silencieux uniquement si activé dans les settings (évite trafic et allocations inutiles)
+          if (runtimeSettings.httpPingEnabled && runtimeSettings.pingEnabled) {
+            try {
+              val ping = httpPing()
+              FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb ping success=${ping.success} code=${ping.code} ms=${ping.latencyMs}")
+            } catch (e: Throwable) {
+              FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb pingError ${e.message}")
+            }
+          } else if (hb % 3 == 0L) {
+            FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-HEARTBEAT", "hb=$hb ping disabled (httpPing=${runtimeSettings.httpPingEnabled} ping=${runtimeSettings.pingEnabled})")
           }
           // Force flush Download file existence
           if (hb % 6 == 0L) { // toutes les 30s, revérifie fichier
