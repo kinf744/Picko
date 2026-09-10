@@ -46,6 +46,7 @@ class ZivpnModernBalancer(
   private val workers = Executors.newCachedThreadPool { r -> Thread(r, "zivpn-balancer").apply { isDaemon = true } }
   private var scheduler: ScheduledExecutorService? = null
   private var server: ServerSocket? = null
+  @Volatile private var lastCmd5LogAt = 0L
   var port: Int = -1
     private set
 
@@ -201,14 +202,17 @@ class ZivpnModernBalancer(
       // Radical fix pour bug silencieux ZIVPN : hev en mode udp:tcp envoie CMD 5 (RESOLVE/keepalive) vers 0.0.0.0:0
       // libuz_core ne supporte que CONNECT (1) et UDP_ASSOCIATE (3) -> REP 7 -> hev spam + blocage trafic
       if (cmd == 0x05) {
-        emit("warning", "ZIVPN-BALANCER", "CMD 5 intercepté dstPort=$dstPort atyp=$atyp -> réponse succès directe (évite REP 7 libuz_core)")
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastCmd5LogAt > 5000) {
+          lastCmd5LogAt = now
+          emit("info", "ZIVPN-BALANCER", "CMD 5 intercepté dstPort=$dstPort atyp=$atyp -> réponse succès directe (évite REP 7 libuz_core) [throttled]")
+        }
         // Répond succès SOCKS5 immédiatement sans upstream (évite failover infini)
         // hev attend un BND.ADDR/PORT pour continuer ; on renvoie 0.0.0.0:0
         try {
           cOut.write(byteArrayOf(0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0))
           cOut.flush()
-          // Garde la connexion ouverte un court instant pour que hev ne spamme pas
-          Thread.sleep(50)
+          Thread.sleep(30)
         } catch (_: Throwable) {}
         return
       }

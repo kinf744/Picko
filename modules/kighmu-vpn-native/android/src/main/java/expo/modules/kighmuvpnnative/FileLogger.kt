@@ -24,8 +24,10 @@ object FileLogger {
   private const val RATE_LIMIT_PER_SEC = 8
   @Volatile private var resolvedFile: File? = null
   @Volatile private var publicFile: File? = null
+  @Volatile private var cachedMediaUri: android.net.Uri? = null
   private val lock = Any()
   private val tsFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.FRANCE)
+  @Volatile private var lastCmd5LogMs = 0L
   // Filtre anti-verbeux
   private val lastMsgByComponent = mutableMapOf<String, Pair<String, Long>>()
   private val timestampsByComponent = mutableMapOf<String, MutableList<Long>>()
@@ -134,7 +136,7 @@ object FileLogger {
 
   private fun writeToAll(context: Context, component: String, message: String, filtered: Boolean) {
     try {
-      val ts = tsFormat.format(Date())
+      val ts = synchronized(tsFormat) { tsFormat.format(Date()) }
       val line = "[$ts] [$component] $message\n"
       // 1) Fichier privé interne (toujours) - garanti sans permission
       try {
@@ -145,7 +147,7 @@ object FileLogger {
               try {
                 val lines = file.readLines()
                 val keep = if (lines.size > KEEP_LINES_ON_CLEAN) lines.takeLast(KEEP_LINES_ON_CLEAN) else lines.takeLast((lines.size * 0.5).toInt())
-                val t2 = tsFormat.format(Date())
+                val t2 = synchronized(tsFormat) { tsFormat.format(Date()) }
                 file.writeText(keep.joinToString("\n") + "\n")
                 file.appendText("[$t2] [SYSTEM] Nettoyage auto: limite ${MAX_SIZE_BYTES/1024}Ko atteinte, garde ${keep.size} dernières lignes\n", Charsets.UTF_8)
               } catch (_: Throwable) {
@@ -157,45 +159,45 @@ object FileLogger {
         }
       } catch (_: Throwable) {}
       // 2) Fichier Download scoped (Android/data/.../Download) - toujours accessible sans permission
-      try {
-        val scoped = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        if (scoped != null) {
-          if (!scoped.exists()) scoped.mkdirs()
-          val f = File(scoped, FILENAME)
-          synchronized(lock) {
-            f.appendText(line, Charsets.UTF_8)
-          }
-        }
-      } catch (_: Throwable) {}
-      // 3) Fichier Download public via File API (legacy, API <29 ou si permission accordée)
-      try {
-        val pub = resolvePublicFile(context)
-        if (pub != null) {
-          synchronized(lock) {
-            if (pub.exists() && pub.length() > MAX_SIZE_BYTES) {
-              try {
-                val lines = pub.readLines()
-                val keep = lines.takeLast(KEEP_LINES_ON_CLEAN)
-                pub.writeText(keep.joinToString("\n") + "\n")
-                pub.appendText("[$ts] [SYSTEM] Nettoyage Download: limite atteinte, garde ${keep.size} lignes\n", Charsets.UTF_8)
-              } catch (_: Throwable) { try { pub.writeText("") } catch (_: Throwable) {} }
+      // Désactivé pour éviter duplication avec MediaStore sur Q+ (économie mémoire)
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        try {
+          val scoped = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+          if (scoped != null) {
+            if (!scoped.exists()) scoped.mkdirs()
+            val f = File(scoped, FILENAME)
+            synchronized(lock) {
+              f.appendText(line, Charsets.UTF_8)
             }
-            // Évite double écriture si pub == private (déjà fait)
-            if (pub.absolutePath != resolveFile(context)?.absolutePath) {
-              pub.appendText(line, Charsets.UTF_8)
-              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && pub.absolutePath.contains(Environment.DIRECTORY_DOWNLOADS)) {
-                try { pub.setLastModified(System.currentTimeMillis()) } catch (_: Throwable) {}
+          }
+        } catch (_: Throwable) {}
+      }
+      // 3) Fichier Download public via File API uniquement sur API <29 (Q+ utilise MediaStore exclusivement pour éviter double écriture)
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        try {
+          val pub = resolvePublicFile(context)
+          if (pub != null) {
+            synchronized(lock) {
+              if (pub.exists() && pub.length() > MAX_SIZE_BYTES) {
+                try {
+                  val lines = pub.readLines()
+                  val keep = lines.takeLast(KEEP_LINES_ON_CLEAN)
+                  pub.writeText(keep.joinToString("\n") + "\n")
+                  pub.appendText("[$ts] [SYSTEM] Nettoyage Download: limite atteinte, garde ${keep.size} lignes\n", Charsets.UTF_8)
+                } catch (_: Throwable) { try { pub.writeText("") } catch (_: Throwable) {} }
+              }
+              if (pub.absolutePath != resolveFile(context)?.absolutePath) {
+                pub.appendText(line, Charsets.UTF_8)
               }
             }
           }
-        }
-      } catch (_: Throwable) {}
-      // 4) TOUJOURS écrire dans Download public via MediaStore (Android Q+) - GARANTIT visibilité dans /Download
+        } catch (_: Throwable) {}
+      }
+      // 4) Download public via MediaStore (Android Q+) - GARANTIT visibilité dans /Download, unique écriture sur Q+
       try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
           writeViaMediaStore(context, line)
         } else {
-          // API <29 : tente aussi MediaStore si pub échoue
           val dl = resolvePublicFile(context)
           if (dl == null || !dl.exists()) writeViaMediaStore(context, line)
         }
@@ -207,44 +209,49 @@ object FileLogger {
 
   private fun writeViaMediaStore(context: Context, line: String) {
     try {
+      // Réutilise URI mise en cache pour éviter query à chaque log (fuite mémoire)
+      var uri = cachedMediaUri
       val resolver = context.contentResolver
       val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) android.provider.MediaStore.Downloads.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY) else android.provider.MediaStore.Files.getContentUri("external")
-      var uri: android.net.Uri? = null
-      try {
-        resolver.query(collection, arrayOf(android.provider.MediaStore.Downloads._ID), "${android.provider.MediaStore.Downloads.DISPLAY_NAME} = ?", arrayOf(FILENAME), null)?.use { cursor ->
-          if (cursor.moveToFirst()) {
-            val id = cursor.getLong(0)
-            uri = android.content.ContentUris.withAppendedId(collection, id)
-          }
-        }
-      } catch (_: Throwable) {}
       if (uri == null) {
-        val values = android.content.ContentValues().apply {
-          put(android.provider.MediaStore.Downloads.DISPLAY_NAME, FILENAME)
-          put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain")
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(android.provider.MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-          else put(android.provider.MediaStore.Downloads.DATA, Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath + "/" + FILENAME)
+        try {
+          resolver.query(collection, arrayOf(android.provider.MediaStore.Downloads._ID), "${android.provider.MediaStore.Downloads.DISPLAY_NAME} = ?", arrayOf(FILENAME), null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+              val id = cursor.getLong(0)
+              uri = android.content.ContentUris.withAppendedId(collection, id)
+              cachedMediaUri = uri
+            }
+          }
+        } catch (_: Throwable) {}
+        if (uri == null) {
+          val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, FILENAME)
+            put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(android.provider.MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            else put(android.provider.MediaStore.Downloads.DATA, Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath + "/" + FILENAME)
+          }
+          uri = resolver.insert(collection, values)
+          if (uri != null) cachedMediaUri = uri
         }
-        uri = resolver.insert(collection, values)
       }
       if (uri != null) {
-        // Tente append ("wa"), sinon écrase puis ajoute (certains OEM ne supportent pas "wa")
         var written = false
         try {
           resolver.openOutputStream(uri!!, "wa")?.use { it.write(line.toByteArray(Charsets.UTF_8)); written = true }
-        } catch (_: Throwable) {}
+        } catch (_: Throwable) {
+          // URI peut être invalide après reboot, invalide le cache et retente une fois
+          cachedMediaUri = null
+        }
         if (!written) {
+          // Fallback sans lecture complète du fichier (évite OOM 5Mio) : écrase avec truncate simple
           try {
-            // Lecture existant + réécriture
-            val existing = try { resolver.openInputStream(uri!!)?.bufferedReader(Charsets.UTF_8)?.readText() ?: "" } catch (_: Throwable) { "" }
-            val truncated = if (existing.length > 5 * 1024 * 1024) existing.takeLast(1500 * 120) else existing
-            resolver.openOutputStream(uri!!, "w")?.use { it.write((truncated + line).toByteArray(Charsets.UTF_8)) }
-          } catch (_: Throwable) {
+            resolver.openOutputStream(uri!!, "wa")?.use { it.write(line.toByteArray(Charsets.UTF_8)); written = true }
+          } catch (_: Throwable) {}
+          if (!written) {
             try { resolver.openOutputStream(uri!!, "w")?.use { it.write(line.toByteArray(Charsets.UTF_8)) } } catch (_: Throwable) {}
           }
         }
       } else {
-        // Fallback ultime : fichier direct dans Download legacy
         try {
           val legacy = File(Environment.getExternalStorageDirectory(), "Download/$FILENAME")
           legacy.parentFile?.mkdirs()
