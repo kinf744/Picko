@@ -198,12 +198,39 @@ class ZivpnModernBalancer(
       val dstPort = ((dstPortBytes[0].toInt() and 0xFF) shl 8) or (dstPortBytes[1].toInt() and 0xFF)
       val dstHash = dstAddr.contentHashCode() * 31 + dstPort
 
+      // Radical fix pour bug silencieux ZIVPN : hev en mode udp:tcp envoie CMD 5 (RESOLVE/keepalive) vers 0.0.0.0:0
+      // libuz_core ne supporte que CONNECT (1) et UDP_ASSOCIATE (3) -> REP 7 -> hev spam + blocage trafic
+      if (cmd == 0x05) {
+        emit("warning", "ZIVPN-BALANCER", "CMD 5 intercepté dstPort=$dstPort atyp=$atyp -> réponse succès directe (évite REP 7 libuz_core)")
+        // Répond succès SOCKS5 immédiatement sans upstream (évite failover infini)
+        // hev attend un BND.ADDR/PORT pour continuer ; on renvoie 0.0.0.0:0
+        try {
+          cOut.write(byteArrayOf(0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0))
+          cOut.flush()
+          // Garde la connexion ouverte un court instant pour que hev ne spamme pas
+          Thread.sleep(50)
+        } catch (_: Throwable) {}
+        return
+      }
+      // CMD inconnu (hors 1 CONNECT, 3 UDP_ASSOCIATE) -> normalise en CONNECT
+      var effectiveCmd = cmd
+      var effectiveReqHeader = reqHeader
+      if (cmd != 0x01 && cmd != 0x03) {
+        try {
+          val rawHex = reqHeader.joinToString(" ") { "%02X".format(it) } + " atyp=$atyp dstPort=$dstPort"
+          emit("warning", "ZIVPN-BALANCER", "CMD inconnu $cmd ($rawHex) normalisé en CONNECT")
+        } catch (_: Throwable) {}
+        effectiveReqHeader = reqHeader.clone()
+        effectiveReqHeader[1] = 0x01
+        effectiveCmd = 0x01
+      }
+
       // Choix amont sticky
       var chosen: Int? = null
       var lastError: Throwable? = null
       val tried = mutableSetOf<Int>()
       for (attempt in 0 until upstreamPorts.size) {
-        val port = if (attempt == 0) chooseForDestination(dstHash, cmd) else healthyPorts().firstOrNull { it !in tried } ?: break
+        val port = if (attempt == 0) chooseForDestination(dstHash, effectiveCmd) else healthyPorts().firstOrNull { it !in tried } ?: break
         if (port in tried) continue
         tried.add(port)
         var cand: Socket? = null
@@ -220,8 +247,8 @@ class ZivpnModernBalancer(
           val hResp = ByteArray(2)
           readFully(uIn, hResp, 3000)
           if (hResp[0] != 0x05.toByte() || hResp[1] != 0x00.toByte()) throw IllegalStateException("amont $port handshake rejeté")
-          // Transfère la requête originale telle quelle
-          uOut.write(reqHeader)
+          // Transfère la requête (potentiellement normalisée) telle quelle
+          uOut.write(effectiveReqHeader)
           // Pour ATYP DOMAIN, dstAddr contient déjà len+domain, sinon 4 ou 16
           if (atyp == 0x03) {
             uOut.write(dstAddr)
@@ -263,7 +290,7 @@ class ZivpnModernBalancer(
             if (health[port] == false) { health[port] = true; failCount[port] = 0 }
           }
           if (upstreamPorts.size > 1) {
-            val kind = if (cmd == 0x03) "UDP-ASSOC" else "CONNECT"
+            val kind = if (effectiveCmd == 0x03) "UDP-ASSOC" else "CONNECT"
             emit("connection", "ZIVPN-BALANCER", "$kind ${dstAddr.size}b:$dstPort -> SOCKS $port sticky (RTT ${rttMs[port] ?: "?"}ms) [essai ${attempt+1}]")
           }
           break
@@ -276,7 +303,7 @@ class ZivpnModernBalancer(
             lastProbeMs[port] = SystemClock.elapsedRealtime()
             rttMs.remove(port)
           }
-          emit("warning", "ZIVPN-BALANCER", "Amont $port échoué pour dst $dstPort CMD $cmd -> failover (${e.message ?: "erreur"})")
+          emit("warning", "ZIVPN-BALANCER", "Amont $port échoué pour dst $dstPort CMD $effectiveCmd (orig $cmd) -> failover (${e.message ?: "erreur"})")
         }
       }
       val up = upstream ?: throw IllegalStateException("Aucune sortie ZIVPN disponible (tous exclus) last=${lastError?.message}")
