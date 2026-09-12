@@ -40,7 +40,9 @@ class LocalSocksBalancer(private val log: (String, String, String) -> Unit) {
       while (running) {
         Thread.sleep(5_000)
         ports.toList().forEach { candidate ->
-          if (hasSocksGreeting(candidate)) markSuccess(candidate) else markFailure(candidate)
+          // Sonde end-to-end (greeting + CONNECT 1.1.1.1:80), comme Zamois-tun :
+          // un tunnel UDP mort accepte encore le greeting mais échoue le CONNECT.
+          if (hasRealConnect(candidate)) markSuccess(candidate) else markFailure(candidate)
         }
       }
     }.apply { isDaemon = true; name = "picko-socks-health" }.start()
@@ -52,7 +54,7 @@ class LocalSocksBalancer(private val log: (String, String, String) -> Unit) {
     ports.clear(); ports.addAll(distinct)
     healthy.retainAll(distinct)
     failures.keys.retainAll(distinct.toSet())
-    distinct.filter(::hasSocksGreeting).forEach { if (!healthy.contains(it)) healthy.add(it) }
+    distinct.filter(::hasRealConnect).forEach { if (!healthy.contains(it)) healthy.add(it) }
     if (healthy.isEmpty() && distinct.isNotEmpty()) healthy.addAll(distinct)
   }
 

@@ -28,11 +28,12 @@ object ZivpnTun2Socks {
       file.writeText(
         """
         tunnel:
+          mtu: $mtu
           ipv4: 198.18.0.1
         socks5:
           port: $socksPort
           address: 127.0.0.1
-          udp: tcp
+          udp: udp
         misc:
           log-level: warn
         """.trimIndent(),
@@ -63,7 +64,7 @@ object ZivpnTun2Socks {
         socks5:
           port: $socksPort
           address: 127.0.0.1
-          udp: tcp
+          udp: udp
         misc:
           tcp-buffer-size: 65536
           udp-recv-buffer-size: 1048576
