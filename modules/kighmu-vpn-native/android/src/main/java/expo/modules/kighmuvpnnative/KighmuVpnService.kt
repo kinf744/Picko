@@ -188,7 +188,7 @@ class KighmuVpnService : VpnService() {
       if (shouldBalance) {
         // Balancier unique Zamois-tun : round-robin + sonde SOCKS5 end-to-end + failover.
         // Remplace SocksProfileBalancer (TCP seul) et ZivpnModernBalancer.
-        val balancer = SocksBalancer(ports) { level, component, message -> emitLog(level, component, message) }
+        val balancer = SocksBalancer(ports, emit = { level, component, message -> emitLog(level, component, message) })
         familyBalancer = balancer
         targetPort = balancer.start()
         relayMode = if (kind == "zivpn") "Zamois balancer multi-profils ZIVPN (${ports.size} profils, sonde SOCKS5 + failover)" else "balancier multi-profils actif (Zamois)"
