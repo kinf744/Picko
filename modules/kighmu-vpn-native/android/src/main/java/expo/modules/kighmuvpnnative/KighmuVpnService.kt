@@ -30,8 +30,7 @@ class KighmuVpnService : VpnService() {
   private var tunFd = -1
   private var zivpnProcess: Process? = null
   private var slowDnsTunnel: SlowDnsSshTunnel? = null
-  private var familyBalancer: SocksProfileBalancer? = null
-  private var zivpnBalancer: ZivpnModernBalancer? = null
+  private var familyBalancer: SocksBalancer? = null
   private val familyStopActions = mutableListOf<() -> Unit>()
   private var activeMode = "zivpn"
   private var attemptGeneration = 0L
@@ -104,7 +103,7 @@ class KighmuVpnService : VpnService() {
     val nativeDir = applicationInfo.nativeLibraryDir
     val binary = File(nativeDir, "libuz_core.so")
     if (!binary.exists() || binary.length() == 0L || !binary.canExecute()) error("libuz_core.so absent ou non exécutable")
-    if (!ZivpnTun2Socks.init()) error("hev_jni indisponible dans l’APK")
+    if (!HevTun2Socks.init()) error("hev_jni indisponible dans l’APK")
     val config = File(cacheDir, "zivpn-client.json")
     config.writeText(buildUzConfig(resolvedHost, port, password, ZIVPN_FIXED_OBFS))
     val process = ProcessBuilder(binary.absolutePath, "-s", ZIVPN_FIXED_OBFS, "--config", config.readText())
@@ -121,7 +120,7 @@ class KighmuVpnService : VpnService() {
     thread(isDaemon = true, name = "zivpn-native-log") { readNativeLogs(process, "ZIVPN") }
     if (!waitForLocalPort(process, 7778, 3500L)) error("Le relais SOCKS5 ZIVPN n’est pas apparu sur 127.0.0.1:7778")
     if (!isActive(generation)) return
-    ZivpnTun2Socks.start(this, fd, 7778, ZIVPN_TUN_MTU)
+    HevTun2Socks.start(this, fd, 7778, ZIVPN_TUN_MTU)
     emitLog("info", "ZIVPN", "Relais TUN→SOCKS5 actif sur 127.0.0.1:7778")
     markConnected(generation, "UDP-ZIVPN connecté à $resolvedHost:$port")
   }
@@ -140,8 +139,8 @@ class KighmuVpnService : VpnService() {
     synchronized(lifecycleLock) { slowDnsTunnel = tunnel }
     val socksPort = tunnel.start(settings)
     if (!isActive(generation)) return
-    if (!ZivpnTun2Socks.init()) error("hev_jni indisponible pour le relais SlowDNS")
-    ZivpnTun2Socks.start(this, fd, socksPort, 1400)
+    if (!HevTun2Socks.init()) error("hev_jni indisponible pour le relais SlowDNS")
+    HevTun2Socks.start(this, fd, socksPort, 1400)
     emitLog("info", "SLOWDNS", "Relais TUN→SOCKS5 actif ; session SSH/SlowDNS mono-tunnel prête")
     markConnected(generation, "SSH/SlowDNS connecté")
   }
@@ -181,30 +180,25 @@ class KighmuVpnService : VpnService() {
         Thread.sleep(120)
       }
       val shouldBalance = profiles.length() >= 2 && ports.size > 1
-      val useZivpnLocalRelay = kind == "zivpn"
       // Calcul débit agrégé attendu
       val expectedDown = try { (0 until profiles.length()).sumOf { profiles.optJSONObject(it)?.optString("downloadMbps", "50")?.toIntOrNull() ?: 50 } } catch (_: Throwable) { 50 }
       if (shouldBalance) emitLog("info", "BALANCER", "Débit agrégé attendu ~${expectedDown} Mbps via ${ports.size} profils")
       val targetPort: Int
       val relayMode: String
-      if (kind == "zivpn") {
-        // Balancier moderne dédié ZIVPN : sonde SOCKS5 réelle, exclusion des tunnels UDP morts, sticky
-        val balancer = ZivpnModernBalancer(ports) { level, component, message -> emitLog(level, component, message) }
-        zivpnBalancer = balancer
-        targetPort = balancer.start()
-        relayMode = if (ports.size == 1) "ZIVPN moderne direct (1 profil, sonde SOCKS5)" else "ZIVPN moderne multi-profils (${ports.size} profils, sonde SOCKS5 + failover)"
-      } else if (shouldBalance) {
-        val balancer = SocksProfileBalancer(ports) { level, component, message -> emitLog(level, component, message) }
+      if (shouldBalance) {
+        // Balancier unique Zamois-tun : round-robin + sonde SOCKS5 end-to-end + failover.
+        // Remplace SocksProfileBalancer (TCP seul) et ZivpnModernBalancer.
+        val balancer = SocksBalancer(ports) { level, component, message -> emitLog(level, component, message) }
         familyBalancer = balancer
         targetPort = balancer.start()
-        relayMode = "balancier multi-profils actif"
+        relayMode = if (kind == "zivpn") "Zamois balancer multi-profils ZIVPN (${ports.size} profils, sonde SOCKS5 + failover)" else "balancier multi-profils actif (Zamois)"
       } else {
         targetPort = ports.first()
         relayMode = "relais direct actif"
       }
-      if (!ZivpnTun2Socks.init()) error("hev_jni indisponible pour le relais ${familyLabel(kind)}")
-      val relayMtu = if (useZivpnLocalRelay) ZIVPN_TUN_MTU else DEFAULT_TUN_MTU
-      ZivpnTun2Socks.start(this, fd, targetPort, relayMtu)
+      if (!HevTun2Socks.init()) error("hev_jni indisponible pour le relais ${familyLabel(kind)}")
+      val relayMtu = if (kind == "zivpn") ZIVPN_TUN_MTU else DEFAULT_TUN_MTU
+      HevTun2Socks.start(this, fd, targetPort, relayMtu)
       emitLog("info", "CATALOG", "TUN→SOCKS5 actif sur $targetPort ; $relayMode ; MTU=$relayMtu")
       markConnected(generation, "${familyLabel(kind)} connecté")
     } catch (error: Throwable) {
@@ -328,8 +322,6 @@ class KighmuVpnService : VpnService() {
   private fun releaseFamilyResources() {
     try { familyBalancer?.close() } catch (_: Throwable) {}
     familyBalancer = null
-    try { zivpnBalancer?.close() } catch (_: Throwable) {}
-    zivpnBalancer = null
     val actions = familyStopActions.toList()
     familyStopActions.clear()
     actions.asReversed().forEach { action -> try { action() } catch (_: Throwable) {} }
@@ -401,11 +393,10 @@ class KighmuVpnService : VpnService() {
           fail(generation, "TUN fermé")
           break
         }
-        // Pour les familles avec balancer, vérifie qu'au moins un port upstream répond
-        val balancerPorts = familyBalancer?.let { it } // accès indirect via réflexion du port
-        // On sonde le relais global via ZivpnTun2Socks : s'il est arrêté, on échoue
+        // Pour les familles avec balancer, le health-check SOCKS5 est assuré par SocksBalancer (Zamois).
+        // On sonde le relais global via HevTun2Socks : s'il est arrêté, on échoue
         try {
-          // Simple sonde : si le relais TUN->SOCKS est arrêté, ZivpnTun2Socks.stop() aurait été appelé
+          // Simple sonde : si le relais TUN->SOCKS est arrêté, HevTun2Socks.stop() aurait été appelé
           // On vérifie que le descripteur TUN n'a pas été fermé par Android
           if (tunFd < 0) throw IllegalStateException("TUN invalide")
           consecutiveFailures = 0
@@ -422,9 +413,15 @@ class KighmuVpnService : VpnService() {
   }
 
   private fun buildUzConfig(host: String, port: String, password: String, obfs: String, uploadMbps: String = "10", downloadMbps: String = "50", socksPort: Int = 7778): String {
-    val safeUpload = uploadMbps.toIntOrNull()?.coerceAtLeast(1) ?: 10
-    val safeDownload = downloadMbps.toIntOrNull()?.coerceAtLeast(1) ?: 50
-    return """{"server":"${json(host + ":" + port)}","obfs":"${json(obfs)}","auth":"${json(password)}","socks5":{"listen":"127.0.0.1:$socksPort"},"insecure":true,"recvwindowconn":65536,"recvwindow":262144,"disable_mtu_discovery":true,"down_mbps":$safeDownload,"up_mbps":$safeUpload}"""
+    // Source de vérité : libopol (politique + validation centralisées en natif).
+    // Repli local uniquement si libopol absent (émulateur x86 sans armeabi-v7a).
+    return try {
+      OpolNative.buildZiVpnConfigRaw(host, port, obfs, password, socksPort)
+    } catch (_: Throwable) {
+      val safeUpload = uploadMbps.toIntOrNull()?.coerceAtLeast(1) ?: 10
+      val safeDownload = downloadMbps.toIntOrNull()?.coerceAtLeast(1) ?: 50
+      """{"server":"${json(host + ":" + port)}","obfs":"${json(obfs)}","auth":"${json(password)}","socks5":{"listen":"127.0.0.1:$socksPort"},"insecure":true,"recvwindowconn":65536,"recvwindow":262144,"disable_mtu_discovery":true,"down_mbps":$safeDownload,"up_mbps":$safeUpload}"""
+    }
   }
 
   private fun json(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
@@ -471,7 +468,7 @@ class KighmuVpnService : VpnService() {
     try { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).bindProcessToNetwork(null) } catch (_: Throwable) {}
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
     thread(isDaemon = true, name = "vpn-stop") {
-      try { ZivpnTun2Socks.stop() } catch (_: Throwable) {}
+      try { HevTun2Socks.stop() } catch (_: Throwable) {}
       try { releaseFamilyResources() } catch (_: Throwable) {}
       try { slowDns?.stop() } catch (_: Throwable) {}
       try { zivpn?.waitFor(700, TimeUnit.MILLISECONDS) } catch (_: Throwable) {}

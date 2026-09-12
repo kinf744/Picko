@@ -37,28 +37,37 @@ class HysteriaProfileTunnel(
     socksPort = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
     serverConnected = false
     val safeId = profile.optString("id", "profile").replace(Regex("[^A-Za-z0-9_-]"), "_").take(64)
-    val upload = profile.optString("uploadMbps", "10").toIntOrNull()?.coerceAtLeast(1) ?: 10
-    val download = profile.optString("downloadMbps", "50").toIntOrNull()?.coerceAtLeast(1) ?: 50
-    val config = JSONObject()
-      .put("server", server)
-      .put("auth_str", auth)
-      .put("up_mbps", upload)
-      .put("down_mbps", download)
-      .put("retry", 10)
-      .put("retry_interval", 2)
-      .put("handshake_timeout", 10)
-      .put("idle_timeout", 300)
-      .put("hop_interval", 10)
-      .put("server_name", host)
-      .put("insecure", true)
-      .put("disable_mtu_discovery", false)
-      .put("fast_open", false)
-      .put("recv_window_conn", 4_194_304)
-      .put("recv_window", 16_777_216)
-      .put("socks5", JSONObject().put("listen", "127.0.0.1:$socksPort").put("timeout", 300).put("disable_udp", false))
-    profile.optString("obfs").trim().takeIf { it.isNotBlank() }?.let { config.put("obfs", it) }
+    val upload = profile.optString("uploadMbps", "10")
+    val download = profile.optString("downloadMbps", "50")
+    val obfs = profile.optString("obfs").trim()
+    // Source de vérité : libopol (validation + gabarit centralisés en natif).
+    val configText = try {
+      OpolNative.buildHysteriaConfigRaw(host, port, auth, upload, download, obfs, socksPort)
+    } catch (_: Throwable) {
+      val up = upload.toIntOrNull()?.coerceAtLeast(1) ?: 10
+      val down = download.toIntOrNull()?.coerceAtLeast(1) ?: 50
+      JSONObject()
+        .put("server", server)
+        .put("auth_str", auth)
+        .put("up_mbps", up)
+        .put("down_mbps", down)
+        .put("retry", 10)
+        .put("retry_interval", 2)
+        .put("handshake_timeout", 10)
+        .put("idle_timeout", 300)
+        .put("hop_interval", 10)
+        .put("server_name", host)
+        .put("insecure", true)
+        .put("disable_mtu_discovery", false)
+        .put("fast_open", false)
+        .put("recv_window_conn", 4_194_304)
+        .put("recv_window", 16_777_216)
+        .put("socks5", JSONObject().put("listen", "127.0.0.1:$socksPort").put("timeout", 300).put("disable_udp", false))
+        .also { cfg -> obfs.takeIf { it.isNotBlank() }?.let { cfg.put("obfs", it) } }
+        .toString()
+    }
     val file = File(context.filesDir, "hysteria_${safeId}.json")
-    file.writeText(config.toString())
+    file.writeText(configText)
     configFile = file
     running = true
     try {

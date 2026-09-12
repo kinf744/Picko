@@ -79,12 +79,33 @@ class XrayProfileTunnel(
   }
 
   private fun normalizedConfig(profile: JSONObject, upstreamHost: String?, upstreamPort: Int?): JSONObject {
-    val raw = when (profile.optString("inputMode", "json")) {
+    val mode = profile.optString("inputMode", "json")
+    // Source de vérité pour les liens vmess/vless/trojan : libopol (parsing centralisé en natif).
+    if (mode == "link") {
+      try {
+        val opolJson = OpolNative.buildXrayConfigRaw(mode, profile.optString("link"), "", socksPort)
+        val root = JSONObject(opolJson)
+        normalizeInbounds(root)
+        if (upstreamHost != null && upstreamPort != null) rewriteOutbound(root.optJSONArray("outbounds"), upstreamHost, upstreamPort)
+        stripGeoSiteRules(root)
+        return root
+      } catch (_: Throwable) {
+        // Repli local si libopol absent/refus.
+      }
+    }
+    val raw = when (mode) {
       "link" -> configFromLink(profile.optString("link"))
       else -> profile.optString("json")
     }
     require(raw.trim().startsWith("{")) { "Configuration JSON Xray manquante pour $runtimeLabel" }
     val root = JSONObject(raw)
+    normalizeInbounds(root)
+    if (upstreamHost != null && upstreamPort != null) rewriteOutbound(root.optJSONArray("outbounds"), upstreamHost, upstreamPort)
+    stripGeoSiteRules(root)
+    return root
+  }
+
+  private fun normalizeInbounds(root: JSONObject) {
     val inbounds = root.optJSONArray("inbounds") ?: JSONArray()
     val normalisedInbounds = JSONArray()
     var hasSocks = false
@@ -102,9 +123,6 @@ class XrayProfileTunnel(
     }
     if (!hasSocks) normalisedInbounds.put(JSONObject().put("listen", "127.0.0.1").put("port", socksPort).put("protocol", "socks").put("settings", JSONObject().put("udp", true)))
     root.put("inbounds", normalisedInbounds)
-    if (upstreamHost != null && upstreamPort != null) rewriteOutbound(root.optJSONArray("outbounds"), upstreamHost, upstreamPort)
-    stripGeoSiteRules(root)
-    return root
   }
 
   private fun stripGeoSiteRules(root: JSONObject) {

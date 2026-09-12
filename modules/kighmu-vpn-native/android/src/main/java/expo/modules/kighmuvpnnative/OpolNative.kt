@@ -156,6 +156,13 @@ internal object OpolNative {
     ) ?: error("libopol a refusé la configuration ZiVPN")
   }
 
+  /** Génération centralisée via libopol sans exposer TunnelProfile (profils JSON catalogue). */
+  fun buildZiVpnConfigRaw(host: String, port: String, obfs: String, auth: String, socksPort: Int): String {
+    check(available) { "libopol est absent de cette installation" }
+    return nativeBuildZiVpnConfig(host, port, obfs, auth, socksPort)
+      ?: error("libopol a refusé la configuration ZiVPN")
+  }
+
   fun buildHysteriaConfig(profile: TunnelProfile, socksPort: Int): String {
     check(available) { "libopol est absent de cette installation" }
     return nativeBuildHysteriaConfig(
@@ -167,6 +174,21 @@ internal object OpolNative {
       profile.hysteriaObfs,
       socksPort,
     ) ?: error("libopol a refusé la configuration Hysteria")
+  }
+
+  /** Génération centralisée via libopol pour profils JSON catalogue (host/port/auth/up/down/obfs). */
+  fun buildHysteriaConfigRaw(
+    host: String,
+    port: String,
+    auth: String,
+    upMbps: String,
+    downMbps: String,
+    obfs: String,
+    socksPort: Int,
+  ): String {
+    check(available) { "libopol est absent de cette installation" }
+    return nativeBuildHysteriaConfig(host, port, auth, upMbps, downMbps, obfs, socksPort)
+      ?: error("libopol a refusé la configuration Hysteria")
   }
 
   fun sshSslTlsRuntimePolicy(profile: TunnelProfile): SshSslTlsRuntimePolicy {
@@ -240,6 +262,13 @@ internal object OpolNative {
   fun buildXrayConfig(profile: TunnelProfile, socksPort: Int): String {
     check(available) { "libopol est absent de cette installation" }
     return nativeBuildXrayConfig(profile.xrayMode, profile.xrayLink, profile.xrayJson, socksPort)
+      ?: error("libopol a refusé la configuration Xray")
+  }
+
+  /** Génération centralisée via libopol pour profils JSON catalogue (inputMode/link/json). */
+  fun buildXrayConfigRaw(mode: String, link: String, json: String, socksPort: Int): String {
+    check(available) { "libopol est absent de cette installation" }
+    return nativeBuildXrayConfig(mode, link, json, socksPort)
       ?: error("libopol a refusé la configuration Xray")
   }
 
