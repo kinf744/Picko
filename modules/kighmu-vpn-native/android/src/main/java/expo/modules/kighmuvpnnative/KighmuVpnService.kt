@@ -7,7 +7,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -38,9 +40,13 @@ class KighmuVpnService : VpnService() {
   @Volatile private var userRequestedStop = false
   @Volatile private var zivpnHeartbeatRunning = false
   private var zivpnHeartbeatThread: Thread? = null
+  // Suivi réseau système (parité Zamois-tun) : sans lui, après un changement
+  // de réseau (WiFi↔mobile, DHCP), uz_core parle sur l'ancien réseau figé.
+  private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
   override fun onCreate() {
     super.onCreate()
+    registerNetworkCallback()
     // Foreground immédiat pour survivre Doze même avec optimisation activée (comme autres VPN)
     try {
       createNotificationChannel()
@@ -703,7 +709,47 @@ class KighmuVpnService : VpnService() {
   override fun onDestroy() {
     try { FileLogger.logDetail(this, "ZIVPN-DETAIL", "ON_DESTROY called status=$currentStatus gen=$attemptGeneration") } catch (_: Throwable) {}
     try { stopZivpnHeartbeat() } catch (_: Throwable) {}
+    try {
+      networkCallback?.let { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(it) }
+    } catch (_: Throwable) {}
+    networkCallback = null
     stopVpn(); super.onDestroy()
+  }
+
+  /**
+   * Écoute les changements de réseau physique. Sur disponibilité d'un nouveau
+   * réseau (hors VPN lui-même pour éviter l'auto-déclenchement), re-lie le
+   * processus (donc uz_core) sans reconstruire le tunnel : pas de flap de clé.
+   * Sur perte, simple trace — le watchdog gère la reprise.
+   */
+  private fun registerNetworkCallback() {
+    try {
+      val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+      val request = NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
+      val callback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+          try {
+            val caps = cm.getNetworkCapabilities(network)
+            if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true) return
+            val connected = synchronized(lifecycleLock) {
+              currentStatus == STATUS_CONNECTED || currentStatus == STATUS_CONNECTING
+            }
+            if (!connected || userRequestedStop) return
+            if (cm.bindProcessToNetwork(network)) {
+              emitLog("connection", "RÉSEAU", "Nouveau réseau physique — processus re-lié sans coupure")
+            }
+          } catch (_: Throwable) {}
+        }
+
+        override fun onLost(network: Network) {
+          try {
+            FileLogger.logDetail(this@KighmuVpnService, "ZIVPN-DETAIL", "NET_LOST network=$network status=$currentStatus")
+          } catch (_: Throwable) {}
+        }
+      }
+      cm.registerNetworkCallback(request, callback)
+      networkCallback = callback
+    } catch (_: Throwable) {}
   }
 
   companion object {
