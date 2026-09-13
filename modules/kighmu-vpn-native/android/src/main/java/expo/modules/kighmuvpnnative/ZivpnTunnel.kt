@@ -246,8 +246,18 @@ class ZivpnTunnel(
             // Download et toute fuite de secret dans kighmu.txt.
             FileLogger.log(context, "ZIVPN-NATIVE", "procPort=$socksPort line=${line.take(180)}")
             if (AUTH_FAILURE_REGEX.containsMatchIn(line)) { notifyAuthFailure(); return@forEach }
+            // Recovery UNIQUEMENT sur signaux de niveau tunnel (liaison UDP
+            // vers le serveur : timeout/disconnected/reconnect). Les erreurs
+            // par-connexion SOCKS ("SOCKS5 TCP error", "connection reset",
+            // "reset by peer") sont le bruit normal d'Internet : un serveur
+            // distant (Google/YouTube...) qui RST une connexion proxifiée ne
+            // signifie JAMAIS que le tunnel UDP est mort. Les traiter comme
+            // une mort du tunnel tuait les N uz puis en relançait N nouveaux
+            // avec le même auth en boucle = éviction multi-session côté
+            // serveur puis mort définitive. Zamois-tun ne relance jamais sur
+            // ces lignes (santé optimiste + watchdog global uniquement).
             val lower = line.lowercase()
-            if (lower.contains("timeout") || lower.contains("disconnected") || lower.contains("reconnect") || (lower.contains("error") && lower.contains("udp")) || lower.contains("reset by peer") || lower.contains("connection reset") || lower.contains("socks5 tcp error")) {
+            if (lower.contains("timeout") || lower.contains("disconnected") || lower.contains("reconnect") || (lower.contains("error") && lower.contains("udp") && !lower.contains("socks5"))) {
               FileLogger.logDetail(context, "ZIVPN-DETAIL", "TRIGGER_RECOVERY line=$line recovering=$recovering")
               if (!recovering) scheduleRecovery()
             }
