@@ -1,5 +1,5 @@
 import type { AppSettings } from "../app-settings";
-import { ZIVPN_FIXED_OBFS, type TunnelKind, type TunnelProfile } from "./tunnel-profiles";
+import type { TunnelKind, TunnelProfile } from "./tunnel-profiles";
 
 /**
  * Adaptateur de charge utile pour `native.startVpn(...)`.
@@ -35,8 +35,8 @@ export function toEngineProfile(profile: TunnelProfile): EngineProfile {
   const base = { id: profile.id, name: profile.name, method: KIND_TO_METHOD[profile.kind] };
   switch (profile.kind) {
     case "zivpn":
-      // #154 ne stocke pas l'obfs (constante fixe) ; le moteur l'exige non vide.
-      return { ...base, host: profile.host, port: profile.port, password: profile.password, obfs: ZIVPN_FIXED_OBFS };
+      // Obfs vide = valeur embarquée dans libopol.so (jamais en clair hors natif).
+      return { ...base, host: profile.host, port: profile.port, password: profile.password, obfs: "" };
     case "slowdns":
       // Le SSH transite par le pont DNSTT local : `sshHost`/`sshPort` ne servent
       // qu'à satisfaire `validate()`, leur valeur n'est pas utilisée pour la connexion.

@@ -11,7 +11,8 @@ export const TUNNEL_KINDS = [
 ] as const;
 
 export type TunnelKind = (typeof TUNNEL_KINDS)[number];
-export const ZIVPN_FIXED_OBFS = "hu``hqb`c";
+// NOTE : l'obfs fixe UDP-ZiVPN est embarqué dans libopol.so
+// (opol_jni.cpp) et n'existe plus en clair dans le bundle JS.
 
 /**
  * Catalogue des familles : les libellés affichables vivent dans le dictionnaire

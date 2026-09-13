@@ -101,8 +101,17 @@ internal object OpolNative {
     return nativeClassifySlowDnsOutput(line).ifBlank { "info" }
   }
 
-  fun ziVpnRuntimePolicy(obfs: String): ZiVpnRuntimePolicy {
+  /**
+   * Obfs fixe UDP-ZiVPN embarqué dans libopol. Un obfs vide côté profils
+   * signifie "valeur embarquée" : le natif la substitue dans
+   * nativeBuildZiVpnRuntimePolicy / nativeBuildZiVpnConfig.
+   */
+  fun zivpnFixedObfs(): String {
     check(available) { "libopol est absent de cette installation" }
+    return nativeZivpnFixedObfs().ifBlank { error("libopol a retourné un obfs ZiVPN invalide") }
+  }
+
+  fun ziVpnRuntimePolicy(obfs: String): ZiVpnRuntimePolicy {    check(available) { "libopol est absent de cette installation" }
     val source = try { JSONObject(nativeBuildZiVpnRuntimePolicy(obfs)) } catch (_: Throwable) {
       error("libopol a retourné une politique ZiVPN invalide")
     }
@@ -279,6 +288,7 @@ internal object OpolNative {
   private external fun nativeClassifyV2RayDnsOutput(line: String): String
   private external fun nativeBuildXrayConfig(mode: String, link: String, json: String, socksPort: Int): String?
   private external fun nativeBuildZiVpnRuntimePolicy(obfs: String): String
+  private external fun nativeZivpnFixedObfs(): String
   private external fun nativeBuildSlowDnsRuntimePolicy(dnsServer: String, dnsPort: String, publicKey: String, nameserver: String, dnsttPort: Int, socksPort: Int): String
   private external fun nativeClassifySlowDnsOutput(line: String): String
   private external fun nativeBuildHysteriaRuntimePolicy(): String

@@ -38,7 +38,7 @@ class ZivpnTunnel(
     recovering = false
     log("connection", "ZIVPN", "ZiVPN ${profile.name}")
     // Trace détaillée dans Download/kighmu.txt (max infos debogage)
-    FileLogger.logDetail(context, "ZIVPN", "START profil=${profile.name} id=${profile.id} method=${profile.method} port=${profile.port} host=${profile.host.take(32)} obfs=${profile.obfs} socksPort=$socksPort mtu=${context.resources?.configuration}")
+    FileLogger.logDetail(context, "ZIVPN", "START profil=${profile.name} id=${profile.id} method=${profile.method} port=${profile.port} host=${profile.host.take(32)} obfs=${obfsOrigin(profile)} socksPort=$socksPort mtu=${context.resources?.configuration}")
     FileLogger.init(context)
     FileLogger.logDetail(context, "ZIVPN-DETAIL", "ENV SDK=${android.os.Build.VERSION.SDK_INT} model=${android.os.Build.MODEL} abi=${android.os.Build.SUPPORTED_ABIS?.joinToString()} apkNativeDir=${context.applicationInfo.nativeLibraryDir}")
     val binary = File(context.applicationInfo.nativeLibraryDir, "libuz_core.so")
@@ -98,7 +98,7 @@ class ZivpnTunnel(
     // Copie du profil avec port = ce range unique (libuz_core ne supporte qu'un range par process).
     // Le serveur est résolu en IPv4 côté JVM : libuz_core (Go) ne résout pas le DNS sur Android.
     val resolvedHost = NetResolver.resolveHost(profile.host)
-    FileLogger.logDetail(context, "ZIVPN-DETAIL", "LAUNCH portRange=$portRange uzPort=$uzPort resolvedHost=$resolvedHost obfs=${profile.obfs} nativeDir=${context.applicationInfo.nativeLibraryDir}")
+    FileLogger.logDetail(context, "ZIVPN-DETAIL", "LAUNCH portRange=$portRange uzPort=$uzPort resolvedHost=$resolvedHost obfs=${obfsOrigin(profile)} nativeDir=${context.applicationInfo.nativeLibraryDir}")
     val rangeProfile = profile.copy(port = portRange, host = resolvedHost)
     val config = File(context.cacheDir, "zivpn-${safeToken(profile.id)}-${uzPort}.json")
     val cfgText = OpolNative.buildZiVpnConfig(rangeProfile, uzPort)
@@ -331,5 +331,7 @@ class ZivpnTunnel(
 
     fun findFreePort(): Int = ServerSocket(0).use { it.localPort }
     fun safeToken(value: String) = value.replace(Regex("[^A-Za-z0-9_-]"), "_").take(80)
+    /** Origine de l'obfs pour les journaux : jamais la valeur en clair. */
+    fun obfsOrigin(profile: TunnelProfile) = if (profile.obfs.isBlank()) "embedded-libopol" else "custom"
   }
 }

@@ -97,7 +97,7 @@ data class TunnelProfile(
     ZIVPN -> when {
       host.isBlank() -> "hôte ZiVPN manquant"
       !isValidPortOrRange(port) -> "port ZiVPN invalide"
-      obfs.isBlank() -> "Obfs ZiVPN manquant"
+      // Obfs vide = valeur embarquée dans libopol (jamais en clair hors natif).
       password.isBlank() -> "mot de passe ZiVPN manquant"
       else -> null
     }

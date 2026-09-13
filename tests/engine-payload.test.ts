@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ZIVPN_FIXED_OBFS, TUNNEL_KINDS, createProfile, type TunnelProfile } from "../lib/vpn/tunnel-profiles";
+import { TUNNEL_KINDS, createProfile, type TunnelProfile } from "../lib/vpn/tunnel-profiles";
 import { buildEnginePayload, toEngineProfile } from "../lib/vpn/engine-payload";
 import { DEFAULT_APP_SETTINGS } from "../lib/app-settings";
 
@@ -36,7 +36,7 @@ const EXPECTED_METHOD: Record<TunnelProfile["kind"], string> = {
 // Champs que `TunnelProfile.validate()` exige non vides côté natif, par `method`.
 // Référence : modules/kighmu-vpn-native/.../TunnelProfile.kt (bloc validate()).
 const REQUIRED_ENGINE_FIELDS: Record<string, string[]> = {
-  "zivpn-udp": ["host", "port", "obfs", "password"],
+  "zivpn-udp": ["host", "port", "password"], // obfs vide = valeur embarquée libopol
   "ssh-slowdns": ["sshHost", "sshPort", "sshUser", "password", "dnsServer", "dnsPort", "nameserver", "publicKey"],
   "hysteria-udp": ["hysteriaHost", "hysteriaPort", "hysteriaAuth", "hysteriaUpMbps", "hysteriaDownMbps"],
   "http-proxy-payload": ["sshHost", "sshPort", "sshUser", "password", "proxyHost", "proxyPort", "httpPayload"],
@@ -63,8 +63,8 @@ describe("adaptateur de charge utile moteur natif", () => {
     });
   });
 
-  it("injecte l'obfs fixe ZIVPN que #154 ne stocke pas", () => {
-    expect(toEngineProfile(configured("zivpn")).obfs).toBe(ZIVPN_FIXED_OBFS);
+  it("laisse l'obfs ZIVPN vide (valeur embarquée dans libopol.so)", () => {
+    expect(toEngineProfile(configured("zivpn")).obfs).toBe("");
   });
 
   it("injecte l'hôte SSH local pour SlowDNS (transport via le pont DNSTT)", () => {
