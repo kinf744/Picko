@@ -242,8 +242,9 @@ class ZivpnTunnel(
             if (stopRequested.get() || !processes.contains(running)) return@forEach
             val line = raw.trim()
             if (line.isBlank()) return@forEach
-            // Trace détaillée dans Download/kighmu.txt (max infos)
-            FileLogger.logDetail(context, "ZIVPN-NATIVE", "procPort=$socksPort line=$line")
+            // Sortie uz_core filtrée (dedup + 8/s) et tronquée : évite le spam
+            // Download et toute fuite de secret dans kighmu.txt.
+            FileLogger.log(context, "ZIVPN-NATIVE", "procPort=$socksPort line=${line.take(180)}")
             if (AUTH_FAILURE_REGEX.containsMatchIn(line)) { notifyAuthFailure(); return@forEach }
             val lower = line.lowercase()
             if (lower.contains("timeout") || lower.contains("disconnected") || lower.contains("reconnect") || (lower.contains("error") && lower.contains("udp")) || lower.contains("reset by peer") || lower.contains("connection reset") || lower.contains("socks5 tcp error")) {
@@ -262,11 +263,25 @@ class ZivpnTunnel(
     }.apply { isDaemon = true; name = "zivpn-log-$socksPort" }.start()
   }
 
+  // Keepalive NAT UDP : un vrai CONNECT SOCKS5 toutes les 25 s fait
+  // transiter du trafic par uz_core et maintient le mapping NAT/firewall
+  // de l'opérateur (expiration typique 30-180 s). Ne décide jamais rien :
+  // en cas d'échec, la santé reste gérée par isHealthy()/recovery.
   private fun startKeepalive() {
-    // Keepalive retiré : inefficace en non-root (testé et supprimé).
-    // Le maintien du NAT UDP est assuré côté service (httpPing via le VPN
-    // + sonde hasRealConnect du balancer) sans ouvrir de socket supplémentaire
-    // depuis le tunnel. On garde le thread inactif pour compatibilité.
+    if (keepaliveThread?.isAlive == true) return
+    keepaliveThread = Thread {
+      try {
+        while (!stopRequested.get() && !Thread.currentThread().isInterrupted) {
+          try { Thread.sleep(25_000) } catch (_: InterruptedException) { break }
+          if (stopRequested.get() || recovering) continue
+          if (processes.none { it.isAlive }) continue
+          try {
+            val ok = LocalSocksBalancer.hasRealConnect(socksPort)
+            if (!ok) FileLogger.logDetail(context, "ZIVPN-DETAIL", "KEEPALIVE_NORESP socksPort=$socksPort")
+          } catch (_: Throwable) {}
+        }
+      } catch (_: Throwable) {}
+    }.apply { isDaemon = true; name = "zivpn-keepalive-$socksPort" }.also { it.start() }
   }
 
   private fun scheduleRecovery() {
@@ -325,8 +340,11 @@ class ZivpnTunnel(
   }
 
   companion object {
+    // Détection d'échec d'authentification : le mot-clé d'échec doit suivre
+    // de près le contexte d'auth (≤60 car.). Plus de "403" générique : une
+    // page HTTP 403 transitant par le tunnel ne doit jamais condamner le profil.
     private val AUTH_FAILURE_REGEX = Regex(
-      "(?i)(auth[^\\n]*(?:fail|invalid|incorrect|reject|denied)|password[^\\n]*(?:fail|invalid|incorrect|wrong|reject|denied)|unauthorized|403)",
+      "(?i)(auth[^\\n]{0,60}(?:fail|invalid|incorrect|wrong|reject|denied|error)|password[^\\n]{0,60}(?:fail|invalid|incorrect|wrong|reject|denied|error)|unauthorized|authentication[^\\n]{0,60}(?:fail|error))",
     )
 
     fun findFreePort(): Int = ServerSocket(0).use { it.localPort }

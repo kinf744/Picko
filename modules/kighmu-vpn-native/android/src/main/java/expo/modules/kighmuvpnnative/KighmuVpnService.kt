@@ -32,6 +32,10 @@ class KighmuVpnService : VpnService() {
   @Volatile private var primaryProfileName = ""
   private var vpnWakeLock: PowerManager.WakeLock? = null
   @Volatile private var restartAttempts = 0
+  // Tient 10h+ comme Zamois-tun : seul un arrêt explicite de l'utilisateur
+  // (ACTION_STOP) a le droit de tuer le service. Toute autre coupure
+  // (erreur transitoire, onRevoke système) relance en interne SANS stopSelf().
+  @Volatile private var userRequestedStop = false
   @Volatile private var zivpnHeartbeatRunning = false
   private var zivpnHeartbeatThread: Thread? = null
 
@@ -54,10 +58,12 @@ class KighmuVpnService : VpnService() {
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     when (intent?.action) {
       ACTION_STOP -> {
+        userRequestedStop = true
         clearSavedPayload()
         stopVpn()
       }
       ACTION_START -> {
+        userRequestedStop = false
         val payload = intent.getStringExtra(EXTRA_PROFILES_JSON).orEmpty().ifBlank { readSavedPayload() }
         val generation = beginStart() ?: return START_REDELIVER_INTENT
         restartAttempts = 0
@@ -65,8 +71,11 @@ class KighmuVpnService : VpnService() {
         thread(isDaemon = true, name = "picko-vpn-start") { startTunnelsInternal(payload, generation) }
       }
       else -> {
+        // Redémarrage système : reste STICKY même sans payload (le service
+        // survit, les tunnels redémarreront au prochain ACTION_START).
+        userRequestedStop = false
         val payload = readSavedPayload()
-        if (payload.isBlank()) return START_NOT_STICKY
+        if (payload.isBlank()) return START_STICKY
         val generation = beginStart() ?: return START_REDELIVER_INTENT
         thread(isDaemon = true, name = "picko-vpn-start") { startTunnelsInternal(payload, generation) }
       }
@@ -115,6 +124,8 @@ class KighmuVpnService : VpnService() {
   private fun startTunnelsInternal(payloadJson: String, generation: Long) {
     try {
       FileLogger.init(this)
+      // Nettoie le Download/kighmu.txt de la session précédente (borne la taille à ~2 Mio/session).
+      try { FileLogger.cleanDownloadFile(this) } catch (_: Throwable) {}
       // Header détaillé pour Download/kighmu.txt - bug ZIVPN trafic bloqué après quelques minutes
       try {
         val dlPath = FileLogger.getDownloadPath(this)
@@ -339,8 +350,9 @@ class KighmuVpnService : VpnService() {
               emitLog("warning", "TUNNEL", "Tunnel temporairement indisponible ; reconnexion locale en cours")
               recoveryLogged = true
             }
-          } else if (emptyStreak < 4) {
-            // Grâce de 60s (4×15s) avant de décider — comme Forot qui ne monitor pas
+          } else if (emptyStreak < 8) {
+            // Grâce de 2 min (8×15s) avant de décider : un réseau lent ou Doze
+            // partiel ne doit pas tuer un tunnel qui va se rétablir seul.
           } else if (runtimeSettings.alwaysReconnect) {
             restartVpn(generation, "Tous les tunnels sont indisponibles")
             return@thread
@@ -569,8 +581,15 @@ class KighmuVpnService : VpnService() {
   private fun fail(generation: Long, message: String) {
     if (!isActive(generation)) return
     try { FileLogger.log(this, "VPN", "FAIL generation=$generation: $message") } catch (_: Throwable) {}
+    // Plus de suicide : une erreur transitoire relance en interne (backoff),
+    // le service ne meurt que sur arrêt utilisateur ou payload absent.
+    if (!userRequestedStop && activeProfilesJson.isNotBlank()) {
+      emitLog("warning", "VPN", "Échec : $message ; reconnexion automatique")
+      restartVpn(generation, message)
+      return
+    }
     emitLog("error", "VPN", "Échec de connexion : $message")
-    stopVpn(STATUS_ERROR)
+    stopVpn(STATUS_ERROR, stopService = true)
   }
 
   private fun emitLog(level: String, component: String, message: String) {
@@ -592,7 +611,13 @@ class KighmuVpnService : VpnService() {
     }
   }
 
-  private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED) {
+  /**
+   * Arrêt du plan de données. stopService=false (défaut sur erreur) : le
+   * service reste vivant au premier plan pour reconnexion rapide, comme
+   * Zamois-tun qui ne fait jamais stopSelf() pour ZiVPN. Seul un arrêt
+   * utilisateur (ACTION_STOP) demande stopService=true.
+   */
+  private fun stopVpn(finalStatus: String = STATUS_DISCONNECTED, stopService: Boolean = finalStatus != STATUS_ERROR) {
     try { stopZivpnHeartbeat() } catch (_: Throwable) {}
     try { FileLogger.logDetail(this, "ZIVPN-DETAIL", "STOPVPN called finalStatus=$finalStatus gen=$attemptGeneration tunFd=$tunFd") } catch (_: Throwable) {}
     val fd: Int
@@ -624,7 +649,7 @@ class KighmuVpnService : VpnService() {
     try { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).bindProcessToNetwork(null) } catch (_: Throwable) {}
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
     emitLog("info", "VPN", if (finalStatus == STATUS_ERROR) "VPN arrêté après erreur" else "VPN arrêté")
-    stopSelf()
+    if (stopService) stopSelf()
   }
 
   private fun createNotificationChannel() {
@@ -651,7 +676,29 @@ class KighmuVpnService : VpnService() {
 
   override fun onRevoke() {
     try { FileLogger.logDetail(this, "ZIVPN-DETAIL", "ON_REVOKE called status=$currentStatus gen=$attemptGeneration") } catch (_: Throwable) {}
-    stopVpn(); super.onRevoke()
+    // Révocation système (autre VPN, Always-On) : reconnexion auto comme
+    // Zamois-tun, sauf arrêt explicite de l'utilisateur.
+    if (userRequestedStop || currentStatus == STATUS_DISCONNECTED || activeProfilesJson.isBlank()) {
+      stopVpn()
+    } else {
+      emitLog("warning", "VPN", "Autorisation VPN révoquée par Android — reconnexion automatique")
+      val payload = activeProfilesJson
+      val generation = synchronized(lifecycleLock) {
+        attemptGeneration += 1
+        currentStatus = STATUS_CONNECTING
+        stateSink?.invoke(STATUS_CONNECTING)
+        attemptGeneration
+      }
+      thread(isDaemon = true, name = "picko-vpn-revoke-restart") {
+        try { Thread.sleep(1000) } catch (_: InterruptedException) { return@thread }
+        try {
+          startTunnelsInternal(payload, generation)
+        } catch (error: Throwable) {
+          fail(generation, error.message ?: "reconnexion impossible après révocation")
+        }
+      }
+    }
+    super.onRevoke()
   }
   override fun onDestroy() {
     try { FileLogger.logDetail(this, "ZIVPN-DETAIL", "ON_DESTROY called status=$currentStatus gen=$attemptGeneration") } catch (_: Throwable) {}

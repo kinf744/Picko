@@ -20,6 +20,10 @@ object FileLogger {
   private const val FILENAME = "kighmu.txt"
   private const val MAX_SIZE_BYTES = 5L * 1024L * 1024L // 5 Mio pour trace ZIVPN détaillée
   private const val KEEP_LINES_ON_CLEAN = 1500
+  // Rotation du fichier Download (MediaStore, sans lecture = OOM-safe) :
+  // au-delà de ce volume écrit depuis la dernière rotation, on réécrit frais.
+  private const val MEDIA_ROTATE_BYTES = 2L * 1024L * 1024L // 2 Mio par session
+  @Volatile private var mediaBytesSinceRotate = 0L
   private const val DEDUP_MS = 2000L
   private const val RATE_LIMIT_PER_SEC = 8
   @Volatile private var resolvedFile: File? = null
@@ -143,13 +147,12 @@ object FileLogger {
         val file = resolveFile(context)
         if (file != null) {
           synchronized(lock) {
-            if (filtered && file.exists() && file.length() > MAX_SIZE_BYTES) {
+            // Rotation y compris pour logDetail (trafic ZIVPN verbeux) :
+            // truncate OOM-safe, sans readLines() (5 Mio sur heap 18M = OOM).
+            if (file.exists() && file.length() > MAX_SIZE_BYTES) {
               try {
-                val lines = file.readLines()
-                val keep = if (lines.size > KEEP_LINES_ON_CLEAN) lines.takeLast(KEEP_LINES_ON_CLEAN) else lines.takeLast((lines.size * 0.5).toInt())
                 val t2 = synchronized(tsFormat) { tsFormat.format(Date()) }
-                file.writeText(keep.joinToString("\n") + "\n")
-                file.appendText("[$t2] [SYSTEM] Nettoyage auto: limite ${MAX_SIZE_BYTES/1024}Ko atteinte, garde ${keep.size} dernières lignes\n", Charsets.UTF_8)
+                file.writeText("[$t2] [SYSTEM] Rotation auto: limite ${MAX_SIZE_BYTES / 1024}Ko atteinte, fichier tronqué\n", Charsets.UTF_8)
               } catch (_: Throwable) {
                 try { file.writeText("") } catch (_: Throwable) {}
               }
@@ -209,6 +212,16 @@ object FileLogger {
 
   private fun writeViaMediaStore(context: Context, line: String) {
     try {
+      // Rotation OOM-safe : au-delà du seuil, on réécrit le fichier frais
+      // au lieu d'appender indéfiniment (Download/kighmu.txt illimité = stockage + RAM).
+      val lineBytes = line.toByteArray(Charsets.UTF_8).size.toLong()
+      val needRotate = synchronized(lock) {
+        mediaBytesSinceRotate += lineBytes
+        if (mediaBytesSinceRotate >= MEDIA_ROTATE_BYTES) {
+          mediaBytesSinceRotate = 0L
+          true
+        } else false
+      }
       // Réutilise URI mise en cache pour éviter query à chaque log (fuite mémoire)
       var uri = cachedMediaUri
       val resolver = context.contentResolver
@@ -236,6 +249,19 @@ object FileLogger {
       }
       if (uri != null) {
         var written = false
+        // Rotation : mode "w" (truncate) avec header au lieu d'append.
+        if (needRotate) {
+          try {
+            val ts = synchronized(tsFormat) { tsFormat.format(Date()) }
+            resolver.openOutputStream(uri!!, "w")?.use {
+              it.write("[$ts] [SYSTEM] Rotation Download: limite ${MEDIA_ROTATE_BYTES / 1024}Ko écrite, fichier réécrit frais\n".toByteArray(Charsets.UTF_8))
+              it.write(line.toByteArray(Charsets.UTF_8))
+              written = true
+            }
+          } catch (_: Throwable) {
+            cachedMediaUri = null
+          }
+        }
         try {
           resolver.openOutputStream(uri!!, "wa")?.use { it.write(line.toByteArray(Charsets.UTF_8)); written = true }
         } catch (_: Throwable) {
@@ -307,6 +333,36 @@ object FileLogger {
       logDetail(context, "SYSTEM", msg)
       // Force création via MediaStore si absent
       writeViaMediaStore(context, "[$ts] [SYSTEM] KIGHMU log init - test ecriture Download/kighmu.txt\n")
+    } catch (_: Throwable) {}
+  }
+
+  /**
+   * Nettoie le fichier Download/kighmu.txt présent (tronque + header frais,
+   * compteur de rotation réinitialisé). Appelé à chaque démarrage de session
+   * VPN : le fichier ne peut plus grossir au-delà d'une session (~2 Mio).
+   */
+  fun cleanDownloadFile(context: Context) {
+    try {
+      synchronized(lock) { mediaBytesSinceRotate = 0L }
+      // 1) MediaStore (Android Q+) : réécriture fraîche
+      try {
+        val uri = cachedMediaUri
+        if (uri != null) {
+          val ts = synchronized(tsFormat) { tsFormat.format(Date()) }
+          context.contentResolver.openOutputStream(uri, "w")?.use {
+            it.write("[$ts] [SYSTEM] Nettoyage session : Download/kighmu.txt réinitialisé\n".toByteArray(Charsets.UTF_8))
+          }
+        }
+      } catch (_: Throwable) {
+        cachedMediaUri = null
+      }
+      // 2) Fichier direct éventuel (API <29 / accès direct) : suppression
+      try {
+        val pub = resolvePublicFile(context)
+        if (pub != null && pub.exists() && pub.length() > MEDIA_ROTATE_BYTES) {
+          try { pub.writeText("") } catch (_: Throwable) { try { pub.delete() } catch (_: Throwable) {} }
+        }
+      } catch (_: Throwable) {}
     } catch (_: Throwable) {}
   }
 
